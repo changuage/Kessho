@@ -1,0 +1,3018 @@
+{
+  "schema": "kessho-sample-asset-loudness-v1",
+  "corpus": {
+    "root": "public/samples",
+    "discoveredUniqueOggCount": 806,
+    "oggAssetPathSha256": "72eeb96862734cd00dedacdae3ce18fd1b95d80c4f6458af837c167451ea861c"
+  },
+  "measurement": {
+    "decoder": "Playwright Chromium OfflineAudioContext.decodeAudioData",
+    "decodedSampleRate": 48000,
+    "decodedAssetCount": 806,
+    "decodeErrorCount": 0,
+    "decodedAllAssets": true,
+    "activeWindow": "frames from first to last sample at or above -60 dBFS relative to each asset peak (with absolute floor)",
+    "activeRms": "channel-averaged RMS over active window",
+    "samplePeak": "maximum absolute decoded PCM sample",
+    "integratedLufs": "48 kHz BS.1770-style K-weighting; 400 ms blocks/100 ms hops; -70 LUFS absolute and -10 LU relative gates",
+    "shortAssetPolicy": "integratedLufs is null when no complete 400 ms block exists; RMS/peak remain available"
+  },
+  "focus": {
+    "natureEffectiveTargetIntegratedLufs": -29.72873,
+    "catalogNatureAssets": [
+      {
+        "id": "birds-alps",
+        "displayName": "Birds Alps",
+        "assetId": 7102,
+        "assetPath": "Alps Birds 2_noiseremoval_441_m.ogg",
+        "rawIntegratedLufs": -25.24167,
+        "activeRmsDbfs": -32.49281,
+        "legacyAssetRefLevel": 0.6,
+        "existingEffectiveIntegratedLufs": -29.67865,
+        "natureEffectiveTargetIntegratedLufs": -29.72873,
+        "requiredAssetRefLevelForTarget": 0.59655,
+        "adjustedAssetRefLevel": 0.59655,
+        "adjustedEffectiveIntegratedLufs": -29.72873,
+        "assetRefLevelBounds": [
+          0,
+          2
+        ],
+        "withinAssetRefLevelRange": true,
+        "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+      },
+      {
+        "id": "birds-fujian",
+        "displayName": "Birds Fujian",
+        "assetId": 7105,
+        "assetPath": "Fujian Birds 2_441_m_normalized.ogg",
+        "rawIntegratedLufs": -23.2863,
+        "activeRmsDbfs": -24.25396,
+        "legacyAssetRefLevel": 0.52,
+        "existingEffectiveIntegratedLufs": -28.96623,
+        "natureEffectiveTargetIntegratedLufs": -29.72873,
+        "requiredAssetRefLevelForTarget": 0.4763,
+        "adjustedAssetRefLevel": 0.4763,
+        "adjustedEffectiveIntegratedLufs": -29.72873,
+        "assetRefLevelBounds": [
+          0,
+          2
+        ],
+        "withinAssetRefLevelRange": true,
+        "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+      },
+      {
+        "id": "frogs-fujian",
+        "displayName": "Frogs Fujian",
+        "assetId": 7103,
+        "assetPath": "Fujian_Frogs_m_441_normalized.ogg",
+        "rawIntegratedLufs": -27.87441,
+        "activeRmsDbfs": -29.49047,
+        "legacyAssetRefLevel": 0.5,
+        "existingEffectiveIntegratedLufs": -33.89501,
+        "natureEffectiveTargetIntegratedLufs": -29.72873,
+        "requiredAssetRefLevelForTarget": 0.80776,
+        "adjustedAssetRefLevel": 0.80776,
+        "adjustedEffectiveIntegratedLufs": -29.72873,
+        "assetRefLevelBounds": [
+          0,
+          2
+        ],
+        "withinAssetRefLevelRange": true,
+        "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+      },
+      {
+        "id": "ghetary-waves",
+        "displayName": "Waves Ghetary",
+        "assetId": 7101,
+        "assetPath": "Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg",
+        "rawIntegratedLufs": -29.77881,
+        "activeRmsDbfs": -30.64912,
+        "legacyAssetRefLevel": 1,
+        "existingEffectiveIntegratedLufs": -29.77881,
+        "natureEffectiveTargetIntegratedLufs": -29.72873,
+        "requiredAssetRefLevelForTarget": 1.00578,
+        "adjustedAssetRefLevel": 1.00578,
+        "adjustedEffectiveIntegratedLufs": -29.72873,
+        "assetRefLevelBounds": [
+          0,
+          2
+        ],
+        "withinAssetRefLevelRange": true,
+        "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+      }
+    ],
+    "otherSoundscapeAssets": [
+      {
+        "libraryKey": "nature-soundscape",
+        "libraryName": "Nature / Soundscape",
+        "group": "nature",
+        "assetId": 7106,
+        "sampleId": "legacy-insects",
+        "assetPath": "Alps Birds_441_m_normalized.ogg",
+        "rootMidi": null,
+        "role": "soundscape",
+        "articulation": "insects",
+        "dynamic": "continuous",
+        "natureCatalogId": "legacy-insects",
+        "sampleRate": 48000,
+        "channelCount": 1,
+        "frames": 2551989,
+        "durationSeconds": 53.16644,
+        "activeBegin": 0,
+        "activeEnd": 2551988,
+        "activeFrames": 2551988,
+        "activeDurationSeconds": 53.16642,
+        "activeRms": 0.06762,
+        "activeRmsDbfs": -23.39806,
+        "samplePeak": 0.82891,
+        "samplePeakDbfs": -1.6299,
+        "analyzedBlocks": 528,
+        "absoluteGatedBlocks": 528,
+        "relativeGatedBlocks": 151,
+        "ungatedLufs": -23.57596,
+        "absoluteGatedLufs": -23.57596,
+        "relativeGateLufs": -33.57596,
+        "integratedLufs": -18.23466,
+        "decodeError": null
+      },
+      {
+        "libraryKey": "nature-soundscape",
+        "libraryName": "Nature / Soundscape",
+        "group": "nature",
+        "assetId": 7104,
+        "sampleId": "legacy-water",
+        "assetPath": "Ghetary-Waves-Rocks_cl-normalized.ogg",
+        "rootMidi": null,
+        "role": "soundscape",
+        "articulation": "water",
+        "dynamic": "continuous",
+        "natureCatalogId": "legacy-water",
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "frames": 13824000,
+        "durationSeconds": 288,
+        "activeBegin": 0,
+        "activeEnd": 13824000,
+        "activeFrames": 13824000,
+        "activeDurationSeconds": 288,
+        "activeRms": 0.03512,
+        "activeRmsDbfs": -29.08866,
+        "samplePeak": 0.89265,
+        "samplePeakDbfs": -0.9864,
+        "analyzedBlocks": 2877,
+        "absoluteGatedBlocks": 2877,
+        "relativeGatedBlocks": 2776,
+        "ungatedLufs": -25.79137,
+        "absoluteGatedLufs": -25.79137,
+        "relativeGateLufs": -35.79137,
+        "integratedLufs": -25.64807,
+        "decodeError": null
+      }
+    ]
+  },
+  "statistics": {
+    "allGeneratedLibraries": {
+      "assets": 800,
+      "integratedLufs": {
+        "count": 777,
+        "median": -19.50949,
+        "p10": -39.77176
+      },
+      "activeRmsDbfs": {
+        "count": 800,
+        "median": -21.50458,
+        "p10": -40.17858,
+        "p90": -15.96463
+      },
+      "samplePeakDbfs": {
+        "count": 800,
+        "median": -3.41534,
+        "p10": -24.40217,
+        "p90": 2.63366
+      },
+      "completeLufsBlockAssets": 777
+    },
+    "allCatalogNature": {
+      "assets": 4,
+      "integratedLufs": {
+        "count": 4,
+        "median": -26.55804,
+        "p10": -29.77881
+      },
+      "activeRmsDbfs": {
+        "count": 4,
+        "median": -30.06979,
+        "p10": -32.49281,
+        "p90": -24.25396
+      },
+      "samplePeakDbfs": {
+        "count": 4,
+        "median": -2.45122,
+        "p10": -6.04622,
+        "p90": -1.52591
+      },
+      "completeLufsBlockAssets": 4
+    },
+    "libraries": {
+      "archive-found-strings-001": {
+        "assets": 25,
+        "integratedLufs": {
+          "count": 25,
+          "median": -39.82581,
+          "p10": -45.73407
+        },
+        "activeRmsDbfs": {
+          "count": 25,
+          "median": -39.33299,
+          "p10": -48.10502,
+          "p90": -34.09243
+        },
+        "samplePeakDbfs": {
+          "count": 25,
+          "median": -26.66195,
+          "p10": -33.93939,
+          "p90": -21.37787
+        },
+        "completeLufsBlockAssets": 25,
+        "articulations": {
+          "found-string-loop": {
+            "assets": 25,
+            "integratedLufs": {
+              "count": 25,
+              "median": -39.82581,
+              "p10": -45.73407
+            },
+            "activeRmsDbfs": {
+              "count": 25,
+              "median": -39.33299,
+              "p10": -48.10502,
+              "p90": -34.09243
+            },
+            "samplePeakDbfs": {
+              "count": 25,
+              "median": -26.66195,
+              "p10": -33.93939,
+              "p90": -21.37787
+            },
+            "completeLufsBlockAssets": 25
+          }
+        },
+        "dynamics": {
+          "unspecified": {
+            "assets": 25,
+            "integratedLufs": {
+              "count": 25,
+              "median": -39.82581,
+              "p10": -45.73407
+            },
+            "activeRmsDbfs": {
+              "count": 25,
+              "median": -39.33299,
+              "p10": -48.10502,
+              "p90": -34.09243
+            },
+            "samplePeakDbfs": {
+              "count": 25,
+              "median": -26.66195,
+              "p10": -33.93939,
+              "p90": -21.37787
+            },
+            "completeLufsBlockAssets": 25
+          }
+        }
+      },
+      "array-mbira": {
+        "assets": 336,
+        "integratedLufs": {
+          "count": 336,
+          "median": -19.25062,
+          "p10": -27.75331
+        },
+        "activeRmsDbfs": {
+          "count": 336,
+          "median": -21.55825,
+          "p10": -30.10841,
+          "p90": -15.77779
+        },
+        "samplePeakDbfs": {
+          "count": 336,
+          "median": 0.53392,
+          "p10": -7.90395,
+          "p90": 2.81408
+        },
+        "completeLufsBlockAssets": 336,
+        "articulations": {
+          "direct-single": {
+            "assets": 28,
+            "integratedLufs": {
+              "count": 28,
+              "median": -26.80765,
+              "p10": -35.78298
+            },
+            "activeRmsDbfs": {
+              "count": 28,
+              "median": -29.33618,
+              "p10": -36.64928,
+              "p90": -24.55094
+            },
+            "samplePeakDbfs": {
+              "count": 28,
+              "median": -10.68514,
+              "p10": -11.60606,
+              "p90": -4.66826
+            },
+            "completeLufsBlockAssets": 28
+          },
+          "direct-strum": {
+            "assets": 84,
+            "integratedLufs": {
+              "count": 84,
+              "median": -21.42771,
+              "p10": -24.26136
+            },
+            "activeRmsDbfs": {
+              "count": 84,
+              "median": -23.14832,
+              "p10": -26.61184,
+              "p90": -21.09624
+            },
+            "samplePeakDbfs": {
+              "count": 84,
+              "median": -3.21455,
+              "p10": -3.66662,
+              "p90": -2.43951
+            },
+            "completeLufsBlockAssets": 84
+          },
+          "mics-single": {
+            "assets": 56,
+            "integratedLufs": {
+              "count": 56,
+              "median": -23.26521,
+              "p10": -28.70989
+            },
+            "activeRmsDbfs": {
+              "count": 56,
+              "median": -26.0115,
+              "p10": -31.45054,
+              "p90": -17.18481
+            },
+            "samplePeakDbfs": {
+              "count": 56,
+              "median": -3.66505,
+              "p10": -7.50274,
+              "p90": 0.26855
+            },
+            "completeLufsBlockAssets": 56
+          },
+          "mics-strum": {
+            "assets": 168,
+            "integratedLufs": {
+              "count": 168,
+              "median": -16.18406,
+              "p10": -20.54143
+            },
+            "activeRmsDbfs": {
+              "count": 168,
+              "median": -18.10716,
+              "p10": -22.7253,
+              "p90": -14.97027
+            },
+            "samplePeakDbfs": {
+              "count": 168,
+              "median": 2.33404,
+              "p10": 1.10526,
+              "p90": 2.91453
+            },
+            "completeLufsBlockAssets": 168
+          }
+        },
+        "dynamics": {
+          "forte": {
+            "assets": 42,
+            "integratedLufs": {
+              "count": 42,
+              "median": -22.33333,
+              "p10": -28.20614
+            },
+            "activeRmsDbfs": {
+              "count": 42,
+              "median": -24.92554,
+              "p10": -29.79886,
+              "p90": -17.16746
+            },
+            "samplePeakDbfs": {
+              "count": 42,
+              "median": -1.44614,
+              "p10": -5.39334,
+              "p90": 0.31495
+            },
+            "completeLufsBlockAssets": 42
+          },
+          "piano": {
+            "assets": 42,
+            "integratedLufs": {
+              "count": 42,
+              "median": -26.35775,
+              "p10": -34.28757
+            },
+            "activeRmsDbfs": {
+              "count": 42,
+              "median": -28.67873,
+              "p10": -35.46885,
+              "p90": -23.51169
+            },
+            "samplePeakDbfs": {
+              "count": 42,
+              "median": -7.08506,
+              "p10": -11.57921,
+              "p90": -5.0523
+            },
+            "completeLufsBlockAssets": 42
+          },
+          "strum-2": {
+            "assets": 126,
+            "integratedLufs": {
+              "count": 126,
+              "median": -17.81083,
+              "p10": -23.23817
+            },
+            "activeRmsDbfs": {
+              "count": 126,
+              "median": -19.87894,
+              "p10": -25.27992,
+              "p90": -14.49704
+            },
+            "samplePeakDbfs": {
+              "count": 126,
+              "median": 1.58102,
+              "p10": -3.44973,
+              "p90": 2.79338
+            },
+            "completeLufsBlockAssets": 126
+          },
+          "strum-3": {
+            "assets": 84,
+            "integratedLufs": {
+              "count": 84,
+              "median": -17.34618,
+              "p10": -23.14528
+            },
+            "activeRmsDbfs": {
+              "count": 84,
+              "median": -19.88919,
+              "p10": -24.79128,
+              "p90": -15.95971
+            },
+            "samplePeakDbfs": {
+              "count": 84,
+              "median": 1.57842,
+              "p10": -3.52147,
+              "p90": 2.87652
+            },
+            "completeLufsBlockAssets": 84
+          },
+          "strum-4": {
+            "assets": 42,
+            "integratedLufs": {
+              "count": 42,
+              "median": -18.3801,
+              "p10": -22.47746
+            },
+            "activeRmsDbfs": {
+              "count": 42,
+              "median": -19.98762,
+              "p10": -24.56282,
+              "p90": -17.13957
+            },
+            "samplePeakDbfs": {
+              "count": 42,
+              "median": 1.79836,
+              "p10": -3.53548,
+              "p90": 2.91597
+            },
+            "completeLufsBlockAssets": 42
+          }
+        }
+      },
+      "piano": {
+        "assets": 128,
+        "integratedLufs": {
+          "count": 128,
+          "median": -19.63581,
+          "p10": -25.02399
+        },
+        "activeRmsDbfs": {
+          "count": 128,
+          "median": -20.11876,
+          "p10": -25.06328,
+          "p90": -15.4258
+        },
+        "samplePeakDbfs": {
+          "count": 128,
+          "median": -0.98938,
+          "p10": -3.25316,
+          "p90": -0.14027
+        },
+        "completeLufsBlockAssets": 128,
+        "articulations": {
+          "unspecified": {
+            "assets": 128,
+            "integratedLufs": {
+              "count": 128,
+              "median": -19.63581,
+              "p10": -25.02399
+            },
+            "activeRmsDbfs": {
+              "count": 128,
+              "median": -20.11876,
+              "p10": -25.06328,
+              "p90": -15.4258
+            },
+            "samplePeakDbfs": {
+              "count": 128,
+              "median": -0.98938,
+              "p10": -3.25316,
+              "p90": -0.14027
+            },
+            "completeLufsBlockAssets": 128
+          }
+        },
+        "dynamics": {
+          "regular": {
+            "assets": 64,
+            "integratedLufs": {
+              "count": 64,
+              "median": -20.97537,
+              "p10": -25.46243
+            },
+            "activeRmsDbfs": {
+              "count": 64,
+              "median": -22.07418,
+              "p10": -26.11377,
+              "p90": -17.64534
+            },
+            "samplePeakDbfs": {
+              "count": 64,
+              "median": -0.98938,
+              "p10": -3.25316,
+              "p90": -0.14027
+            },
+            "completeLufsBlockAssets": 64
+          },
+          "short": {
+            "assets": 64,
+            "integratedLufs": {
+              "count": 64,
+              "median": -18.50178,
+              "p10": -23.71875
+            },
+            "activeRmsDbfs": {
+              "count": 64,
+              "median": -18.98641,
+              "p10": -23.74366,
+              "p90": -15.04689
+            },
+            "samplePeakDbfs": {
+              "count": 64,
+              "median": -0.98938,
+              "p10": -3.25316,
+              "p90": -0.14027
+            },
+            "completeLufsBlockAssets": 64
+          }
+        }
+      },
+      "pneuma-eleni-teaser": {
+        "assets": 142,
+        "integratedLufs": {
+          "count": 142,
+          "median": -18.93694,
+          "p10": -22.86604
+        },
+        "activeRmsDbfs": {
+          "count": 142,
+          "median": -19.09024,
+          "p10": -23.82936,
+          "p90": -18.23118
+        },
+        "samplePeakDbfs": {
+          "count": 142,
+          "median": -9.02137,
+          "p10": -10.9637,
+          "p90": -5.19456
+        },
+        "completeLufsBlockAssets": 142,
+        "articulations": {
+          "breath": {
+            "assets": 15,
+            "integratedLufs": {
+              "count": 15,
+              "median": -20.08794,
+              "p10": -24.11989
+            },
+            "activeRmsDbfs": {
+              "count": 15,
+              "median": -23.59146,
+              "p10": -25.59751,
+              "p90": -23.15858
+            },
+            "samplePeakDbfs": {
+              "count": 15,
+              "median": -6.10404,
+              "p10": -7.64588,
+              "p90": -3.51449
+            },
+            "completeLufsBlockAssets": 15
+          },
+          "breath-pad": {
+            "assets": 1,
+            "integratedLufs": {
+              "count": 1,
+              "median": -27.55604,
+              "p10": -27.55604
+            },
+            "activeRmsDbfs": {
+              "count": 1,
+              "median": -27.95687,
+              "p10": -27.95687,
+              "p90": -27.95687
+            },
+            "samplePeakDbfs": {
+              "count": 1,
+              "median": -14.82208,
+              "p10": -14.82208,
+              "p90": -14.82208
+            },
+            "completeLufsBlockAssets": 1
+          },
+          "pad": {
+            "assets": 1,
+            "integratedLufs": {
+              "count": 1,
+              "median": -27.91758,
+              "p10": -27.91758
+            },
+            "activeRmsDbfs": {
+              "count": 1,
+              "median": -30.03678,
+              "p10": -30.03678,
+              "p90": -30.03678
+            },
+            "samplePeakDbfs": {
+              "count": 1,
+              "median": -13.26089,
+              "p10": -13.26089,
+              "p90": -13.26089
+            },
+            "completeLufsBlockAssets": 1
+          },
+          "uh": {
+            "assets": 123,
+            "integratedLufs": {
+              "count": 123,
+              "median": -18.92901,
+              "p10": -19.0153
+            },
+            "activeRmsDbfs": {
+              "count": 123,
+              "median": -18.98319,
+              "p10": -19.82905,
+              "p90": -18.22211
+            },
+            "samplePeakDbfs": {
+              "count": 123,
+              "median": -9.20283,
+              "p10": -10.81438,
+              "p90": -6.0942
+            },
+            "completeLufsBlockAssets": 123
+          },
+          "uh-ar": {
+            "assets": 2,
+            "integratedLufs": {
+              "count": 2,
+              "median": -22.80343,
+              "p10": -22.86604
+            },
+            "activeRmsDbfs": {
+              "count": 2,
+              "median": -23.69848,
+              "p10": -24.67407,
+              "p90": -22.72289
+            },
+            "samplePeakDbfs": {
+              "count": 2,
+              "median": -9.37293,
+              "p10": -9.89551,
+              "p90": -8.85036
+            },
+            "completeLufsBlockAssets": 2
+          }
+        },
+        "dynamics": {
+          "ff": {
+            "assets": 30,
+            "integratedLufs": {
+              "count": 30,
+              "median": -18.93525,
+              "p10": -19.00022
+            },
+            "activeRmsDbfs": {
+              "count": 30,
+              "median": -19.24602,
+              "p10": -20.13828,
+              "p90": -18.28551
+            },
+            "samplePeakDbfs": {
+              "count": 30,
+              "median": -9.54928,
+              "p10": -11.18957,
+              "p90": -6.79162
+            },
+            "completeLufsBlockAssets": 30
+          },
+          "mf": {
+            "assets": 30,
+            "integratedLufs": {
+              "count": 30,
+              "median": -18.89392,
+              "p10": -18.95262
+            },
+            "activeRmsDbfs": {
+              "count": 30,
+              "median": -19.11394,
+              "p10": -19.60747,
+              "p90": -18.10232
+            },
+            "samplePeakDbfs": {
+              "count": 30,
+              "median": -9.82162,
+              "p10": -10.54944,
+              "p90": -8.59377
+            },
+            "completeLufsBlockAssets": 30
+          },
+          "mp": {
+            "assets": 31,
+            "integratedLufs": {
+              "count": 31,
+              "median": -18.92355,
+              "p10": -18.98109
+            },
+            "activeRmsDbfs": {
+              "count": 31,
+              "median": -18.64706,
+              "p10": -19.33467,
+              "p90": -18.10532
+            },
+            "samplePeakDbfs": {
+              "count": 31,
+              "median": -8.84734,
+              "p10": -10.84002,
+              "p90": -6.2516
+            },
+            "completeLufsBlockAssets": 31
+          },
+          "pp": {
+            "assets": 32,
+            "integratedLufs": {
+              "count": 32,
+              "median": -18.97048,
+              "p10": -19.10546
+            },
+            "activeRmsDbfs": {
+              "count": 32,
+              "median": -18.9728,
+              "p10": -19.71803,
+              "p90": -18.57817
+            },
+            "samplePeakDbfs": {
+              "count": 32,
+              "median": -7.47823,
+              "p10": -9.67443,
+              "p90": -5.07548
+            },
+            "completeLufsBlockAssets": 32
+          },
+          "quiet": {
+            "assets": 1,
+            "integratedLufs": {
+              "count": 1,
+              "median": -27.55604,
+              "p10": -27.55604
+            },
+            "activeRmsDbfs": {
+              "count": 1,
+              "median": -27.95687,
+              "p10": -27.95687,
+              "p90": -27.95687
+            },
+            "samplePeakDbfs": {
+              "count": 1,
+              "median": -14.82208,
+              "p10": -14.82208,
+              "p90": -14.82208
+            },
+            "completeLufsBlockAssets": 1
+          },
+          "unspecified": {
+            "assets": 18,
+            "integratedLufs": {
+              "count": 18,
+              "median": -22.65989,
+              "p10": -26.0823
+            },
+            "activeRmsDbfs": {
+              "count": 18,
+              "median": -23.59178,
+              "p10": -27.86246,
+              "p90": -22.93438
+            },
+            "samplePeakDbfs": {
+              "count": 18,
+              "median": -6.61402,
+              "p10": -11.5782,
+              "p90": -3.51449
+            },
+            "completeLufsBlockAssets": 18
+          }
+        }
+      },
+      "soft-string-spurs": {
+        "assets": 99,
+        "integratedLufs": {
+          "count": 99,
+          "median": -23.01918,
+          "p10": -34.13746
+        },
+        "activeRmsDbfs": {
+          "count": 99,
+          "median": -23.91632,
+          "p10": -35.49411,
+          "p90": -13.81417
+        },
+        "samplePeakDbfs": {
+          "count": 99,
+          "median": -10.62894,
+          "p10": -21.06874,
+          "p90": -1.73679
+        },
+        "completeLufsBlockAssets": 99,
+        "articulations": {
+          "core": {
+            "assets": 76,
+            "integratedLufs": {
+              "count": 76,
+              "median": -25.0163,
+              "p10": -34.13746
+            },
+            "activeRmsDbfs": {
+              "count": 76,
+              "median": -25.19447,
+              "p10": -35.49411,
+              "p90": -13.0695
+            },
+            "samplePeakDbfs": {
+              "count": 76,
+              "median": -12.25563,
+              "p10": -21.06874,
+              "p90": -1.33216
+            },
+            "completeLufsBlockAssets": 76
+          },
+          "harmonic": {
+            "assets": 4,
+            "integratedLufs": {
+              "count": 4,
+              "median": -31.29385,
+              "p10": -36.67135
+            },
+            "activeRmsDbfs": {
+              "count": 4,
+              "median": -31.83939,
+              "p10": -36.4156,
+              "p90": -16.50732
+            },
+            "samplePeakDbfs": {
+              "count": 4,
+              "median": -18.2342,
+              "p10": -21.28661,
+              "p90": -5.82808
+            },
+            "completeLufsBlockAssets": 4
+          },
+          "swell": {
+            "assets": 19,
+            "integratedLufs": {
+              "count": 19,
+              "median": -21.11281,
+              "p10": -24.37752
+            },
+            "activeRmsDbfs": {
+              "count": 19,
+              "median": -22.57614,
+              "p10": -24.98031,
+              "p90": -19.9354
+            },
+            "samplePeakDbfs": {
+              "count": 19,
+              "median": -7.15966,
+              "p10": -10.58073,
+              "p90": -4.48319
+            },
+            "completeLufsBlockAssets": 19
+          }
+        },
+        "dynamics": {
+          "level-1": {
+            "assets": 19,
+            "integratedLufs": {
+              "count": 19,
+              "median": -28.70253,
+              "p10": -34.25954
+            },
+            "activeRmsDbfs": {
+              "count": 19,
+              "median": -28.78599,
+              "p10": -35.68664,
+              "p90": -21.69699
+            },
+            "samplePeakDbfs": {
+              "count": 19,
+              "median": -14.62824,
+              "p10": -21.05702,
+              "p90": -10.89659
+            },
+            "completeLufsBlockAssets": 19
+          },
+          "level-2": {
+            "assets": 19,
+            "integratedLufs": {
+              "count": 19,
+              "median": -30.78496,
+              "p10": -37.53754
+            },
+            "activeRmsDbfs": {
+              "count": 19,
+              "median": -30.62191,
+              "p10": -37.38786,
+              "p90": -25.2414
+            },
+            "samplePeakDbfs": {
+              "count": 19,
+              "median": -17.89564,
+              "p10": -22.8661,
+              "p90": -11.85241
+            },
+            "completeLufsBlockAssets": 19
+          },
+          "level-3": {
+            "assets": 19,
+            "integratedLufs": {
+              "count": 19,
+              "median": -22.12181,
+              "p10": -27.98695
+            },
+            "activeRmsDbfs": {
+              "count": 19,
+              "median": -23.35662,
+              "p10": -28.31307,
+              "p90": -16.35957
+            },
+            "samplePeakDbfs": {
+              "count": 19,
+              "median": -10.20458,
+              "p10": -14.77423,
+              "p90": -4.05883
+            },
+            "completeLufsBlockAssets": 19
+          },
+          "level-4": {
+            "assets": 19,
+            "integratedLufs": {
+              "count": 19,
+              "median": -15.58615,
+              "p10": -19.38804
+            },
+            "activeRmsDbfs": {
+              "count": 19,
+              "median": -16.62022,
+              "p10": -20.44268,
+              "p90": -11.3437
+            },
+            "samplePeakDbfs": {
+              "count": 19,
+              "median": -3.66248,
+              "p10": -7.04937,
+              "p90": 0.67211
+            },
+            "completeLufsBlockAssets": 19
+          },
+          "unspecified": {
+            "assets": 23,
+            "integratedLufs": {
+              "count": 23,
+              "median": -21.21829,
+              "p10": -33.58136
+            },
+            "activeRmsDbfs": {
+              "count": 23,
+              "median": -22.59026,
+              "p10": -35.12326,
+              "p90": -19.50834
+            },
+            "samplePeakDbfs": {
+              "count": 23,
+              "median": -7.33123,
+              "p10": -20.8051,
+              "p90": -5.07345
+            },
+            "completeLufsBlockAssets": 23
+          }
+        }
+      },
+      "the-spellsinger": {
+        "assets": 47,
+        "integratedLufs": {
+          "count": 47,
+          "median": -39.92848,
+          "p10": -56.16207
+        },
+        "activeRmsDbfs": {
+          "count": 47,
+          "median": -40.0676,
+          "p10": -53.49655,
+          "p90": -25.47397
+        },
+        "samplePeakDbfs": {
+          "count": 47,
+          "median": -24.16369,
+          "p10": -36.25622,
+          "p90": -10.32682
+        },
+        "completeLufsBlockAssets": 47,
+        "articulations": {
+          "drone": {
+            "assets": 7,
+            "integratedLufs": {
+              "count": 7,
+              "median": -40.54606,
+              "p10": -49.36825
+            },
+            "activeRmsDbfs": {
+              "count": 7,
+              "median": -40.0676,
+              "p10": -48.32934,
+              "p90": -35.61238
+            },
+            "samplePeakDbfs": {
+              "count": 7,
+              "median": -24.005,
+              "p10": -31.72675,
+              "p90": -23.12954
+            },
+            "completeLufsBlockAssets": 7
+          },
+          "drone-wicked": {
+            "assets": 6,
+            "integratedLufs": {
+              "count": 6,
+              "median": -47.41352,
+              "p10": -56.16207
+            },
+            "activeRmsDbfs": {
+              "count": 6,
+              "median": -45.48115,
+              "p10": -52.57251,
+              "p90": -36.74134
+            },
+            "samplePeakDbfs": {
+              "count": 6,
+              "median": -28.08752,
+              "p10": -37.45347,
+              "p90": -22.08557
+            },
+            "completeLufsBlockAssets": 6
+          },
+          "one-shot": {
+            "assets": 9,
+            "integratedLufs": {
+              "count": 9,
+              "median": -32.36192,
+              "p10": -39.74197
+            },
+            "activeRmsDbfs": {
+              "count": 9,
+              "median": -32.75057,
+              "p10": -40.22711,
+              "p90": -22.98089
+            },
+            "samplePeakDbfs": {
+              "count": 9,
+              "median": -17.31824,
+              "p10": -23.81758,
+              "p90": -10.32682
+            },
+            "completeLufsBlockAssets": 9
+          },
+          "one-shot-wicked": {
+            "assets": 9,
+            "integratedLufs": {
+              "count": 9,
+              "median": -39.8967,
+              "p10": -46.20806
+            },
+            "activeRmsDbfs": {
+              "count": 9,
+              "median": -40.05091,
+              "p10": -47.19841,
+              "p90": -24.07453
+            },
+            "samplePeakDbfs": {
+              "count": 9,
+              "median": -24.43338,
+              "p10": -29.79771,
+              "p90": -6.53366
+            },
+            "completeLufsBlockAssets": 9
+          },
+          "sustain": {
+            "assets": 8,
+            "integratedLufs": {
+              "count": 8,
+              "median": -36.60273,
+              "p10": -47.91704
+            },
+            "activeRmsDbfs": {
+              "count": 8,
+              "median": -37.36948,
+              "p10": -48.30521,
+              "p90": -27.50921
+            },
+            "samplePeakDbfs": {
+              "count": 8,
+              "median": -21.08267,
+              "p10": -33.10505,
+              "p90": -12.54018
+            },
+            "completeLufsBlockAssets": 8
+          },
+          "sustain-wicked": {
+            "assets": 8,
+            "integratedLufs": {
+              "count": 8,
+              "median": -48.52642,
+              "p10": -56.67752
+            },
+            "activeRmsDbfs": {
+              "count": 8,
+              "median": -46.68072,
+              "p10": -53.6999,
+              "p90": -39.66044
+            },
+            "samplePeakDbfs": {
+              "count": 8,
+              "median": -29.44875,
+              "p10": -37.1496,
+              "p90": -24.16369
+            },
+            "completeLufsBlockAssets": 8
+          }
+        },
+        "dynamics": {
+          "normal": {
+            "assets": 24,
+            "integratedLufs": {
+              "count": 24,
+              "median": -35.88788,
+              "p10": -47.91704
+            },
+            "activeRmsDbfs": {
+              "count": 24,
+              "median": -36.00472,
+              "p10": -48.30521,
+              "p90": -27.24942
+            },
+            "samplePeakDbfs": {
+              "count": 24,
+              "median": -22.73484,
+              "p10": -31.72675,
+              "p90": -12.20978
+            },
+            "completeLufsBlockAssets": 24
+          },
+          "wicked": {
+            "assets": 23,
+            "integratedLufs": {
+              "count": 23,
+              "median": -41.55294,
+              "p10": -56.24146
+            },
+            "activeRmsDbfs": {
+              "count": 23,
+              "median": -41.82182,
+              "p10": -53.6685,
+              "p90": -25.47397
+            },
+            "samplePeakDbfs": {
+              "count": 23,
+              "median": -24.96891,
+              "p10": -37.1496,
+              "p90": -8.28574
+            },
+            "completeLufsBlockAssets": 23
+          }
+        }
+      },
+      "wild-percussion": {
+        "assets": 23,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 23,
+          "median": -37.51653,
+          "p10": -47.79572,
+          "p90": -20.65585
+        },
+        "samplePeakDbfs": {
+          "count": 23,
+          "median": -15.13048,
+          "p10": -23.95148,
+          "p90": 2.21212
+        },
+        "completeLufsBlockAssets": 0,
+        "articulations": {
+          "hand-clap": {
+            "assets": 3,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 3,
+              "median": -35.71852,
+              "p10": -43.92337,
+              "p90": -23.19103
+            },
+            "samplePeakDbfs": {
+              "count": 3,
+              "median": -15.75144,
+              "p10": -25.65661,
+              "p90": -0.22053
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "kick": {
+            "assets": 5,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 5,
+              "median": -20.77391,
+              "p10": -29.56153,
+              "p90": -17.33791
+            },
+            "samplePeakDbfs": {
+              "count": 5,
+              "median": -7.42066,
+              "p10": -15.46371,
+              "p90": -3.13648
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "moss": {
+            "assets": 3,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 3,
+              "median": -40.71457,
+              "p10": -43.40682,
+              "p90": -40.31964
+            },
+            "samplePeakDbfs": {
+              "count": 3,
+              "median": -18.55499,
+              "p10": -22.68544,
+              "p90": -18.22603
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "slide": {
+            "assets": 3,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 3,
+              "median": -38.54809,
+              "p10": -40.98988,
+              "p90": -36.65118
+            },
+            "samplePeakDbfs": {
+              "count": 3,
+              "median": -15.13048,
+              "p10": -17.16467,
+              "p90": -11.28638
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "stone": {
+            "assets": 9,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 9,
+              "median": -39.88246,
+              "p10": -47.80648,
+              "p90": -23.08023
+            },
+            "samplePeakDbfs": {
+              "count": 9,
+              "median": -14.6361,
+              "p10": -23.95148,
+              "p90": 2.72649
+            },
+            "completeLufsBlockAssets": 0
+          }
+        },
+        "dynamics": {
+          "velocity-1": {
+            "assets": 15,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 15,
+              "median": -28.32746,
+              "p10": -42.19835,
+              "p90": -18.99688
+            },
+            "samplePeakDbfs": {
+              "count": 15,
+              "median": -11.28638,
+              "p10": -20.62021,
+              "p90": 2.46931
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "velocity-2": {
+            "assets": 4,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 4,
+              "median": -38.69949,
+              "p10": -40.19372,
+              "p90": -35.71852
+            },
+            "samplePeakDbfs": {
+              "count": 4,
+              "median": -14.9106,
+              "p10": -15.75144,
+              "p90": -11.65465
+            },
+            "completeLufsBlockAssets": 0
+          },
+          "velocity-3": {
+            "assets": 4,
+            "integratedLufs": {
+              "count": 0,
+              "median": null,
+              "p10": null
+            },
+            "activeRmsDbfs": {
+              "count": 4,
+              "median": -47.1272,
+              "p10": -47.80648,
+              "p90": -43.92337
+            },
+            "samplePeakDbfs": {
+              "count": 4,
+              "median": -23.02635,
+              "p10": -25.65661,
+              "p90": -21.92206
+            },
+            "completeLufsBlockAssets": 0
+          }
+        }
+      }
+    },
+    "articulations": {
+      "breath": {
+        "assets": 15,
+        "integratedLufs": {
+          "count": 15,
+          "median": -20.08794,
+          "p10": -24.11989
+        },
+        "activeRmsDbfs": {
+          "count": 15,
+          "median": -23.59146,
+          "p10": -25.59751,
+          "p90": -23.15858
+        },
+        "samplePeakDbfs": {
+          "count": 15,
+          "median": -6.10404,
+          "p10": -7.64588,
+          "p90": -3.51449
+        },
+        "completeLufsBlockAssets": 15
+      },
+      "breath-pad": {
+        "assets": 1,
+        "integratedLufs": {
+          "count": 1,
+          "median": -27.55604,
+          "p10": -27.55604
+        },
+        "activeRmsDbfs": {
+          "count": 1,
+          "median": -27.95687,
+          "p10": -27.95687,
+          "p90": -27.95687
+        },
+        "samplePeakDbfs": {
+          "count": 1,
+          "median": -14.82208,
+          "p10": -14.82208,
+          "p90": -14.82208
+        },
+        "completeLufsBlockAssets": 1
+      },
+      "core": {
+        "assets": 76,
+        "integratedLufs": {
+          "count": 76,
+          "median": -25.0163,
+          "p10": -34.13746
+        },
+        "activeRmsDbfs": {
+          "count": 76,
+          "median": -25.19447,
+          "p10": -35.49411,
+          "p90": -13.0695
+        },
+        "samplePeakDbfs": {
+          "count": 76,
+          "median": -12.25563,
+          "p10": -21.06874,
+          "p90": -1.33216
+        },
+        "completeLufsBlockAssets": 76
+      },
+      "direct-single": {
+        "assets": 28,
+        "integratedLufs": {
+          "count": 28,
+          "median": -26.80765,
+          "p10": -35.78298
+        },
+        "activeRmsDbfs": {
+          "count": 28,
+          "median": -29.33618,
+          "p10": -36.64928,
+          "p90": -24.55094
+        },
+        "samplePeakDbfs": {
+          "count": 28,
+          "median": -10.68514,
+          "p10": -11.60606,
+          "p90": -4.66826
+        },
+        "completeLufsBlockAssets": 28
+      },
+      "direct-strum": {
+        "assets": 84,
+        "integratedLufs": {
+          "count": 84,
+          "median": -21.42771,
+          "p10": -24.26136
+        },
+        "activeRmsDbfs": {
+          "count": 84,
+          "median": -23.14832,
+          "p10": -26.61184,
+          "p90": -21.09624
+        },
+        "samplePeakDbfs": {
+          "count": 84,
+          "median": -3.21455,
+          "p10": -3.66662,
+          "p90": -2.43951
+        },
+        "completeLufsBlockAssets": 84
+      },
+      "drone": {
+        "assets": 7,
+        "integratedLufs": {
+          "count": 7,
+          "median": -40.54606,
+          "p10": -49.36825
+        },
+        "activeRmsDbfs": {
+          "count": 7,
+          "median": -40.0676,
+          "p10": -48.32934,
+          "p90": -35.61238
+        },
+        "samplePeakDbfs": {
+          "count": 7,
+          "median": -24.005,
+          "p10": -31.72675,
+          "p90": -23.12954
+        },
+        "completeLufsBlockAssets": 7
+      },
+      "drone-wicked": {
+        "assets": 6,
+        "integratedLufs": {
+          "count": 6,
+          "median": -47.41352,
+          "p10": -56.16207
+        },
+        "activeRmsDbfs": {
+          "count": 6,
+          "median": -45.48115,
+          "p10": -52.57251,
+          "p90": -36.74134
+        },
+        "samplePeakDbfs": {
+          "count": 6,
+          "median": -28.08752,
+          "p10": -37.45347,
+          "p90": -22.08557
+        },
+        "completeLufsBlockAssets": 6
+      },
+      "found-string-loop": {
+        "assets": 25,
+        "integratedLufs": {
+          "count": 25,
+          "median": -39.82581,
+          "p10": -45.73407
+        },
+        "activeRmsDbfs": {
+          "count": 25,
+          "median": -39.33299,
+          "p10": -48.10502,
+          "p90": -34.09243
+        },
+        "samplePeakDbfs": {
+          "count": 25,
+          "median": -26.66195,
+          "p10": -33.93939,
+          "p90": -21.37787
+        },
+        "completeLufsBlockAssets": 25
+      },
+      "hand-clap": {
+        "assets": 3,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 3,
+          "median": -35.71852,
+          "p10": -43.92337,
+          "p90": -23.19103
+        },
+        "samplePeakDbfs": {
+          "count": 3,
+          "median": -15.75144,
+          "p10": -25.65661,
+          "p90": -0.22053
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "harmonic": {
+        "assets": 4,
+        "integratedLufs": {
+          "count": 4,
+          "median": -31.29385,
+          "p10": -36.67135
+        },
+        "activeRmsDbfs": {
+          "count": 4,
+          "median": -31.83939,
+          "p10": -36.4156,
+          "p90": -16.50732
+        },
+        "samplePeakDbfs": {
+          "count": 4,
+          "median": -18.2342,
+          "p10": -21.28661,
+          "p90": -5.82808
+        },
+        "completeLufsBlockAssets": 4
+      },
+      "kick": {
+        "assets": 5,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 5,
+          "median": -20.77391,
+          "p10": -29.56153,
+          "p90": -17.33791
+        },
+        "samplePeakDbfs": {
+          "count": 5,
+          "median": -7.42066,
+          "p10": -15.46371,
+          "p90": -3.13648
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "mics-single": {
+        "assets": 56,
+        "integratedLufs": {
+          "count": 56,
+          "median": -23.26521,
+          "p10": -28.70989
+        },
+        "activeRmsDbfs": {
+          "count": 56,
+          "median": -26.0115,
+          "p10": -31.45054,
+          "p90": -17.18481
+        },
+        "samplePeakDbfs": {
+          "count": 56,
+          "median": -3.66505,
+          "p10": -7.50274,
+          "p90": 0.26855
+        },
+        "completeLufsBlockAssets": 56
+      },
+      "mics-strum": {
+        "assets": 168,
+        "integratedLufs": {
+          "count": 168,
+          "median": -16.18406,
+          "p10": -20.54143
+        },
+        "activeRmsDbfs": {
+          "count": 168,
+          "median": -18.10716,
+          "p10": -22.7253,
+          "p90": -14.97027
+        },
+        "samplePeakDbfs": {
+          "count": 168,
+          "median": 2.33404,
+          "p10": 1.10526,
+          "p90": 2.91453
+        },
+        "completeLufsBlockAssets": 168
+      },
+      "moss": {
+        "assets": 3,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 3,
+          "median": -40.71457,
+          "p10": -43.40682,
+          "p90": -40.31964
+        },
+        "samplePeakDbfs": {
+          "count": 3,
+          "median": -18.55499,
+          "p10": -22.68544,
+          "p90": -18.22603
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "one-shot": {
+        "assets": 9,
+        "integratedLufs": {
+          "count": 9,
+          "median": -32.36192,
+          "p10": -39.74197
+        },
+        "activeRmsDbfs": {
+          "count": 9,
+          "median": -32.75057,
+          "p10": -40.22711,
+          "p90": -22.98089
+        },
+        "samplePeakDbfs": {
+          "count": 9,
+          "median": -17.31824,
+          "p10": -23.81758,
+          "p90": -10.32682
+        },
+        "completeLufsBlockAssets": 9
+      },
+      "one-shot-wicked": {
+        "assets": 9,
+        "integratedLufs": {
+          "count": 9,
+          "median": -39.8967,
+          "p10": -46.20806
+        },
+        "activeRmsDbfs": {
+          "count": 9,
+          "median": -40.05091,
+          "p10": -47.19841,
+          "p90": -24.07453
+        },
+        "samplePeakDbfs": {
+          "count": 9,
+          "median": -24.43338,
+          "p10": -29.79771,
+          "p90": -6.53366
+        },
+        "completeLufsBlockAssets": 9
+      },
+      "pad": {
+        "assets": 1,
+        "integratedLufs": {
+          "count": 1,
+          "median": -27.91758,
+          "p10": -27.91758
+        },
+        "activeRmsDbfs": {
+          "count": 1,
+          "median": -30.03678,
+          "p10": -30.03678,
+          "p90": -30.03678
+        },
+        "samplePeakDbfs": {
+          "count": 1,
+          "median": -13.26089,
+          "p10": -13.26089,
+          "p90": -13.26089
+        },
+        "completeLufsBlockAssets": 1
+      },
+      "slide": {
+        "assets": 3,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 3,
+          "median": -38.54809,
+          "p10": -40.98988,
+          "p90": -36.65118
+        },
+        "samplePeakDbfs": {
+          "count": 3,
+          "median": -15.13048,
+          "p10": -17.16467,
+          "p90": -11.28638
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "stone": {
+        "assets": 9,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 9,
+          "median": -39.88246,
+          "p10": -47.80648,
+          "p90": -23.08023
+        },
+        "samplePeakDbfs": {
+          "count": 9,
+          "median": -14.6361,
+          "p10": -23.95148,
+          "p90": 2.72649
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "sustain": {
+        "assets": 8,
+        "integratedLufs": {
+          "count": 8,
+          "median": -36.60273,
+          "p10": -47.91704
+        },
+        "activeRmsDbfs": {
+          "count": 8,
+          "median": -37.36948,
+          "p10": -48.30521,
+          "p90": -27.50921
+        },
+        "samplePeakDbfs": {
+          "count": 8,
+          "median": -21.08267,
+          "p10": -33.10505,
+          "p90": -12.54018
+        },
+        "completeLufsBlockAssets": 8
+      },
+      "sustain-wicked": {
+        "assets": 8,
+        "integratedLufs": {
+          "count": 8,
+          "median": -48.52642,
+          "p10": -56.67752
+        },
+        "activeRmsDbfs": {
+          "count": 8,
+          "median": -46.68072,
+          "p10": -53.6999,
+          "p90": -39.66044
+        },
+        "samplePeakDbfs": {
+          "count": 8,
+          "median": -29.44875,
+          "p10": -37.1496,
+          "p90": -24.16369
+        },
+        "completeLufsBlockAssets": 8
+      },
+      "swell": {
+        "assets": 19,
+        "integratedLufs": {
+          "count": 19,
+          "median": -21.11281,
+          "p10": -24.37752
+        },
+        "activeRmsDbfs": {
+          "count": 19,
+          "median": -22.57614,
+          "p10": -24.98031,
+          "p90": -19.9354
+        },
+        "samplePeakDbfs": {
+          "count": 19,
+          "median": -7.15966,
+          "p10": -10.58073,
+          "p90": -4.48319
+        },
+        "completeLufsBlockAssets": 19
+      },
+      "uh": {
+        "assets": 123,
+        "integratedLufs": {
+          "count": 123,
+          "median": -18.92901,
+          "p10": -19.0153
+        },
+        "activeRmsDbfs": {
+          "count": 123,
+          "median": -18.98319,
+          "p10": -19.82905,
+          "p90": -18.22211
+        },
+        "samplePeakDbfs": {
+          "count": 123,
+          "median": -9.20283,
+          "p10": -10.81438,
+          "p90": -6.0942
+        },
+        "completeLufsBlockAssets": 123
+      },
+      "uh-ar": {
+        "assets": 2,
+        "integratedLufs": {
+          "count": 2,
+          "median": -22.80343,
+          "p10": -22.86604
+        },
+        "activeRmsDbfs": {
+          "count": 2,
+          "median": -23.69848,
+          "p10": -24.67407,
+          "p90": -22.72289
+        },
+        "samplePeakDbfs": {
+          "count": 2,
+          "median": -9.37293,
+          "p10": -9.89551,
+          "p90": -8.85036
+        },
+        "completeLufsBlockAssets": 2
+      },
+      "unspecified": {
+        "assets": 128,
+        "integratedLufs": {
+          "count": 128,
+          "median": -19.63581,
+          "p10": -25.02399
+        },
+        "activeRmsDbfs": {
+          "count": 128,
+          "median": -20.11876,
+          "p10": -25.06328,
+          "p90": -15.4258
+        },
+        "samplePeakDbfs": {
+          "count": 128,
+          "median": -0.98938,
+          "p10": -3.25316,
+          "p90": -0.14027
+        },
+        "completeLufsBlockAssets": 128
+      }
+    },
+    "dynamics": {
+      "ff": {
+        "assets": 30,
+        "integratedLufs": {
+          "count": 30,
+          "median": -18.93525,
+          "p10": -19.00022
+        },
+        "activeRmsDbfs": {
+          "count": 30,
+          "median": -19.24602,
+          "p10": -20.13828,
+          "p90": -18.28551
+        },
+        "samplePeakDbfs": {
+          "count": 30,
+          "median": -9.54928,
+          "p10": -11.18957,
+          "p90": -6.79162
+        },
+        "completeLufsBlockAssets": 30
+      },
+      "forte": {
+        "assets": 42,
+        "integratedLufs": {
+          "count": 42,
+          "median": -22.33333,
+          "p10": -28.20614
+        },
+        "activeRmsDbfs": {
+          "count": 42,
+          "median": -24.92554,
+          "p10": -29.79886,
+          "p90": -17.16746
+        },
+        "samplePeakDbfs": {
+          "count": 42,
+          "median": -1.44614,
+          "p10": -5.39334,
+          "p90": 0.31495
+        },
+        "completeLufsBlockAssets": 42
+      },
+      "level-1": {
+        "assets": 19,
+        "integratedLufs": {
+          "count": 19,
+          "median": -28.70253,
+          "p10": -34.25954
+        },
+        "activeRmsDbfs": {
+          "count": 19,
+          "median": -28.78599,
+          "p10": -35.68664,
+          "p90": -21.69699
+        },
+        "samplePeakDbfs": {
+          "count": 19,
+          "median": -14.62824,
+          "p10": -21.05702,
+          "p90": -10.89659
+        },
+        "completeLufsBlockAssets": 19
+      },
+      "level-2": {
+        "assets": 19,
+        "integratedLufs": {
+          "count": 19,
+          "median": -30.78496,
+          "p10": -37.53754
+        },
+        "activeRmsDbfs": {
+          "count": 19,
+          "median": -30.62191,
+          "p10": -37.38786,
+          "p90": -25.2414
+        },
+        "samplePeakDbfs": {
+          "count": 19,
+          "median": -17.89564,
+          "p10": -22.8661,
+          "p90": -11.85241
+        },
+        "completeLufsBlockAssets": 19
+      },
+      "level-3": {
+        "assets": 19,
+        "integratedLufs": {
+          "count": 19,
+          "median": -22.12181,
+          "p10": -27.98695
+        },
+        "activeRmsDbfs": {
+          "count": 19,
+          "median": -23.35662,
+          "p10": -28.31307,
+          "p90": -16.35957
+        },
+        "samplePeakDbfs": {
+          "count": 19,
+          "median": -10.20458,
+          "p10": -14.77423,
+          "p90": -4.05883
+        },
+        "completeLufsBlockAssets": 19
+      },
+      "level-4": {
+        "assets": 19,
+        "integratedLufs": {
+          "count": 19,
+          "median": -15.58615,
+          "p10": -19.38804
+        },
+        "activeRmsDbfs": {
+          "count": 19,
+          "median": -16.62022,
+          "p10": -20.44268,
+          "p90": -11.3437
+        },
+        "samplePeakDbfs": {
+          "count": 19,
+          "median": -3.66248,
+          "p10": -7.04937,
+          "p90": 0.67211
+        },
+        "completeLufsBlockAssets": 19
+      },
+      "mf": {
+        "assets": 30,
+        "integratedLufs": {
+          "count": 30,
+          "median": -18.89392,
+          "p10": -18.95262
+        },
+        "activeRmsDbfs": {
+          "count": 30,
+          "median": -19.11394,
+          "p10": -19.60747,
+          "p90": -18.10232
+        },
+        "samplePeakDbfs": {
+          "count": 30,
+          "median": -9.82162,
+          "p10": -10.54944,
+          "p90": -8.59377
+        },
+        "completeLufsBlockAssets": 30
+      },
+      "mp": {
+        "assets": 31,
+        "integratedLufs": {
+          "count": 31,
+          "median": -18.92355,
+          "p10": -18.98109
+        },
+        "activeRmsDbfs": {
+          "count": 31,
+          "median": -18.64706,
+          "p10": -19.33467,
+          "p90": -18.10532
+        },
+        "samplePeakDbfs": {
+          "count": 31,
+          "median": -8.84734,
+          "p10": -10.84002,
+          "p90": -6.2516
+        },
+        "completeLufsBlockAssets": 31
+      },
+      "normal": {
+        "assets": 24,
+        "integratedLufs": {
+          "count": 24,
+          "median": -35.88788,
+          "p10": -47.91704
+        },
+        "activeRmsDbfs": {
+          "count": 24,
+          "median": -36.00472,
+          "p10": -48.30521,
+          "p90": -27.24942
+        },
+        "samplePeakDbfs": {
+          "count": 24,
+          "median": -22.73484,
+          "p10": -31.72675,
+          "p90": -12.20978
+        },
+        "completeLufsBlockAssets": 24
+      },
+      "piano": {
+        "assets": 42,
+        "integratedLufs": {
+          "count": 42,
+          "median": -26.35775,
+          "p10": -34.28757
+        },
+        "activeRmsDbfs": {
+          "count": 42,
+          "median": -28.67873,
+          "p10": -35.46885,
+          "p90": -23.51169
+        },
+        "samplePeakDbfs": {
+          "count": 42,
+          "median": -7.08506,
+          "p10": -11.57921,
+          "p90": -5.0523
+        },
+        "completeLufsBlockAssets": 42
+      },
+      "pp": {
+        "assets": 32,
+        "integratedLufs": {
+          "count": 32,
+          "median": -18.97048,
+          "p10": -19.10546
+        },
+        "activeRmsDbfs": {
+          "count": 32,
+          "median": -18.9728,
+          "p10": -19.71803,
+          "p90": -18.57817
+        },
+        "samplePeakDbfs": {
+          "count": 32,
+          "median": -7.47823,
+          "p10": -9.67443,
+          "p90": -5.07548
+        },
+        "completeLufsBlockAssets": 32
+      },
+      "quiet": {
+        "assets": 1,
+        "integratedLufs": {
+          "count": 1,
+          "median": -27.55604,
+          "p10": -27.55604
+        },
+        "activeRmsDbfs": {
+          "count": 1,
+          "median": -27.95687,
+          "p10": -27.95687,
+          "p90": -27.95687
+        },
+        "samplePeakDbfs": {
+          "count": 1,
+          "median": -14.82208,
+          "p10": -14.82208,
+          "p90": -14.82208
+        },
+        "completeLufsBlockAssets": 1
+      },
+      "regular": {
+        "assets": 64,
+        "integratedLufs": {
+          "count": 64,
+          "median": -20.97537,
+          "p10": -25.46243
+        },
+        "activeRmsDbfs": {
+          "count": 64,
+          "median": -22.07418,
+          "p10": -26.11377,
+          "p90": -17.64534
+        },
+        "samplePeakDbfs": {
+          "count": 64,
+          "median": -0.98938,
+          "p10": -3.25316,
+          "p90": -0.14027
+        },
+        "completeLufsBlockAssets": 64
+      },
+      "short": {
+        "assets": 64,
+        "integratedLufs": {
+          "count": 64,
+          "median": -18.50178,
+          "p10": -23.71875
+        },
+        "activeRmsDbfs": {
+          "count": 64,
+          "median": -18.98641,
+          "p10": -23.74366,
+          "p90": -15.04689
+        },
+        "samplePeakDbfs": {
+          "count": 64,
+          "median": -0.98938,
+          "p10": -3.25316,
+          "p90": -0.14027
+        },
+        "completeLufsBlockAssets": 64
+      },
+      "strum-2": {
+        "assets": 126,
+        "integratedLufs": {
+          "count": 126,
+          "median": -17.81083,
+          "p10": -23.23817
+        },
+        "activeRmsDbfs": {
+          "count": 126,
+          "median": -19.87894,
+          "p10": -25.27992,
+          "p90": -14.49704
+        },
+        "samplePeakDbfs": {
+          "count": 126,
+          "median": 1.58102,
+          "p10": -3.44973,
+          "p90": 2.79338
+        },
+        "completeLufsBlockAssets": 126
+      },
+      "strum-3": {
+        "assets": 84,
+        "integratedLufs": {
+          "count": 84,
+          "median": -17.34618,
+          "p10": -23.14528
+        },
+        "activeRmsDbfs": {
+          "count": 84,
+          "median": -19.88919,
+          "p10": -24.79128,
+          "p90": -15.95971
+        },
+        "samplePeakDbfs": {
+          "count": 84,
+          "median": 1.57842,
+          "p10": -3.52147,
+          "p90": 2.87652
+        },
+        "completeLufsBlockAssets": 84
+      },
+      "strum-4": {
+        "assets": 42,
+        "integratedLufs": {
+          "count": 42,
+          "median": -18.3801,
+          "p10": -22.47746
+        },
+        "activeRmsDbfs": {
+          "count": 42,
+          "median": -19.98762,
+          "p10": -24.56282,
+          "p90": -17.13957
+        },
+        "samplePeakDbfs": {
+          "count": 42,
+          "median": 1.79836,
+          "p10": -3.53548,
+          "p90": 2.91597
+        },
+        "completeLufsBlockAssets": 42
+      },
+      "unspecified": {
+        "assets": 66,
+        "integratedLufs": {
+          "count": 66,
+          "median": -23.65065,
+          "p10": -45.12517
+        },
+        "activeRmsDbfs": {
+          "count": 66,
+          "median": -24.66308,
+          "p10": -46.66089,
+          "p90": -20.49629
+        },
+        "samplePeakDbfs": {
+          "count": 66,
+          "median": -8.85479,
+          "p10": -32.76814,
+          "p90": -5.06159
+        },
+        "completeLufsBlockAssets": 66
+      },
+      "velocity-1": {
+        "assets": 15,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 15,
+          "median": -28.32746,
+          "p10": -42.19835,
+          "p90": -18.99688
+        },
+        "samplePeakDbfs": {
+          "count": 15,
+          "median": -11.28638,
+          "p10": -20.62021,
+          "p90": 2.46931
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "velocity-2": {
+        "assets": 4,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 4,
+          "median": -38.69949,
+          "p10": -40.19372,
+          "p90": -35.71852
+        },
+        "samplePeakDbfs": {
+          "count": 4,
+          "median": -14.9106,
+          "p10": -15.75144,
+          "p90": -11.65465
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "velocity-3": {
+        "assets": 4,
+        "integratedLufs": {
+          "count": 0,
+          "median": null,
+          "p10": null
+        },
+        "activeRmsDbfs": {
+          "count": 4,
+          "median": -47.1272,
+          "p10": -47.80648,
+          "p90": -43.92337
+        },
+        "samplePeakDbfs": {
+          "count": 4,
+          "median": -23.02635,
+          "p10": -25.65661,
+          "p90": -21.92206
+        },
+        "completeLufsBlockAssets": 0
+      },
+      "wicked": {
+        "assets": 23,
+        "integratedLufs": {
+          "count": 23,
+          "median": -41.55294,
+          "p10": -56.24146
+        },
+        "activeRmsDbfs": {
+          "count": 23,
+          "median": -41.82182,
+          "p10": -53.6685,
+          "p90": -25.47397
+        },
+        "samplePeakDbfs": {
+          "count": 23,
+          "median": -24.96891,
+          "p10": -37.1496,
+          "p90": -8.28574
+        },
+        "completeLufsBlockAssets": 23
+      }
+    }
+  },
+  "proposedGainDeltas": {
+    "basis": "activeRmsDbfs medians; positive means boost, negative means trim",
+    "generatedLibraryTargetActiveRmsDbfs": -21.50458,
+    "byLibrary": {
+      "archive-found-strings-001": {
+        "assets": 25,
+        "medianActiveRmsDbfs": -39.33299,
+        "madDb": 2.34685,
+        "proposedGainDeltaDb": 17.82841,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira": {
+        "assets": 336,
+        "medianActiveRmsDbfs": -21.55825,
+        "madDb": 3.31402,
+        "proposedGainDeltaDb": 0.05367,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "piano": {
+        "assets": 128,
+        "medianActiveRmsDbfs": -20.11876,
+        "madDb": 2.31729,
+        "proposedGainDeltaDb": -1.38582,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser": {
+        "assets": 142,
+        "medianActiveRmsDbfs": -19.09024,
+        "madDb": 0.38031,
+        "proposedGainDeltaDb": -2.41434,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs": {
+        "assets": 99,
+        "medianActiveRmsDbfs": -23.91632,
+        "madDb": 4.49266,
+        "proposedGainDeltaDb": 2.41174,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger": {
+        "assets": 47,
+        "medianActiveRmsDbfs": -40.0676,
+        "madDb": 5.24544,
+        "proposedGainDeltaDb": 18.56302,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion": {
+        "assets": 23,
+        "medianActiveRmsDbfs": -37.51653,
+        "madDb": 7.95501,
+        "proposedGainDeltaDb": 16.01195,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      }
+    },
+    "byLibraryDynamic": {
+      "archive-found-strings-001::unspecified": {
+        "assets": 25,
+        "medianActiveRmsDbfs": -39.33299,
+        "madDb": 2.34685,
+        "proposedGainDeltaDb": 17.82841,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::forte": {
+        "assets": 42,
+        "medianActiveRmsDbfs": -24.92554,
+        "madDb": 2.29781,
+        "proposedGainDeltaDb": 3.42096,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::piano": {
+        "assets": 42,
+        "medianActiveRmsDbfs": -28.67873,
+        "madDb": 2.51771,
+        "proposedGainDeltaDb": 7.17415,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum-2": {
+        "assets": 126,
+        "medianActiveRmsDbfs": -19.87894,
+        "madDb": 2.86747,
+        "proposedGainDeltaDb": -1.62564,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum-3": {
+        "assets": 84,
+        "medianActiveRmsDbfs": -19.88919,
+        "madDb": 2.53721,
+        "proposedGainDeltaDb": -1.61539,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum-4": {
+        "assets": 42,
+        "medianActiveRmsDbfs": -19.98762,
+        "madDb": 2.03772,
+        "proposedGainDeltaDb": -1.51696,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "piano::regular": {
+        "assets": 64,
+        "medianActiveRmsDbfs": -22.07418,
+        "madDb": 2.15927,
+        "proposedGainDeltaDb": 0.5696,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "piano::short": {
+        "assets": 64,
+        "medianActiveRmsDbfs": -18.98641,
+        "madDb": 2.13602,
+        "proposedGainDeltaDb": -2.51817,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::ff": {
+        "assets": 30,
+        "medianActiveRmsDbfs": -19.24602,
+        "madDb": 0.24479,
+        "proposedGainDeltaDb": -2.25856,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::mf": {
+        "assets": 30,
+        "medianActiveRmsDbfs": -19.11394,
+        "madDb": 0.23273,
+        "proposedGainDeltaDb": -2.39064,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::mp": {
+        "assets": 31,
+        "medianActiveRmsDbfs": -18.64706,
+        "madDb": 0.17979,
+        "proposedGainDeltaDb": -2.85752,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::pp": {
+        "assets": 32,
+        "medianActiveRmsDbfs": -18.9728,
+        "madDb": 0.15924,
+        "proposedGainDeltaDb": -2.53178,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::quiet": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -27.95687,
+        "madDb": 0,
+        "proposedGainDeltaDb": 6.45229,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::unspecified": {
+        "assets": 18,
+        "medianActiveRmsDbfs": -23.59178,
+        "madDb": 0.40897,
+        "proposedGainDeltaDb": 2.0872,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::level-1": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -28.78599,
+        "madDb": 3.51193,
+        "proposedGainDeltaDb": 7.28141,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::level-2": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -30.62191,
+        "madDb": 2.64552,
+        "proposedGainDeltaDb": 9.11733,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::level-3": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -23.35662,
+        "madDb": 2.59028,
+        "proposedGainDeltaDb": 1.85204,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::level-4": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -16.62022,
+        "madDb": 2.19936,
+        "proposedGainDeltaDb": -4.88436,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review trim candidate"
+      },
+      "soft-string-spurs::unspecified": {
+        "assets": 23,
+        "medianActiveRmsDbfs": -22.59026,
+        "madDb": 1.25347,
+        "proposedGainDeltaDb": 1.08568,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::normal": {
+        "assets": 24,
+        "medianActiveRmsDbfs": -36.00472,
+        "madDb": 4.84201,
+        "proposedGainDeltaDb": 14.50014,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::wicked": {
+        "assets": 23,
+        "medianActiveRmsDbfs": -41.82182,
+        "madDb": 5.08048,
+        "proposedGainDeltaDb": 20.31724,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::velocity-1": {
+        "assets": 15,
+        "medianActiveRmsDbfs": -28.32746,
+        "madDb": 7.67161,
+        "proposedGainDeltaDb": 6.82288,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::velocity-2": {
+        "assets": 4,
+        "medianActiveRmsDbfs": -38.69949,
+        "madDb": 1.33859,
+        "proposedGainDeltaDb": 17.19491,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "wild-percussion::velocity-3": {
+        "assets": 4,
+        "medianActiveRmsDbfs": -47.1272,
+        "madDb": 0.6739,
+        "proposedGainDeltaDb": 25.62262,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      }
+    },
+    "byClass": {
+      "archive-found-strings-001::profile::found-string-loop::unspecified": {
+        "assets": 25,
+        "medianActiveRmsDbfs": -39.33299,
+        "madDb": 2.34685,
+        "proposedGainDeltaDb": 17.82841,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::single::direct-single::forte": {
+        "assets": 14,
+        "medianActiveRmsDbfs": -27.51503,
+        "madDb": 1.47016,
+        "proposedGainDeltaDb": 6.01045,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::single::direct-single::piano": {
+        "assets": 14,
+        "medianActiveRmsDbfs": -31.46328,
+        "madDb": 2.17703,
+        "proposedGainDeltaDb": 9.9587,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::single::mics-single::forte": {
+        "assets": 28,
+        "medianActiveRmsDbfs": -23.66479,
+        "madDb": 1.86296,
+        "proposedGainDeltaDb": 2.16021,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::single::mics-single::piano": {
+        "assets": 28,
+        "medianActiveRmsDbfs": -27.39476,
+        "madDb": 1.58197,
+        "proposedGainDeltaDb": 5.89018,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "array-mbira::strum::direct-strum::strum-2": {
+        "assets": 42,
+        "medianActiveRmsDbfs": -23.10893,
+        "madDb": 1.16706,
+        "proposedGainDeltaDb": 1.60435,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum::direct-strum::strum-3": {
+        "assets": 28,
+        "medianActiveRmsDbfs": -23.07729,
+        "madDb": 1.12979,
+        "proposedGainDeltaDb": 1.57271,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum::direct-strum::strum-4": {
+        "assets": 14,
+        "medianActiveRmsDbfs": -23.21115,
+        "madDb": 0.65444,
+        "proposedGainDeltaDb": 1.70657,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "array-mbira::strum::mics-strum::strum-2": {
+        "assets": 84,
+        "medianActiveRmsDbfs": -17.9982,
+        "madDb": 1.87018,
+        "proposedGainDeltaDb": -3.50638,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review trim candidate"
+      },
+      "array-mbira::strum::mics-strum::strum-3": {
+        "assets": 56,
+        "medianActiveRmsDbfs": -18.2587,
+        "madDb": 1.37335,
+        "proposedGainDeltaDb": -3.24588,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review trim candidate"
+      },
+      "array-mbira::strum::mics-strum::strum-4": {
+        "assets": 28,
+        "medianActiveRmsDbfs": -18.09782,
+        "madDb": 1.24871,
+        "proposedGainDeltaDb": -3.40676,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review trim candidate"
+      },
+      "piano::regular::unspecified::regular": {
+        "assets": 64,
+        "medianActiveRmsDbfs": -22.07418,
+        "madDb": 2.15927,
+        "proposedGainDeltaDb": 0.5696,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "piano::short::unspecified::short": {
+        "assets": 64,
+        "medianActiveRmsDbfs": -18.98641,
+        "madDb": 2.13602,
+        "proposedGainDeltaDb": -2.51817,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::articulation::uh-ar::unspecified": {
+        "assets": 2,
+        "medianActiveRmsDbfs": -23.69848,
+        "madDb": 0.97559,
+        "proposedGainDeltaDb": 2.1939,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::breath::breath::unspecified": {
+        "assets": 15,
+        "medianActiveRmsDbfs": -23.59146,
+        "madDb": 0.35899,
+        "proposedGainDeltaDb": 2.08688,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::convolution::breath-pad::quiet": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -27.95687,
+        "madDb": 0,
+        "proposedGainDeltaDb": 6.45229,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::sustain::uh::ff": {
+        "assets": 30,
+        "medianActiveRmsDbfs": -19.24602,
+        "madDb": 0.24479,
+        "proposedGainDeltaDb": -2.25856,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::sustain::uh::mf": {
+        "assets": 30,
+        "medianActiveRmsDbfs": -19.11394,
+        "madDb": 0.23273,
+        "proposedGainDeltaDb": -2.39064,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::sustain::uh::mp": {
+        "assets": 31,
+        "medianActiveRmsDbfs": -18.64706,
+        "madDb": 0.17979,
+        "proposedGainDeltaDb": -2.85752,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::sustain::uh::pp": {
+        "assets": 32,
+        "medianActiveRmsDbfs": -18.9728,
+        "madDb": 0.15924,
+        "proposedGainDeltaDb": -2.53178,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "pneuma-eleni-teaser::texture::pad::unspecified": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -30.03678,
+        "madDb": 0,
+        "proposedGainDeltaDb": 8.5322,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::harmonic::harmonic::unspecified": {
+        "assets": 4,
+        "medianActiveRmsDbfs": -31.83939,
+        "madDb": 3.93004,
+        "proposedGainDeltaDb": 10.33481,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::sustain::core::level-1": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -28.78599,
+        "madDb": 3.51193,
+        "proposedGainDeltaDb": 7.28141,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::sustain::core::level-2": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -30.62191,
+        "madDb": 2.64552,
+        "proposedGainDeltaDb": 9.11733,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::sustain::core::level-3": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -23.35662,
+        "madDb": 2.59028,
+        "proposedGainDeltaDb": 1.85204,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "soft-string-spurs::sustain::core::level-4": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -16.62022,
+        "madDb": 2.19936,
+        "proposedGainDeltaDb": -4.88436,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review trim candidate"
+      },
+      "soft-string-spurs::swell::swell::unspecified": {
+        "assets": 19,
+        "medianActiveRmsDbfs": -22.57614,
+        "madDb": 1.08,
+        "proposedGainDeltaDb": 1.07157,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::drone::drone-wicked::wicked": {
+        "assets": 6,
+        "medianActiveRmsDbfs": -45.48115,
+        "madDb": 5.56332,
+        "proposedGainDeltaDb": 23.97657,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::drone::drone::normal": {
+        "assets": 7,
+        "medianActiveRmsDbfs": -40.0676,
+        "madDb": 2.51579,
+        "proposedGainDeltaDb": 18.56302,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::one-shot::one-shot-wicked::wicked": {
+        "assets": 9,
+        "medianActiveRmsDbfs": -40.05091,
+        "madDb": 1.77091,
+        "proposedGainDeltaDb": 18.54633,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "the-spellsinger::one-shot::one-shot::normal": {
+        "assets": 9,
+        "medianActiveRmsDbfs": -32.75057,
+        "madDb": 3.37855,
+        "proposedGainDeltaDb": 11.24599,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::sustain::sustain-wicked::wicked": {
+        "assets": 8,
+        "medianActiveRmsDbfs": -46.68072,
+        "madDb": 6.6914,
+        "proposedGainDeltaDb": 25.17614,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "the-spellsinger::sustain::sustain::normal": {
+        "assets": 8,
+        "medianActiveRmsDbfs": -37.36948,
+        "madDb": 8.35966,
+        "proposedGainDeltaDb": 15.8649,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::hand-clap::hand-clap::velocity-1": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -23.19103,
+        "madDb": 0,
+        "proposedGainDeltaDb": 1.68645,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::hand-clap::hand-clap::velocity-2": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -35.71852,
+        "madDb": 0,
+        "proposedGainDeltaDb": 14.21394,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::hand-clap::hand-clap::velocity-3": {
+        "assets": 1,
+        "medianActiveRmsDbfs": -43.92337,
+        "madDb": 0,
+        "proposedGainDeltaDb": 22.41879,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::kick::kick::velocity-1": {
+        "assets": 5,
+        "medianActiveRmsDbfs": -20.77391,
+        "madDb": 3.436,
+        "proposedGainDeltaDb": -0.73067,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::moss::moss::velocity-1": {
+        "assets": 3,
+        "medianActiveRmsDbfs": -40.71457,
+        "madDb": 0.39493,
+        "proposedGainDeltaDb": 19.20999,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "wild-percussion::slide::slide::velocity-1": {
+        "assets": 3,
+        "medianActiveRmsDbfs": -38.54809,
+        "madDb": 1.89691,
+        "proposedGainDeltaDb": 17.04351,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "wild-percussion::stone::stone::velocity-1": {
+        "assets": 3,
+        "medianActiveRmsDbfs": -23.35024,
+        "madDb": 0.27001,
+        "proposedGainDeltaDb": 1.84566,
+        "measurementStable": false,
+        "recommendation": "measurement-only; no manual-review candidate"
+      },
+      "wild-percussion::stone::stone::velocity-2": {
+        "assets": 3,
+        "medianActiveRmsDbfs": -39.88246,
+        "madDb": 0.31126,
+        "proposedGainDeltaDb": 18.37788,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      },
+      "wild-percussion::stone::stone::velocity-3": {
+        "assets": 3,
+        "medianActiveRmsDbfs": -47.79572,
+        "madDb": 0.01076,
+        "proposedGainDeltaDb": 26.29114,
+        "measurementStable": true,
+        "recommendation": "measurement-only; manual-review boost candidate"
+      }
+    },
+    "decision": {
+      "automaticRuntimeAction": "none",
+      "reviewOnly": true,
+      "manualReviewLibraryCandidateCount": 1,
+      "manualReviewDynamicCandidateCount": 5,
+      "manualReviewClassCandidateCount": 13,
+      "preserveDynamicLayerIntent": true,
+      "rule": "A measurement-stable delta is only a manual-review candidate: >=3 dB magnitude, >=3 assets, and <=2.5 dB MAD. No runtime trim/boost is automatically justified."
+    }
+  },
+  "errors": []
+}

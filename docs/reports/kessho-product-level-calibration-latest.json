@@ -1,6 +1,6 @@
 {
   "schema": "kessho-product-level-calibration-report-v1",
-  "generatedAt": "2026-08-14T23:15:06.496Z",
+  "generatedAt": "2026-08-15T09:46:50.562Z",
   "status": "pass",
   "contract": {
     "schema": "kessho-product-level-calibration-contract-v1",
@@ -11,23 +11,153 @@
     "preLimiterPeakCeiling": 0.95,
     "limiterInactivityEpsilonDb": 0.05,
     "sourceRms": {
-      "sustained_pad_metal_tine_c4": 0.0694266036,
-      "sustained_lead_soft_rhodes_c4": 0.0677174404,
-      "sustained_piano_fixed_asset_c4": 0.0901642367,
+      "sustained_pad_metal_tine_c4": 0.0523701459,
+      "sustained_lead_soft_rhodes_c4": 0.0507337637,
+      "sustained_piano_fixed_asset_c4": 0.0855426267,
       "drums.master": 0.048689913,
       "drums.dry": 0.0405749232,
       "drums.pre_limiter": 0.0405749232,
-      "earth.master": 0.0000212336709,
-      "earth.water_dry": 0.0000176947251
+      "earth.master": 0.0000493687039,
+      "earth.water_dry": 0.0000411405854
     },
     "fxRms": {
-      "delay_a_main": 0.14375487,
-      "delay_a_reverb": 0.14375487,
-      "delay_b_main": 0.0862917602,
-      "delay_b_reverb": 0.0862917602,
-      "granular_main": 0.00161070458,
-      "granular_reverb": 0.00492202397,
-      "reverb_main": 0.0384527668
+      "delay_a_main": 0.141981766,
+      "delay_a_reverb": 0.141981766,
+      "delay_b_main": 0.0839518905,
+      "delay_b_reverb": 0.0839518905,
+      "granular_main": 0.00435695285,
+      "granular_reverb": 0.0132730184,
+      "reverb_main": 0.0501123816
+    },
+    "fxLoudness": {
+      "source": "KESSHO_PRODUCT_LEVEL_CALIBRATION_JSON fixture fx.*.lufs (Product FX loudness baseline)",
+      "toleranceLufs": 1,
+      "lufs": {
+        "delay_a_main": -15.08516,
+        "delay_a_reverb": -15.08516,
+        "delay_b_main": -20.07863,
+        "delay_b_reverb": -20.07863,
+        "granular_main": -48.0268,
+        "granular_reverb": -38.34677,
+        "reverb_main": -24.38846
+      }
+    },
+    "productFxLoudness": {
+      "source": "KESSHO_PRODUCT_FX_LOUDNESS_JSON emitted by ProductFxLoudnessMeasurementTests",
+      "schema": "kessho-product-fx-loudness-measurement-v1",
+      "sampleRate": 48000,
+      "blockSize": 128,
+      "deltaLuTolerance": 1,
+      "fixtures": {
+        "delay_a_matched_100ms": {
+          "deltaLu": -2.76461192
+        },
+        "delay_b_matched_100ms_activity0": {
+          "deltaLu": -7.98592252
+        },
+        "delay_b_matched_100ms_activity1": {
+          "deltaLu": 4.7255888
+        },
+        "reverb_controlled": {
+          "deltaLu": -16.17575
+        },
+        "granular_controlled": {
+          "deltaLu": -9.09592761
+        },
+        "degrade_drift_controlled": {
+          "deltaLu": -2.98089054
+        },
+        "spectral_freeze_controlled": {
+          "deltaLu": -4.11625186
+        },
+        "eq1_neutral": {
+          "deltaLu": 0
+        },
+        "eq2_neutral": {
+          "deltaLu": 0
+        },
+        "sidechain_neutral": {
+          "deltaLu": 0
+        },
+        "creative_saturation_controlled": {
+          "deltaLu": 3.05271534
+        }
+      }
+    },
+    "sourceLoudness": {
+      "source": "KESSHO_PRODUCT_LEVEL_CALIBRATION_JSON fixture source/drums/earth lufs fields",
+      "toleranceLufs": 1,
+      "signals": {
+        "sustained_pad_metal_tine_c4": {
+          "lufs": -20.1074483,
+          "mode": "bs1770_integrated"
+        },
+        "sustained_lead_soft_rhodes_c4": {
+          "lufs": -23.7682853,
+          "mode": "bs1770_integrated"
+        },
+        "sustained_piano_fixed_asset_c4": {
+          "lufs": -19.1123559,
+          "mode": "bs1770_integrated"
+        },
+        "drums.master": {
+          "lufs": -23.5351396,
+          "mode": "bs1770_integrated"
+        },
+        "drums.dry": {
+          "lufs": -25.1187649,
+          "mode": "bs1770_integrated"
+        },
+        "drums.pre_limiter": {
+          "lufs": -25.1187649,
+          "mode": "bs1770_integrated"
+        },
+        "earth.master": {
+          "lufs": -82.1741911,
+          "mode": "active_window_ungated"
+        },
+        "earth.water_dry": {
+          "lufs": -83.7578164,
+          "mode": "active_window_ungated"
+        }
+      }
+    },
+    "sampleAssetLoudness": {
+      "reportPath": "docs/reports/kessho-product-sample-asset-loudness-latest.json",
+      "expectedOggCount": 806,
+      "oggAssetPathSha256": "72eeb96862734cd00dedacdae3ce18fd1b95d80c4f6458af837c167451ea861c",
+      "expectedDecodedAssetCount": 806,
+      "expectedDecodeErrorCount": 0,
+      "natureToleranceLufs": 1,
+      "nature": {
+        "birds-alps": {
+          "rawIntegratedLufs": -25.24167,
+          "existingEffectiveIntegratedLufs": -29.67865
+        },
+        "birds-fujian": {
+          "rawIntegratedLufs": -23.2863,
+          "existingEffectiveIntegratedLufs": -28.96623
+        },
+        "frogs-fujian": {
+          "rawIntegratedLufs": -27.87441,
+          "existingEffectiveIntegratedLufs": -33.89501
+        },
+        "ghetary-waves": {
+          "rawIntegratedLufs": -29.77881,
+          "existingEffectiveIntegratedLufs": -29.77881
+        }
+      },
+      "generatedLibraryMedianActiveRmsDbfs": -21.50458,
+      "generatedLibraryMedianActiveRmsDbfsToleranceDb": 1,
+      "generatedLibraryMediansActiveRmsDbfs": {
+        "archive-found-strings-001": -39.33299,
+        "array-mbira": -21.55825,
+        "piano": -20.11876,
+        "pneuma-eleni-teaser": -19.09024,
+        "soft-string-spurs": -23.91632,
+        "the-spellsinger": -40.0676,
+        "wild-percussion": -37.51653
+      }
     }
   },
   "fixture": {
@@ -42,103 +172,137 @@
       {
         "name": "sustained_pad_metal_tine_c4",
         "source_id": 1,
-        "rms": 0.0694266036,
+        "rms": 0.0523701459,
         "peak": 0.167292178,
-        "hash": "6279644678249544283"
+        "hash": "10091194531786565583",
+        "lufs": -20.1074483,
+        "lufs_mode": "bs1770_integrated"
       },
       {
         "name": "sustained_lead_soft_rhodes_c4",
         "source_id": 3,
-        "rms": 0.0677174404,
+        "rms": 0.0507337637,
         "peak": 0.161133766,
-        "hash": "3857179750729233048"
+        "hash": "5325168213736817285",
+        "lufs": -23.7682853,
+        "lufs_mode": "bs1770_integrated"
       },
       {
         "name": "sustained_piano_fixed_asset_c4",
         "source_id": 6,
-        "rms": 0.0901642367,
+        "rms": 0.0855426267,
         "peak": 0.132370368,
-        "hash": "10582077885878301487"
+        "hash": "467514583708375641",
+        "lufs": -19.1123559,
+        "lufs_mode": "bs1770_integrated"
       }
     ],
     "drums": {
       "master": {
         "rms": 0.048689913,
         "peak": 0.997235239,
-        "hash": "11406299788198830577"
+        "hash": "11406299788198830577",
+        "lufs": -23.5351396,
+        "lufs_mode": "bs1770_integrated"
       },
       "dry": {
         "rms": 0.0405749232,
         "peak": 0.831029356,
-        "hash": "15606143408854416255"
+        "hash": "15606143408854416255",
+        "lufs": -25.1187649,
+        "lufs_mode": "bs1770_integrated"
       },
       "pre_limiter": {
         "rms": 0.0405749232,
         "peak": 0.831029356,
-        "hash": "15606143408854416255"
+        "hash": "15606143408854416255",
+        "lufs": -25.1187649,
+        "lufs_mode": "bs1770_integrated"
       },
       "max_limiter_gain_reduction_db": 0
     },
     "earth": {
       "master": {
-        "rms": 0.0000212336709,
-        "peak": 0.000147221668,
-        "hash": "11363013098285621823"
+        "rms": 0.0000493687039,
+        "peak": 0.000264782866,
+        "hash": "13515449568874980155",
+        "lufs": -82.1741911,
+        "lufs_mode": "active_window_ungated"
       },
       "water_dry": {
-        "rms": 0.0000176947251,
-        "peak": 0.000122684723,
-        "hash": "7315907720730024543"
+        "rms": 0.0000411405854,
+        "peak": 0.000220652379,
+        "hash": "11370992576221908592",
+        "lufs": -83.7578164,
+        "lufs_mode": "active_window_ungated"
       },
       "max_limiter_gain_reduction_db": 0
     },
     "fx": {
       "delay_a_main": {
-        "rms": 0.14375487,
-        "peak": 0.277115762,
-        "hash": "16452211640836497313"
+        "rms": 0.141981766,
+        "peak": 0.277182907,
+        "hash": "10584554281249012730",
+        "lufs": -15.0851566,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_a_reverb": {
-        "rms": 0.14375487,
-        "peak": 0.277115762,
-        "hash": "16452211640836497313"
+        "rms": 0.141981766,
+        "peak": 0.277182907,
+        "hash": "10584554281249012730",
+        "lufs": -15.0851566,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_b_main": {
-        "rms": 0.0862917602,
+        "rms": 0.0839518905,
         "peak": 0.196784645,
-        "hash": "13574117615330612713"
+        "hash": "18122373480867662306",
+        "lufs": -20.0786305,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_b_reverb": {
-        "rms": 0.0862917602,
+        "rms": 0.0839518905,
         "peak": 0.196784645,
-        "hash": "13574117615330612713"
+        "hash": "18122373480867662306",
+        "lufs": -20.0786305,
+        "lufs_mode": "bs1770_integrated"
       },
       "granular_main": {
-        "rms": 0.00161070458,
-        "peak": 0.0167201851,
-        "hash": "1843765701816299886"
+        "rms": 0.00435695285,
+        "peak": 0.0188756064,
+        "hash": "6208801510515985078",
+        "lufs": -48.0268021,
+        "lufs_mode": "bs1770_integrated"
       },
       "granular_reverb": {
-        "rms": 0.00492202397,
-        "peak": 0.051084511,
-        "hash": "13630921489040423247"
+        "rms": 0.0132730184,
+        "peak": 0.0576348081,
+        "hash": "12286158456221200509",
+        "lufs": -38.3467697,
+        "lufs_mode": "bs1770_integrated"
       },
       "reverb_main": {
-        "rms": 0.0384527668,
-        "peak": 0.115609437,
-        "hash": "11745468131475985329"
+        "rms": 0.0501123816,
+        "peak": 0.160547107,
+        "hash": "14403736595652329544",
+        "lufs": -24.3884563,
+        "lufs_mode": "bs1770_integrated"
       }
     },
     "headroom": {
       "pre_limiter": {
-        "rms": 0.0750432163,
+        "rms": 0.0641204864,
         "peak": 0.238512933,
-        "hash": "8799116650998695057"
+        "hash": "4060534097842104663",
+        "lufs": -20.8831291,
+        "lufs_mode": "bs1770_integrated"
       },
       "output": {
-        "rms": 0.0900518596,
+        "rms": 0.0769445896,
         "peak": 0.286215544,
-        "hash": "843305457697976264"
+        "hash": "2059018916602226761",
+        "lufs": -19.2995038,
+        "lufs_mode": "bs1770_integrated"
       },
       "max_limiter_gain_reduction_db": 0
     }
@@ -155,128 +319,423 @@
       {
         "name": "sustained_pad_metal_tine_c4",
         "source_id": 1,
-        "rms": 0.0694266036,
+        "rms": 0.0523701459,
         "peak": 0.167292178,
-        "hash": "6279644678249544283"
+        "hash": "10091194531786565583",
+        "lufs": -20.1074483,
+        "lufs_mode": "bs1770_integrated"
       },
       {
         "name": "sustained_lead_soft_rhodes_c4",
         "source_id": 3,
-        "rms": 0.0677174404,
+        "rms": 0.0507337637,
         "peak": 0.161133766,
-        "hash": "3857179750729233048"
+        "hash": "5325168213736817285",
+        "lufs": -23.7682853,
+        "lufs_mode": "bs1770_integrated"
       },
       {
         "name": "sustained_piano_fixed_asset_c4",
         "source_id": 6,
-        "rms": 0.0901642367,
+        "rms": 0.0855426267,
         "peak": 0.132370368,
-        "hash": "10582077885878301487"
+        "hash": "467514583708375641",
+        "lufs": -19.1123559,
+        "lufs_mode": "bs1770_integrated"
       }
     ],
     "drums": {
       "master": {
         "rms": 0.048689913,
         "peak": 0.997235239,
-        "hash": "11406299788198830577"
+        "hash": "11406299788198830577",
+        "lufs": -23.5351396,
+        "lufs_mode": "bs1770_integrated"
       },
       "dry": {
         "rms": 0.0405749232,
         "peak": 0.831029356,
-        "hash": "15606143408854416255"
+        "hash": "15606143408854416255",
+        "lufs": -25.1187649,
+        "lufs_mode": "bs1770_integrated"
       },
       "pre_limiter": {
         "rms": 0.0405749232,
         "peak": 0.831029356,
-        "hash": "15606143408854416255"
+        "hash": "15606143408854416255",
+        "lufs": -25.1187649,
+        "lufs_mode": "bs1770_integrated"
       },
       "max_limiter_gain_reduction_db": 0
     },
     "earth": {
       "master": {
-        "rms": 0.0000212336709,
-        "peak": 0.000147221668,
-        "hash": "11363013098285621823"
+        "rms": 0.0000493687039,
+        "peak": 0.000264782866,
+        "hash": "13515449568874980155",
+        "lufs": -82.1741911,
+        "lufs_mode": "active_window_ungated"
       },
       "water_dry": {
-        "rms": 0.0000176947251,
-        "peak": 0.000122684723,
-        "hash": "7315907720730024543"
+        "rms": 0.0000411405854,
+        "peak": 0.000220652379,
+        "hash": "11370992576221908592",
+        "lufs": -83.7578164,
+        "lufs_mode": "active_window_ungated"
       },
       "max_limiter_gain_reduction_db": 0
     },
     "fx": {
       "delay_a_main": {
-        "rms": 0.14375487,
-        "peak": 0.277115762,
-        "hash": "16452211640836497313"
+        "rms": 0.141981766,
+        "peak": 0.277182907,
+        "hash": "10584554281249012730",
+        "lufs": -15.0851566,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_a_reverb": {
-        "rms": 0.14375487,
-        "peak": 0.277115762,
-        "hash": "16452211640836497313"
+        "rms": 0.141981766,
+        "peak": 0.277182907,
+        "hash": "10584554281249012730",
+        "lufs": -15.0851566,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_b_main": {
-        "rms": 0.0862917602,
+        "rms": 0.0839518905,
         "peak": 0.196784645,
-        "hash": "13574117615330612713"
+        "hash": "18122373480867662306",
+        "lufs": -20.0786305,
+        "lufs_mode": "bs1770_integrated"
       },
       "delay_b_reverb": {
-        "rms": 0.0862917602,
+        "rms": 0.0839518905,
         "peak": 0.196784645,
-        "hash": "13574117615330612713"
+        "hash": "18122373480867662306",
+        "lufs": -20.0786305,
+        "lufs_mode": "bs1770_integrated"
       },
       "granular_main": {
-        "rms": 0.00161070458,
-        "peak": 0.0167201851,
-        "hash": "1843765701816299886"
+        "rms": 0.00435695285,
+        "peak": 0.0188756064,
+        "hash": "6208801510515985078",
+        "lufs": -48.0268021,
+        "lufs_mode": "bs1770_integrated"
       },
       "granular_reverb": {
-        "rms": 0.00492202397,
-        "peak": 0.051084511,
-        "hash": "13630921489040423247"
+        "rms": 0.0132730184,
+        "peak": 0.0576348081,
+        "hash": "12286158456221200509",
+        "lufs": -38.3467697,
+        "lufs_mode": "bs1770_integrated"
       },
       "reverb_main": {
-        "rms": 0.0384527668,
-        "peak": 0.115609437,
-        "hash": "11745468131475985329"
+        "rms": 0.0501123816,
+        "peak": 0.160547107,
+        "hash": "14403736595652329544",
+        "lufs": -24.3884563,
+        "lufs_mode": "bs1770_integrated"
       }
     },
     "headroom": {
       "pre_limiter": {
-        "rms": 0.0750432163,
+        "rms": 0.0641204864,
         "peak": 0.238512933,
-        "hash": "8799116650998695057"
+        "hash": "4060534097842104663",
+        "lufs": -20.8831291,
+        "lufs_mode": "bs1770_integrated"
       },
       "output": {
-        "rms": 0.0900518596,
+        "rms": 0.0769445896,
         "peak": 0.286215544,
-        "hash": "843305457697976264"
+        "hash": "2059018916602226761",
+        "lufs": -19.2995038,
+        "lufs_mode": "bs1770_integrated"
       },
       "max_limiter_gain_reduction_db": 0
     }
   },
+  "sampleAssetLoudness": {
+    "reportPath": "docs/reports/kessho-product-sample-asset-loudness-latest.json",
+    "schema": "kessho-sample-asset-loudness-v1",
+    "corpus": {
+      "root": "public/samples",
+      "discoveredUniqueOggCount": 806,
+      "oggAssetPathSha256": "72eeb96862734cd00dedacdae3ce18fd1b95d80c4f6458af837c167451ea861c"
+    },
+    "measurement": {
+      "decoder": "Playwright Chromium OfflineAudioContext.decodeAudioData",
+      "decodedSampleRate": 48000,
+      "decodedAssetCount": 806,
+      "decodeErrorCount": 0,
+      "decodedAllAssets": true,
+      "activeWindow": "frames from first to last sample at or above -60 dBFS relative to each asset peak (with absolute floor)",
+      "activeRms": "channel-averaged RMS over active window",
+      "samplePeak": "maximum absolute decoded PCM sample",
+      "integratedLufs": "48 kHz BS.1770-style K-weighting; 400 ms blocks/100 ms hops; -70 LUFS absolute and -10 LU relative gates",
+      "shortAssetPolicy": "integratedLufs is null when no complete 400 ms block exists; RMS/peak remain available"
+    },
+    "focus": {
+      "natureEffectiveTargetIntegratedLufs": -29.72873,
+      "catalogNatureAssets": [
+        {
+          "id": "birds-alps",
+          "displayName": "Birds Alps",
+          "assetId": 7102,
+          "assetPath": "Alps Birds 2_noiseremoval_441_m.ogg",
+          "rawIntegratedLufs": -25.24167,
+          "activeRmsDbfs": -32.49281,
+          "legacyAssetRefLevel": 0.6,
+          "existingEffectiveIntegratedLufs": -29.67865,
+          "natureEffectiveTargetIntegratedLufs": -29.72873,
+          "requiredAssetRefLevelForTarget": 0.59655,
+          "adjustedAssetRefLevel": 0.59655,
+          "adjustedEffectiveIntegratedLufs": -29.72873,
+          "assetRefLevelBounds": [
+            0,
+            2
+          ],
+          "withinAssetRefLevelRange": true,
+          "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+        },
+        {
+          "id": "birds-fujian",
+          "displayName": "Birds Fujian",
+          "assetId": 7105,
+          "assetPath": "Fujian Birds 2_441_m_normalized.ogg",
+          "rawIntegratedLufs": -23.2863,
+          "activeRmsDbfs": -24.25396,
+          "legacyAssetRefLevel": 0.52,
+          "existingEffectiveIntegratedLufs": -28.96623,
+          "natureEffectiveTargetIntegratedLufs": -29.72873,
+          "requiredAssetRefLevelForTarget": 0.4763,
+          "adjustedAssetRefLevel": 0.4763,
+          "adjustedEffectiveIntegratedLufs": -29.72873,
+          "assetRefLevelBounds": [
+            0,
+            2
+          ],
+          "withinAssetRefLevelRange": true,
+          "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+        },
+        {
+          "id": "frogs-fujian",
+          "displayName": "Frogs Fujian",
+          "assetId": 7103,
+          "assetPath": "Fujian_Frogs_m_441_normalized.ogg",
+          "rawIntegratedLufs": -27.87441,
+          "activeRmsDbfs": -29.49047,
+          "legacyAssetRefLevel": 0.5,
+          "existingEffectiveIntegratedLufs": -33.89501,
+          "natureEffectiveTargetIntegratedLufs": -29.72873,
+          "requiredAssetRefLevelForTarget": 0.80776,
+          "adjustedAssetRefLevel": 0.80776,
+          "adjustedEffectiveIntegratedLufs": -29.72873,
+          "assetRefLevelBounds": [
+            0,
+            2
+          ],
+          "withinAssetRefLevelRange": true,
+          "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+        },
+        {
+          "id": "ghetary-waves",
+          "displayName": "Waves Ghetary",
+          "assetId": 7101,
+          "assetPath": "Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg",
+          "rawIntegratedLufs": -29.77881,
+          "activeRmsDbfs": -30.64912,
+          "legacyAssetRefLevel": 1,
+          "existingEffectiveIntegratedLufs": -29.77881,
+          "natureEffectiveTargetIntegratedLufs": -29.72873,
+          "requiredAssetRefLevelForTarget": 1.00578,
+          "adjustedAssetRefLevel": 1.00578,
+          "adjustedEffectiveIntegratedLufs": -29.72873,
+          "assetRefLevelBounds": [
+            0,
+            2
+          ],
+          "withinAssetRefLevelRange": true,
+          "recommendation": "measurement-only; manual review required; preserve dynamic-layer intent"
+        }
+      ],
+      "otherSoundscapeAssets": [
+        {
+          "libraryKey": "nature-soundscape",
+          "libraryName": "Nature / Soundscape",
+          "group": "nature",
+          "assetId": 7106,
+          "sampleId": "legacy-insects",
+          "assetPath": "Alps Birds_441_m_normalized.ogg",
+          "rootMidi": null,
+          "role": "soundscape",
+          "articulation": "insects",
+          "dynamic": "continuous",
+          "natureCatalogId": "legacy-insects",
+          "sampleRate": 48000,
+          "channelCount": 1,
+          "frames": 2551989,
+          "durationSeconds": 53.16644,
+          "activeBegin": 0,
+          "activeEnd": 2551988,
+          "activeFrames": 2551988,
+          "activeDurationSeconds": 53.16642,
+          "activeRms": 0.06762,
+          "activeRmsDbfs": -23.39806,
+          "samplePeak": 0.82891,
+          "samplePeakDbfs": -1.6299,
+          "analyzedBlocks": 528,
+          "absoluteGatedBlocks": 528,
+          "relativeGatedBlocks": 151,
+          "ungatedLufs": -23.57596,
+          "absoluteGatedLufs": -23.57596,
+          "relativeGateLufs": -33.57596,
+          "integratedLufs": -18.23466,
+          "decodeError": null
+        },
+        {
+          "libraryKey": "nature-soundscape",
+          "libraryName": "Nature / Soundscape",
+          "group": "nature",
+          "assetId": 7104,
+          "sampleId": "legacy-water",
+          "assetPath": "Ghetary-Waves-Rocks_cl-normalized.ogg",
+          "rootMidi": null,
+          "role": "soundscape",
+          "articulation": "water",
+          "dynamic": "continuous",
+          "natureCatalogId": "legacy-water",
+          "sampleRate": 48000,
+          "channelCount": 2,
+          "frames": 13824000,
+          "durationSeconds": 288,
+          "activeBegin": 0,
+          "activeEnd": 13824000,
+          "activeFrames": 13824000,
+          "activeDurationSeconds": 288,
+          "activeRms": 0.03512,
+          "activeRmsDbfs": -29.08866,
+          "samplePeak": 0.89265,
+          "samplePeakDbfs": -0.9864,
+          "analyzedBlocks": 2877,
+          "absoluteGatedBlocks": 2877,
+          "relativeGatedBlocks": 2776,
+          "ungatedLufs": -25.79137,
+          "absoluteGatedLufs": -25.79137,
+          "relativeGateLufs": -35.79137,
+          "integratedLufs": -25.64807,
+          "decodeError": null
+        }
+      ]
+    },
+    "generatedLibraryMedianActiveRmsDbfs": -21.50458
+  },
+  "productFxLoudness": {
+    "schema": "kessho-product-fx-loudness-measurement-v1",
+    "sample_rate": 48000,
+    "block_size": 128,
+    "fixtures": [
+      {
+        "name": "delay_a_matched_100ms",
+        "input_lufs": -14.4416146,
+        "output_lufs": -17.2062265,
+        "delta_lu": -2.76461192,
+        "tail_lufs": -17.2563812
+      },
+      {
+        "name": "delay_b_matched_100ms_activity0",
+        "input_lufs": -14.4416146,
+        "output_lufs": -22.4275371,
+        "delta_lu": -7.98592252,
+        "tail_lufs": -28.1870723
+      },
+      {
+        "name": "delay_b_matched_100ms_activity1",
+        "input_lufs": -14.4416146,
+        "output_lufs": -9.71602578,
+        "delta_lu": 4.7255888,
+        "tail_lufs": -15.9547694
+      },
+      {
+        "name": "reverb_controlled",
+        "input_lufs": -14.4398303,
+        "output_lufs": -30.6155804,
+        "delta_lu": -16.17575,
+        "tail_lufs": -38.9992626
+      },
+      {
+        "name": "granular_controlled",
+        "input_lufs": -14.4426347,
+        "output_lufs": -23.5385623,
+        "delta_lu": -9.09592761,
+        "tail_lufs": -26.6969236
+      },
+      {
+        "name": "degrade_drift_controlled",
+        "input_lufs": -14.4487779,
+        "output_lufs": -17.4296684,
+        "delta_lu": -2.98089054,
+        "tail_lufs": null
+      },
+      {
+        "name": "spectral_freeze_controlled",
+        "input_lufs": -14.442185,
+        "output_lufs": -18.5584369,
+        "delta_lu": -4.11625186,
+        "tail_lufs": -20.3417858
+      },
+      {
+        "name": "eq1_neutral",
+        "input_lufs": -14.4485913,
+        "output_lufs": -14.4485913,
+        "delta_lu": 0,
+        "tail_lufs": null
+      },
+      {
+        "name": "eq2_neutral",
+        "input_lufs": -14.4485913,
+        "output_lufs": -14.4485913,
+        "delta_lu": 0,
+        "tail_lufs": null
+      },
+      {
+        "name": "sidechain_neutral",
+        "input_lufs": -14.4485913,
+        "output_lufs": -14.4485913,
+        "delta_lu": 0,
+        "tail_lufs": null
+      },
+      {
+        "name": "creative_saturation_controlled",
+        "input_lufs": -14.4485913,
+        "output_lufs": -11.395876,
+        "delta_lu": 3.05271534,
+        "tail_lufs": null
+      }
+    ]
+  },
   "deterministicHashes": {
-    "sources.sustained_pad_metal_tine_c4": "6279644678249544283",
-    "sources.sustained_lead_soft_rhodes_c4": "3857179750729233048",
-    "sources.sustained_piano_fixed_asset_c4": "10582077885878301487",
+    "sources.sustained_pad_metal_tine_c4": "10091194531786565583",
+    "sources.sustained_lead_soft_rhodes_c4": "5325168213736817285",
+    "sources.sustained_piano_fixed_asset_c4": "467514583708375641",
     "drums.master": "11406299788198830577",
     "drums.dry": "15606143408854416255",
     "drums.pre_limiter": "15606143408854416255",
-    "earth.master": "11363013098285621823",
-    "earth.water_dry": "7315907720730024543",
-    "headroom.pre_limiter": "8799116650998695057",
-    "headroom.output": "843305457697976264",
-    "fx.delay_a_main": "16452211640836497313",
-    "fx.delay_a_reverb": "16452211640836497313",
-    "fx.delay_b_main": "13574117615330612713",
-    "fx.delay_b_reverb": "13574117615330612713",
-    "fx.granular_main": "1843765701816299886",
-    "fx.granular_reverb": "13630921489040423247",
-    "fx.reverb_main": "11745468131475985329"
+    "earth.master": "13515449568874980155",
+    "earth.water_dry": "11370992576221908592",
+    "headroom.pre_limiter": "4060534097842104663",
+    "headroom.output": "2059018916602226761",
+    "fx.delay_a_main": "10584554281249012730",
+    "fx.delay_a_reverb": "10584554281249012730",
+    "fx.delay_b_main": "18122373480867662306",
+    "fx.delay_b_reverb": "18122373480867662306",
+    "fx.granular_main": "6208801510515985078",
+    "fx.granular_reverb": "12286158456221200509",
+    "fx.reverb_main": "14403736595652329544"
   },
   "commands": {
     "calibration": "node scripts/run-kessho-product-cpp-test.mjs ProductGainStagingValidationTests",
+    "sampleAssetLoudness": "node scripts/check-kessho-product-sample-asset-loudness.mjs",
+    "productFxLoudness": "node scripts/run-kessho-product-cpp-test.mjs ProductFxLoudnessMeasurementTests",
     "repeat": "./build/kessho-core/product-tests/ProductGainStagingValidationTests"
   },
   "failures": []
