@@ -48,6 +48,9 @@ docs/reports/*
 !docs/reports/kessho-ios-simulator-foreground-smoke-latest.json
 !docs/reports/kessho-ios-simulator-background-smoke-latest.json
 !docs/reports/pad-synth-dsp-baseline-2026-08-09.md
+!docs/reports/kessho-product-level-calibration-contract.json
+!docs/reports/kessho-product-level-calibration-latest.json
+!docs/reports/kessho-product-level-calibration-latest.md
 docs/ui-audit/
 
 # Environment

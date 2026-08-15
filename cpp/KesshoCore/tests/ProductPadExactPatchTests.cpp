@@ -306,13 +306,11 @@ void requirePadGainSafetyAndLadderRender() {
 
   float main_peak = 0.0f;
   float reverb_peak = 0.0f;
-  float prefader_peak = 0.0f;
   float postfader_peak = 0.0f;
   for (int block = 0; block < 48; ++block) {
     pad_instance_process_block(pad, 128);
     main_peak = std::max(main_peak, maxInterleavedPeak(pad_instance_get_output_ptr(pad), 128, "pad main safety output"));
     reverb_peak = std::max(reverb_peak, maxInterleavedPeak(pad_instance_get_reverb_send_ptr(pad), 128, "pad reverb safety output"));
-    prefader_peak = std::max(prefader_peak, maxInterleavedPeak(pad_instance_get_prefader_pad1_ptr(pad), 128, "pad prefader safety output"));
     postfader_peak = std::max(postfader_peak, maxInterleavedPeak(pad_instance_get_postfader_pad1_ptr(pad), 128, "pad postfader safety output"));
   }
 
@@ -320,7 +318,22 @@ void requirePadGainSafetyAndLadderRender() {
   require(main_peak < 0.999f, "pad safety main output exceeded limiter bounds");
   require(reverb_peak < 0.999f, "pad safety reverb send exceeded limiter bounds");
   require(postfader_peak < 0.999f, "pad safety postfader tap exceeded limiter bounds");
-  require(prefader_peak > postfader_peak, "pad prefader tap was unexpectedly calibrated with postfader trim");
+
+  // Engineering calibration/polyphony compensation is shared by both taps;
+  // source.level remains the post-fader control.  Use a sub-unity level so
+  // neither tap reaches its soft limiter and the transfer ratio stays exact.
+  pad_instance_set_level(pad, 0, 0.5f);
+  pad_instance_process_block(pad, 128);
+  const float prefader_half_peak = maxInterleavedPeak(
+      pad_instance_get_prefader_pad1_ptr(pad), 128, "pad calibrated prefader ratio");
+  const float postfader_half_peak = maxInterleavedPeak(
+      pad_instance_get_postfader_pad1_ptr(pad), 128, "pad calibrated postfader ratio");
+  require(prefader_half_peak > 0.0001f, "pad calibrated prefader tap was silent");
+  require(postfader_half_peak > 0.0001f, "pad calibrated postfader tap was silent");
+  require(
+      std::fabs(postfader_half_peak - prefader_half_peak * 0.5f) <=
+          std::max(0.00001f, prefader_half_peak * 0.002f),
+      "Pad source.level did not remain post-fader-only after shared calibration");
 
   pad_instance_set_level(pad, 0, -1.0f);
   pad_instance_process_block(pad, 128);

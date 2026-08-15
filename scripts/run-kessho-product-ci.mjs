@@ -60,6 +60,7 @@ const prerequisiteSteps = [
   'core:product:harmony',
   'core:product:graph',
   'core:product:fx',
+  'core:product:level-calibration',
   'core:product:fx-depth',
   'core:product:asset-manifest',
   'core:product:sources',

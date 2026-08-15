@@ -1944,6 +1944,15 @@ float* drum_get_reverb_send_ptr(void) {
     return g_reverb_output;
 }
 
+namespace {
+
+// Fixed engineering correction for the nominal drum engine output: reference
+// RMS 0.5072 -> 0.0406 and pre-limiter peak 10.3879 -> 0.8310 (before 1.2x makeup).
+// Applied once at the module boundary after all runtime modulation.
+constexpr float kOutputCalibration = 0.08f;
+
+} // namespace
+
 void drum_process_block(int block_size) {
     if (block_size > DRUM_MAX_BLOCK_SIZE) block_size = DRUM_MAX_BLOCK_SIZE;
 
@@ -1993,19 +2002,22 @@ void drum_process_block(int block_size) {
         }
     }
 
+    const float calibrated_master_level = g_master_level * kOutputCalibration;
+    const float calibrated_reverb_send_level = g_reverb_send_level * kOutputCalibration;
+
     // Process delay
     for (int n = 0; n < block_size; n++) {
         float del_l, del_r;
         g_delay.process_sample(delay_input_l[n], delay_input_r[n], del_l, del_r);
 
-        float out_l = (dry_l[n] + (del_l - delay_input_l[n])) * g_master_level;
-        float out_r = (dry_r[n] + (del_r - delay_input_r[n])) * g_master_level;
+        float out_l = (dry_l[n] + (del_l - delay_input_l[n])) * calibrated_master_level;
+        float out_r = (dry_r[n] + (del_r - delay_input_r[n])) * calibrated_master_level;
 
         g_output[n * 2]     = out_l;
         g_output[n * 2 + 1] = out_r;
 
-        g_reverb_output[n * 2]     = (dry_l[n] + (del_l - delay_input_l[n])) * g_reverb_send_level;
-        g_reverb_output[n * 2 + 1] = (dry_r[n] + (del_r - delay_input_r[n])) * g_reverb_send_level;
+        g_reverb_output[n * 2]     = (dry_l[n] + (del_l - delay_input_l[n])) * calibrated_reverb_send_level;
+        g_reverb_output[n * 2 + 1] = (dry_r[n] + (del_r - delay_input_r[n])) * calibrated_reverb_send_level;
     }
 }
 
