@@ -22,6 +22,7 @@ on:
       - 'wasm/drum/**'
       - 'scripts/check-kessho-product*'
       - 'docs/reports/kessho-product-level-calibration-contract.json'
+      - 'docs/reports/kessho-product-sample-asset-loudness-latest.json'
       - 'scripts/check-pad-synth-dsp.mjs'
       - 'scripts/check-web-core-sonic-parity.mjs'
       - 'scripts/run-kessho-product-sequencer-evolve-regression.mjs'
@@ -59,6 +60,7 @@ on:
       - 'wasm/drum/**'
       - 'scripts/check-kessho-product*'
       - 'docs/reports/kessho-product-level-calibration-contract.json'
+      - 'docs/reports/kessho-product-sample-asset-loudness-latest.json'
       - 'scripts/check-web-core-sonic-parity.mjs'
       - 'scripts/check-pad-synth-dsp.mjs'
       - 'scripts/run-kessho-product-sequencer-evolve-regression.mjs'
@@ -126,6 +128,7 @@ jobs:
           path: |
             docs/reports/kessho-product-level-calibration-latest.json
             docs/reports/kessho-product-level-calibration-latest.md
+            docs/reports/kessho-product-sample-asset-loudness-latest.json
 
       - name: Surface Product CPU gate summary
         if: always()

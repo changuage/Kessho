@@ -7,12 +7,15 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoCore/KesshoProductTypes.h"
 #include "../src/product/KesshoProductEngineInternal.h"
+#include "ProductLoudnessMeter.h"
 #include "ProductSnapshotTestHelpers.h"
 
 namespace {
@@ -20,7 +23,8 @@ namespace {
 constexpr double kSampleRate = 48000.0;
 constexpr uint32_t kBlockSize = 128u;
 constexpr uint32_t kWarmupBlocks = 16u;
-constexpr uint32_t kMeasurementBlocks = 64u;
+constexpr uint32_t kMeasurementBlocks = static_cast<uint32_t>(
+    kessho::offline::kLoudnessWindowFrames / kBlockSize);
 constexpr float kNonzeroRms = 1.0e-8f;
 constexpr float kPreLimiterPeakCeiling = 0.95f;
 constexpr float kLimiterInactivityEpsilonDb = 0.05f;
@@ -37,8 +41,26 @@ struct SignalMetrics {
   uint64_t sample_count = 0u;
   float peak = 0.0f;
   uint64_t hash = 1469598103934665603ull;
+  std::vector<float> loudness_left;
+  std::vector<float> loudness_right;
+  std::size_t loudness_active_begin_frames = 0u;
+
+  void reserveLoudness(std::size_t frames) {
+    loudness_left.reserve(frames);
+    loudness_right.reserve(frames);
+  }
+
+  void captureLoudness(const float* left, const float* right, uint32_t frames) {
+    require(left != nullptr && right != nullptr, "fixture loudness buffer was null");
+    for (uint32_t i = 0u; i < frames; ++i) {
+      require(std::isfinite(left[i]) && std::isfinite(right[i]), "fixture emitted a non-finite sample");
+      loudness_left.push_back(left[i]);
+      loudness_right.push_back(right[i]);
+    }
+  }
 
   void add(const float* left, const float* right, uint32_t frames) {
+    captureLoudness(left, right, frames);
     for (uint32_t i = 0u; i < frames; ++i) {
       const float channels[2] = {left[i], right[i]};
       for (float value : channels) {
@@ -59,7 +81,24 @@ struct SignalMetrics {
         ? 0.0f
         : static_cast<float>(std::sqrt(sum_squares / static_cast<double>(sample_count)));
   }
+
+  kessho::offline::LoudnessMeasurement loudness() const {
+    require(loudness_left.size() == loudness_right.size(), "fixture loudness channel lengths differed");
+    return kessho::offline::measureStereoActiveWindowLufs(
+        loudness_left.data(),
+        loudness_right.data(),
+        loudness_left.size(),
+        loudness_active_begin_frames,
+        loudness_left.size(),
+        static_cast<uint32_t>(kSampleRate));
+  }
 };
+
+void prepareLoudness(SignalMetrics& metric, uint32_t warmup_blocks, uint32_t total_blocks) {
+  metric.loudness_active_begin_frames =
+      static_cast<std::size_t>(warmup_blocks) * kBlockSize;
+  metric.reserveLoudness(static_cast<std::size_t>(total_blocks) * kBlockSize);
+}
 
 struct SourceMeasurement {
   const char* name = nullptr;
@@ -67,6 +106,7 @@ struct SourceMeasurement {
   float rms = 0.0f;
   float peak = 0.0f;
   uint64_t hash = 0u;
+  kessho::offline::LoudnessMeasurement loudness;
 };
 
 struct DrumMeasurement {
@@ -221,17 +261,21 @@ SourceMeasurement renderMelodicFixture(
   std::vector<float> tap_l(kBlockSize);
   std::vector<float> tap_r(kBlockSize);
   SignalMetrics dry;
+  prepareLoudness(dry, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
   const uint32_t tap_id = dryTapForSource(source_id);
   for (uint32_t block = 0u; block < kWarmupBlocks + kMeasurementBlocks; ++block) {
     kessho_product_render(&engine, output_l.data(), output_r.data(), kBlockSize);
-    if (block < kWarmupBlocks) continue;
     require(
         kessho_product_get_graph_tap(&engine, tap_id, tap_l.data(), tap_r.data(), kBlockSize) == KESSHO_PRODUCT_OK,
         "melodic fixture graph tap read failed");
+    if (block < kWarmupBlocks) {
+      dry.captureLoudness(tap_l.data(), tap_r.data(), kBlockSize);
+      continue;
+    }
     dry.add(tap_l.data(), tap_r.data(), kBlockSize);
   }
   require(dry.rms() > kNonzeroRms, "sustained melodic fixture rendered silence");
-  return {name, source_id, dry.rms(), dry.peak, dry.hash};
+  return {name, source_id, dry.rms(), dry.peak, dry.hash, dry.loudness()};
 }
 
 std::vector<std::pair<uint64_t, uint32_t>> drumPattern() {
@@ -270,6 +314,9 @@ DrumMeasurement renderDrumFixture() {
   std::vector<float> tap_l(kBlockSize);
   std::vector<float> tap_r(kBlockSize);
   DrumMeasurement result;
+  prepareLoudness(result.master, 0u, total_blocks);
+  prepareLoudness(result.dry, 0u, total_blocks);
+  prepareLoudness(result.pre_limiter, 0u, total_blocks);
   for (uint32_t block = 0u; block < total_blocks; ++block) {
     const uint64_t block_start = static_cast<uint64_t>(block) * kBlockSize;
     const uint64_t block_end = block_start + kBlockSize;
@@ -355,13 +402,13 @@ EarthMeasurement renderEarthFixture() {
   std::vector<float> tap_l(kBlockSize);
   std::vector<float> tap_r(kBlockSize);
   EarthMeasurement result;
+  prepareLoudness(result.master, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.water_dry, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
   for (uint32_t block = 0u; block < kWarmupBlocks + kMeasurementBlocks; ++block) {
     kessho_product_render(&engine, output_l.data(), output_r.data(), kBlockSize);
     const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(&engine);
     result.max_limiter_gain_reduction_db =
         std::max(result.max_limiter_gain_reduction_db, telemetry.master_limiter_gain_reduction_db);
-    if (block < kWarmupBlocks) continue;
-    result.master.add(output_l.data(), output_r.data(), kBlockSize);
     require(
         kessho_product_get_graph_tap(
             &engine,
@@ -370,6 +417,12 @@ EarthMeasurement renderEarthFixture() {
             tap_r.data(),
             kBlockSize) == KESSHO_PRODUCT_OK,
         "Earth fixture water tap read failed");
+    if (block < kWarmupBlocks) {
+      result.master.captureLoudness(output_l.data(), output_r.data(), kBlockSize);
+      result.water_dry.captureLoudness(tap_l.data(), tap_r.data(), kBlockSize);
+      continue;
+    }
+    result.master.add(output_l.data(), output_r.data(), kBlockSize);
     result.water_dry.add(tap_l.data(), tap_r.data(), kBlockSize);
   }
   require(result.water_dry.rms() > kNonzeroRms, "Earth fixture water module rendered silence");
@@ -425,7 +478,14 @@ FxMeasurement renderFixedFxFixture() {
   std::vector<float> output_l(kBlockSize);
   std::vector<float> output_r(kBlockSize);
   FxMeasurement result;
-  for (uint32_t block = 0u; block < 96u; ++block) {
+  prepareLoudness(result.delay_a_main, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.delay_a_reverb, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.delay_b_main, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.delay_b_reverb, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.granular_main, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.granular_reverb, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.reverb_main, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  for (uint32_t block = 0u; block < kWarmupBlocks + kMeasurementBlocks; ++block) {
     clearFxInputs(engine);
     for (uint32_t i = 0u; i < kBlockSize; ++i) {
       const uint32_t frame = block * kBlockSize + i;
@@ -442,7 +502,6 @@ FxMeasurement renderFixedFxFixture() {
     std::fill(output_l.begin(), output_l.end(), 0.0f);
     std::fill(output_r.begin(), output_r.end(), 0.0f);
     engine.renderFxGraph(output_l.data(), output_r.data(), 0u, kBlockSize);
-    if (block < kWarmupBlocks) continue;
     const auto addTap = [&](uint32_t tap_id, SignalMetrics& metric) {
       const float* left = nullptr;
       const float* right = nullptr;
@@ -464,7 +523,8 @@ FxMeasurement renderFixedFxFixture() {
         default: break;
       }
       require(left != nullptr && right != nullptr, "fixed FX graph tap mapping missing");
-      metric.add(left, right, kBlockSize);
+      if (block < kWarmupBlocks) metric.captureLoudness(left, right, kBlockSize);
+      else metric.add(left, right, kBlockSize);
     };
     addTap(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_OUTPUT, result.delay_a_main);
     addTap(KESSHO_PRODUCT_GRAPH_TAP_DELAY_A_REVERB_SEND, result.delay_a_reverb);
@@ -579,13 +639,13 @@ HeadroomMeasurement renderHeadroomFixture() {
   std::vector<float> tap_l(kBlockSize);
   std::vector<float> tap_r(kBlockSize);
   HeadroomMeasurement result;
-  for (uint32_t block = 0u; block < 96u; ++block) {
+  prepareLoudness(result.pre_limiter, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  prepareLoudness(result.output, kWarmupBlocks, kWarmupBlocks + kMeasurementBlocks);
+  for (uint32_t block = 0u; block < kWarmupBlocks + kMeasurementBlocks; ++block) {
     kessho_product_render(&engine, output_l.data(), output_r.data(), kBlockSize);
     const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(&engine);
     result.max_limiter_gain_reduction_db =
         std::max(result.max_limiter_gain_reduction_db, telemetry.master_limiter_gain_reduction_db);
-    if (block < kWarmupBlocks) continue;
-    result.output.add(output_l.data(), output_r.data(), kBlockSize);
     require(
         kessho_product_get_graph_tap(
             &engine,
@@ -594,6 +654,12 @@ HeadroomMeasurement renderHeadroomFixture() {
             tap_r.data(),
             kBlockSize) == KESSHO_PRODUCT_OK,
         "headroom pre-limiter tap read failed");
+    if (block < kWarmupBlocks) {
+      result.output.captureLoudness(output_l.data(), output_r.data(), kBlockSize);
+      result.pre_limiter.captureLoudness(tap_l.data(), tap_r.data(), kBlockSize);
+      continue;
+    }
+    result.output.add(output_l.data(), output_r.data(), kBlockSize);
     result.pre_limiter.add(tap_l.data(), tap_r.data(), kBlockSize);
   }
   require(result.pre_limiter.peak < kPreLimiterPeakCeiling, "nominal headroom fixture exceeded pre-limiter ceiling");
@@ -608,21 +674,128 @@ std::string hashString(uint64_t value) {
 }
 
 void appendSignalJson(std::ostringstream& json, const SignalMetrics& metric) {
+  const auto loudness = metric.loudness();
+  const bool integrated = std::isfinite(loudness.integrated_lufs);
+  // Keep below-gate Earth fixtures finite without presenting ungated levels
+  // as BS.1770 integrated loudness; lufs_mode makes the distinction explicit.
+  const double lufs = integrated ? loudness.integrated_lufs : loudness.ungated_lufs;
+  require(loudness.analyzed_blocks != 0u, "fixture loudness window had no complete block");
+  require(std::isfinite(lufs), "fixture loudness was not measurable");
   json << "{\"rms\":" << std::setprecision(9) << metric.rms()
        << ",\"peak\":" << metric.peak
-       << ",\"hash\":\"" << hashString(metric.hash) << "\"}";
+       << ",\"hash\":\"" << hashString(metric.hash) << "\""
+       << ",\"lufs\":" << lufs
+       << ",\"lufs_mode\":\""
+       << (integrated ? "bs1770_integrated" : "active_window_ungated")
+       << "\"}";
 }
 
 void appendSourceJson(std::ostringstream& json, const SourceMeasurement& metric) {
+  const auto loudness = metric.loudness;
+  const bool integrated = std::isfinite(loudness.integrated_lufs);
+  const double lufs = integrated ? loudness.integrated_lufs : loudness.ungated_lufs;
+  require(loudness.analyzed_blocks != 0u, "source loudness window had no complete block");
+  require(std::isfinite(lufs), "source loudness was not measurable");
   json << "{\"name\":\"" << metric.name << "\",\"source_id\":" << metric.source_id
        << ",\"rms\":" << std::setprecision(9) << metric.rms
        << ",\"peak\":" << metric.peak
-       << ",\"hash\":\"" << hashString(metric.hash) << "\"}";
+       << ",\"hash\":\"" << hashString(metric.hash) << "\""
+       << ",\"lufs\":" << lufs
+       << ",\"lufs_mode\":\""
+       << (integrated ? "bs1770_integrated" : "active_window_ungated")
+       << "\"}";
+}
+
+void requireLoudnessMeterSelfCheck() {
+  constexpr std::size_t frames = 4u * kessho::offline::kLoudnessSampleRateHz;
+  constexpr std::size_t active_begin = kessho::offline::kLoudnessSampleRateHz;
+  constexpr double pi = 3.141592653589793238462643383279502884;
+  auto sine = [&](double amplitude, double frequency_hz) {
+    std::vector<float> left(frames);
+    std::vector<float> right(frames);
+    for (std::size_t frame = 0u; frame < frames; ++frame) {
+      const float sample = static_cast<float>(amplitude * std::sin(
+          2.0 * pi * frequency_hz * frame / kSampleRate));
+      left[frame] = sample;
+      right[frame] = sample;
+    }
+    return std::pair<std::vector<float>, std::vector<float>>(std::move(left), std::move(right));
+  };
+  const auto full_scale = sine(1.0, 1000.0);
+  const auto half_scale = sine(0.5, 1000.0);
+  const auto full = kessho::offline::measureStereoActiveWindowLufs(
+      full_scale.first.data(), full_scale.second.data(), frames, active_begin, frames);
+  const auto half = kessho::offline::measureStereoActiveWindowLufs(
+      half_scale.first.data(), half_scale.second.data(), frames, active_begin, frames);
+  require(std::isfinite(full.integrated_lufs), "1 kHz loudness self-check was not measurable");
+  require(std::fabs(full.integrated_lufs) <= 0.02, "1 kHz reference is not 0 LUFS");
+  require(std::fabs(half.integrated_lufs + 6.020599913) <= 0.02, "half-scale loudness delta changed");
+  require(full.analyzed_blocks == 27u, "loudness self-check block count changed");
+  require(full.absolute_gated_blocks == full.relative_gated_blocks, "reference tone crossed the relative gate");
+
+  const auto low_tone = sine(1.0, 20.0);
+  const auto low = kessho::offline::measureStereoActiveWindowLufs(
+      low_tone.first.data(), low_tone.second.data(), frames, active_begin, frames);
+  require(std::isfinite(low.integrated_lufs), "20 Hz loudness self-check was not measurable");
+  require(std::fabs(low.integrated_lufs + 13.9664) <= 0.05, "K-weighting frequency shape changed");
+
+  constexpr std::size_t gated_frames = 6u * kessho::offline::kLoudnessSampleRateHz;
+  std::vector<float> gated_left(gated_frames);
+  std::vector<float> gated_right(gated_frames);
+  for (std::size_t frame = 0u; frame < gated_frames; ++frame) {
+    const double amplitude = frame < 2u * kessho::offline::kLoudnessSampleRateHz
+        ? 1.0
+        : (frame < 4u * kessho::offline::kLoudnessSampleRateHz ? 0.01 : 0.0);
+    const float sample = static_cast<float>(amplitude * std::sin(
+        2.0 * pi * 1000.0 * frame / kSampleRate));
+    gated_left[frame] = sample;
+    gated_right[frame] = sample;
+  }
+  const auto gated = kessho::offline::measureStereoIntegratedLufs(
+      gated_left.data(), gated_right.data(), gated_frames);
+  require(gated.absolute_gated_blocks > gated.relative_gated_blocks, "relative gate did not reject quiet blocks");
+  require(gated.integrated_lufs > -0.5 && gated.integrated_lufs < 0.1, "gated loudness was pulled down by quiet tail");
+
+  constexpr std::size_t absolute_floor_frames = 6u * kessho::offline::kLoudnessSampleRateHz;
+  std::vector<float> absolute_floor_left(absolute_floor_frames);
+  std::vector<float> absolute_floor_right(absolute_floor_frames);
+  for (std::size_t frame = 0u; frame < absolute_floor_frames; ++frame) {
+    const double target_lufs = frame < 2u * kessho::offline::kLoudnessSampleRateHz ? -65.0 : -72.0;
+    const double amplitude = std::pow(10.0, target_lufs / 20.0);
+    const float sample = static_cast<float>(amplitude * std::sin(
+        2.0 * pi * 1000.0 * frame / kSampleRate));
+    absolute_floor_left[frame] = sample;
+    absolute_floor_right[frame] = sample;
+  }
+  const auto absolute_floor = kessho::offline::measureStereoIntegratedLufs(
+      absolute_floor_left.data(), absolute_floor_right.data(), absolute_floor_frames);
+  require(absolute_floor.analyzed_blocks > absolute_floor.absolute_gated_blocks,
+      "absolute-gate self-check did not include below-floor blocks");
+  require(absolute_floor.relative_gate_lufs < kessho::offline::kAbsoluteGateLufs,
+      "absolute-gate self-check did not create a lower relative threshold");
+  require(absolute_floor.relative_gated_blocks == absolute_floor.absolute_gated_blocks,
+      "relative gate reintroduced blocks below the absolute gate");
+
+  std::vector<float> silence(gated_frames, 0.0f);
+  const auto silent = kessho::offline::measureStereoIntegratedLufs(
+      silence.data(), silence.data(), gated_frames);
+  require(!silent.has_signal(), "silence produced a gated loudness value");
+  require(std::isinf(silent.integrated_lufs) && silent.integrated_lufs < 0.0, "silence sentinel changed");
+
+  bool rejected_sample_rate = false;
+  try {
+    (void)kessho::offline::measureStereoIntegratedLufs(
+        full_scale.first.data(), full_scale.second.data(), frames, 44100u);
+  } catch (const std::invalid_argument&) {
+    rejected_sample_rate = true;
+  }
+  require(rejected_sample_rate, "non-48 kHz loudness input was not rejected");
 }
 
 } // namespace
 
 int main() {
+  requireLoudnessMeterSelfCheck();
   const SourceMeasurement pad = renderMelodicFixture(
       "sustained_pad_metal_tine_c4",
       KESSHO_PRODUCT_SOURCE_PAD1,

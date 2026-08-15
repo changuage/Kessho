@@ -7,22 +7,106 @@
   "preLimiterPeakCeiling": 0.95,
   "limiterInactivityEpsilonDb": 0.05,
   "sourceRms": {
-    "sustained_pad_metal_tine_c4": 0.0694266036,
-    "sustained_lead_soft_rhodes_c4": 0.0677174404,
-    "sustained_piano_fixed_asset_c4": 0.0901642367,
+    "sustained_pad_metal_tine_c4": 0.0523701459,
+    "sustained_lead_soft_rhodes_c4": 0.0507337637,
+    "sustained_piano_fixed_asset_c4": 0.0855426267,
     "drums.master": 0.048689913,
     "drums.dry": 0.0405749232,
     "drums.pre_limiter": 0.0405749232,
-    "earth.master": 0.0000212336709,
-    "earth.water_dry": 0.0000176947251
+    "earth.master": 0.0000493687039,
+    "earth.water_dry": 0.0000411405854
   },
   "fxRms": {
-    "delay_a_main": 0.14375487,
-    "delay_a_reverb": 0.14375487,
-    "delay_b_main": 0.0862917602,
-    "delay_b_reverb": 0.0862917602,
-    "granular_main": 0.00161070458,
-    "granular_reverb": 0.00492202397,
-    "reverb_main": 0.0384527668
+    "delay_a_main": 0.141981766,
+    "delay_a_reverb": 0.141981766,
+    "delay_b_main": 0.0839518905,
+    "delay_b_reverb": 0.0839518905,
+    "granular_main": 0.00435695285,
+    "granular_reverb": 0.0132730184,
+    "reverb_main": 0.0501123816
+  },
+  "fxLoudness": {
+    "source": "KESSHO_PRODUCT_LEVEL_CALIBRATION_JSON fixture fx.*.lufs (Product FX loudness baseline)",
+    "toleranceLufs": 1,
+    "lufs": {
+      "delay_a_main": -15.08516,
+      "delay_a_reverb": -15.08516,
+      "delay_b_main": -20.07863,
+      "delay_b_reverb": -20.07863,
+      "granular_main": -48.0268,
+      "granular_reverb": -38.34677,
+      "reverb_main": -24.38846
+    }
+  },
+  "productFxLoudness": {
+    "source": "KESSHO_PRODUCT_FX_LOUDNESS_JSON emitted by ProductFxLoudnessMeasurementTests",
+    "schema": "kessho-product-fx-loudness-measurement-v1",
+    "sampleRate": 48000,
+    "blockSize": 128,
+    "deltaLuTolerance": 1,
+    "fixtures": {
+      "delay_a_matched_100ms": { "deltaLu": -2.76461192 },
+      "delay_b_matched_100ms_activity0": { "deltaLu": -7.98592252 },
+      "delay_b_matched_100ms_activity1": { "deltaLu": 4.7255888 },
+      "reverb_controlled": { "deltaLu": -16.17575 },
+      "granular_controlled": { "deltaLu": -9.09592761 },
+      "degrade_drift_controlled": { "deltaLu": -2.98089054 },
+      "spectral_freeze_controlled": { "deltaLu": -4.11625186 },
+      "eq1_neutral": { "deltaLu": 0 },
+      "eq2_neutral": { "deltaLu": 0 },
+      "sidechain_neutral": { "deltaLu": 0 },
+      "creative_saturation_controlled": { "deltaLu": 3.05271534 }
+    }
+  },
+  "sourceLoudness": {
+    "source": "KESSHO_PRODUCT_LEVEL_CALIBRATION_JSON fixture source/drums/earth lufs fields",
+    "toleranceLufs": 1,
+    "signals": {
+      "sustained_pad_metal_tine_c4": { "lufs": -20.1074483, "mode": "bs1770_integrated" },
+      "sustained_lead_soft_rhodes_c4": { "lufs": -23.7682853, "mode": "bs1770_integrated" },
+      "sustained_piano_fixed_asset_c4": { "lufs": -19.1123559, "mode": "bs1770_integrated" },
+      "drums.master": { "lufs": -23.5351396, "mode": "bs1770_integrated" },
+      "drums.dry": { "lufs": -25.1187649, "mode": "bs1770_integrated" },
+      "drums.pre_limiter": { "lufs": -25.1187649, "mode": "bs1770_integrated" },
+      "earth.master": { "lufs": -82.1741911, "mode": "active_window_ungated" },
+      "earth.water_dry": { "lufs": -83.7578164, "mode": "active_window_ungated" }
+    }
+  },
+  "sampleAssetLoudness": {
+    "reportPath": "docs/reports/kessho-product-sample-asset-loudness-latest.json",
+    "expectedOggCount": 806,
+    "oggAssetPathSha256": "72eeb96862734cd00dedacdae3ce18fd1b95d80c4f6458af837c167451ea861c",
+    "expectedDecodedAssetCount": 806,
+    "expectedDecodeErrorCount": 0,
+    "natureToleranceLufs": 1,
+    "nature": {
+      "birds-alps": {
+        "rawIntegratedLufs": -25.24167,
+        "existingEffectiveIntegratedLufs": -29.67865
+      },
+      "birds-fujian": {
+        "rawIntegratedLufs": -23.2863,
+        "existingEffectiveIntegratedLufs": -28.96623
+      },
+      "frogs-fujian": {
+        "rawIntegratedLufs": -27.87441,
+        "existingEffectiveIntegratedLufs": -33.89501
+      },
+      "ghetary-waves": {
+        "rawIntegratedLufs": -29.77881,
+        "existingEffectiveIntegratedLufs": -29.77881
+      }
+    },
+    "generatedLibraryMedianActiveRmsDbfs": -21.50458,
+    "generatedLibraryMedianActiveRmsDbfsToleranceDb": 1,
+    "generatedLibraryMediansActiveRmsDbfs": {
+      "archive-found-strings-001": -39.33299,
+      "array-mbira": -21.55825,
+      "piano": -20.11876,
+      "pneuma-eleni-teaser": -19.09024,
+      "soft-string-spurs": -23.91632,
+      "the-spellsinger": -40.0676,
+      "wild-percussion": -37.51653
+    }
   }
 }

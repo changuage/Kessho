@@ -51,6 +51,7 @@ docs/reports/*
 !docs/reports/kessho-product-level-calibration-contract.json
 !docs/reports/kessho-product-level-calibration-latest.json
 !docs/reports/kessho-product-level-calibration-latest.md
+!docs/reports/kessho-product-sample-asset-loudness-latest.json
 docs/ui-audit/
 
 # Environment
