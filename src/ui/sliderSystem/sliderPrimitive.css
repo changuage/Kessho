@@ -40,16 +40,16 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
-  font-size: 0.78rem;
+  font-size: var(--k-fs-5);
   color: #d2dbeb;
 }
 
 .sl-slider--compact .sl-slider-head {
-  font-size: 0.72rem;
+  font-size: var(--k-fs-3);
 }
 
 .sl-slider--comfortable .sl-slider-head {
-  font-size: 0.85rem;
+  font-size: var(--k-fs-6);
 }
 
 .sl-slider-label {
@@ -58,7 +58,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: var(--k-fw-medium);
 }
 
 .sl-slider-mode {
@@ -75,7 +75,7 @@
   border-radius: 50%;
   border: 1.5px solid transparent;
   background: transparent;
-  font-weight: 600;
+  font-weight: var(--k-fw-semi);
   color: var(--thb-mode, #888);
   line-height: 1;
   flex: 0 0 auto;
@@ -238,7 +238,7 @@
   flex-direction: column;
   gap: 8px;
   color: var(--text-secondary, #c7cfde);
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
 }
 
 .sl-slider-context-field {
@@ -253,15 +253,15 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--text-muted, #8d98a8);
-  font-size: 0.62rem;
-  font-weight: 700;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.03em;
 }
 
 .sl-slider-context-hint {
   margin: 0;
   color: var(--sl-muted, #94a3b8);
-  font-size: 0.72rem;
+  font-size: var(--k-fs-3);
   line-height: 1.35;
 }
 
@@ -313,7 +313,7 @@
 
 .sl-slider-value {
   font-variant-numeric: tabular-nums;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
   white-space: nowrap;
   color: var(--thb-value, #cfd9e8);
   margin-left: auto;
@@ -324,7 +324,7 @@
 }
 
 .sl-slider--matrix .sl-slider-value {
-  font-size: 0.65rem;
+  font-size: var(--k-fs-2);
 }
 
 .sl-slider-rail {

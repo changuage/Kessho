@@ -9,7 +9,7 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
     rgba(0, 0, 0, 0.18);
   color: rgba(235, 242, 248, 0.84);
-  font-size: 0.64rem;
+  font-size: var(--k-fs-2);
   line-height: 1.45;
 }
 
@@ -192,8 +192,8 @@
   gap: 3px;
   min-width: 0;
   color: rgba(235, 242, 248, 0.92);
-  font-size: 0.54rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.03em;
   pointer-events: none;
 }
@@ -203,8 +203,8 @@
 .earth-root .earth-active-matrix .earth-matrix-cell-value,
 .earth-root .earth-active-matrix .earth-matrix-cell-range,
 .earth-root .earth-active-matrix .earth-matrix-static-text {
-  font-size: 0.69rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.02em;
 }
 
@@ -214,8 +214,8 @@
   align-items: center;
   gap: 2px;
   color: rgba(235, 242, 248, 0.62);
-  font-size: 0.54rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
 }
 

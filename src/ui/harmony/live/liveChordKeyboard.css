@@ -13,14 +13,14 @@
   align-items: center;
   gap: 8px;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
   letter-spacing: .06em;
   text-transform: uppercase;
 }
 
 .harmony-live-keyboard-header strong {
   color: var(--k-text-soft, rgba(247, 250, 252, .7));
-  font-size: .66rem;
+  font-size: var(--k-fs-2);
 }
 
 .harmony-live-keyboard-header span {
@@ -111,7 +111,7 @@
   min-height: 9px;
   color: rgba(41, 39, 36, .56);
   font-size: clamp(6px, .65vw, 8px);
-  font-weight: 800;
+  font-weight: var(--k-fw-semi);
   letter-spacing: .04em;
   line-height: 1;
   text-transform: uppercase;
@@ -206,7 +206,7 @@
   padding-top: 6px;
   overflow-x: auto;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
   white-space: nowrap;
 }
 

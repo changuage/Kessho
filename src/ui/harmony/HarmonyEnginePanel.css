@@ -24,8 +24,8 @@
 .harmony-engine-panel .harmony-engine-title,
 .harmony-engine-panel .harmony-popup-header span,
 .harmony-engine-panel .harmony-lab-section-title {
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-size: var(--k-fs-4);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--harmony-ice);
@@ -35,7 +35,7 @@
 .harmony-engine-panel .harmony-popup-header small {
   display: block;
   margin-top: 2px;
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   color: rgba(232, 220, 196, 0.68);
 }
 
@@ -68,8 +68,8 @@
 .harmony-engine-panel .harmony-primary-button {
   min-height: 28px;
   padding: 5px 10px;
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -111,8 +111,8 @@
 .harmony-engine-panel .harmony-stepper span,
 .harmony-engine-panel .harmony-range-control span {
   display: block;
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.58);
@@ -138,8 +138,8 @@
 
 .harmony-engine-panel .harmony-chip span,
 .harmony-engine-panel .harmony-slot-trigger span {
-  font-size: 0.56rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   color: rgba(232, 220, 196, 0.58);
 }
@@ -150,8 +150,8 @@
   align-items: center;
   gap: 6px;
   padding: 5px 9px;
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-stepper,
@@ -181,15 +181,15 @@
   min-width: 24px;
   text-align: center;
   color: rgba(255,255,255,0.88);
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
 }
 
 .harmony-engine-panel .harmony-stepper button {
   min-width: 26px;
   min-height: 24px;
   padding: 3px 7px;
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-stepper.bass-mode button {
@@ -217,8 +217,8 @@
   justify-content: center;
   gap: 6px;
   padding: 5px 8px;
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-slot-trigger.locked {
@@ -275,8 +275,8 @@
 }
 
 .harmony-engine-panel .harmony-status-label {
-  font-size: 0.56rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.54);
@@ -286,8 +286,8 @@
   min-width: 0;
   overflow: hidden;
   color: rgba(255,255,255,0.94);
-  font-size: 0.86rem;
-  font-weight: 800;
+  font-size: var(--k-fs-6);
+  font-weight: var(--k-fw-semi);
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -298,7 +298,7 @@
   min-width: 0;
   overflow: hidden;
   color: rgba(232, 220, 196, 0.62);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   font-style: normal;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -322,15 +322,15 @@
   border-radius: var(--radius-sm);
   background: rgba(184, 224, 255, 0.09);
   color: rgba(232, 244, 255, 0.9);
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-note-pills.compact span {
   min-width: 24px;
   min-height: 18px;
   padding: 1px 5px;
-  font-size: 0.55rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-engine-panel .harmony-note-pills .empty {
@@ -349,8 +349,8 @@
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.035);
   color: rgba(232, 220, 196, 0.68);
-  font-size: 0.5rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   text-overflow: ellipsis;
@@ -401,8 +401,8 @@
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.035);
   color: rgba(232, 220, 196, 0.72);
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   line-height: 1;
   text-transform: uppercase;
@@ -415,7 +415,7 @@
   border: 1px solid rgba(255, 112, 138, 0.2);
   background: rgba(255, 112, 138, 0.06);
   color: rgba(255, 200, 210, 0.84);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   line-height: 1.35;
 }
 
@@ -444,8 +444,8 @@
 .harmony-engine-panel .harmony-slot-strip-header > span,
 .harmony-engine-panel .harmony-panel-label,
 .harmony-engine-panel .harmony-inspector-title {
-  font-size: 0.58rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.56);
@@ -476,8 +476,8 @@
 }
 
 .harmony-engine-panel .harmony-manual-preview > span {
-  font-size: 0.58rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(184, 224, 255, 0.72);
@@ -485,7 +485,7 @@
 
 .harmony-engine-panel .harmony-manual-preview strong {
   color: rgba(255,255,255,0.94);
-  font-size: 0.78rem;
+  font-size: var(--k-fs-5);
 }
 
 .harmony-engine-panel .harmony-audition-tools {
@@ -507,8 +507,8 @@
 
 .harmony-engine-panel .harmony-audition-tools label span {
   color: rgba(232, 220, 196, 0.56);
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -521,8 +521,8 @@
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.045);
   color: rgba(255,255,255,0.9);
-  font-size: 0.62rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-manual-workspace {
@@ -564,15 +564,15 @@
 .harmony-engine-panel .harmony-chord-type-heading strong {
   overflow: hidden;
   color: rgba(255, 255, 255, 0.94);
-  font-size: 1rem;
+  font-size: var(--k-fs-7);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .harmony-engine-panel .harmony-chord-type-heading small {
   color: rgba(232, 220, 196, 0.56);
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -590,7 +590,7 @@
   border-radius: 999px;
   background: rgba(184, 224, 255, 0.055);
   color: var(--harmony-journey-ice);
-  font-size: 0.49rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-engine-panel .harmony-chord-type-heading p {
@@ -598,7 +598,7 @@
   max-width: 52ch;
   margin: 3px 0 0;
   color: rgba(232, 220, 196, 0.5);
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   line-height: 1.35;
 }
 
@@ -621,7 +621,7 @@
 }
 
 .harmony-engine-panel .harmony-chip-row--wrap .harmony-chip {
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   padding: 3px 8px;
 }
 
@@ -642,8 +642,8 @@
   border-radius: var(--radius-md);
   background: rgba(255,255,255,0.035);
   color: rgba(232, 220, 196, 0.76);
-  font-size: 0.62rem;
-  font-weight: 900;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -663,8 +663,8 @@
   border-radius: var(--radius-md);
   border: 1px solid rgba(232, 220, 196, 0.1);
   color: rgba(232, 220, 196, 0.68);
-  font-size: 0.64rem;
-  font-weight: 700;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-bold);
 }
 
 .harmony-engine-panel .harmony-slot-bank {
@@ -729,8 +729,8 @@
 
 .harmony-engine-panel .harmony-slot-object span,
 .harmony-engine-panel .harmony-step-object span {
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   color: rgba(232, 220, 196, 0.56);
 }
@@ -739,8 +739,8 @@
 .harmony-engine-panel .harmony-step-object strong {
   overflow: hidden;
   color: rgba(255,255,255,0.92);
-  font-size: 0.76rem;
-  font-weight: 900;
+  font-size: var(--k-fs-4);
+  font-weight: var(--k-fw-semi);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -749,9 +749,9 @@
 .harmony-engine-panel .harmony-slot-object small,
 .harmony-engine-panel .harmony-step-object em {
   color: rgba(232, 220, 196, 0.58);
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   font-style: normal;
-  font-weight: 800;
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-engine-panel .harmony-sequence-strip {
@@ -782,8 +782,8 @@
   align-items: center;
   justify-content: center;
   color: rgba(232, 220, 196, 0.38);
-  font-size: 0.54rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   line-height: 1;
 }
 
@@ -852,8 +852,8 @@
 .harmony-engine-panel .harmony-inspector-heading small,
 .harmony-engine-panel .harmony-lab-section-title small {
   color: rgba(232, 220, 196, 0.5);
-  font-size: 0.56rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.02em;
   text-transform: none;
 }
@@ -901,8 +901,8 @@
   border: 1px solid rgba(232, 220, 196, 0.14);
   background: rgba(255,255,255,0.035);
   color: rgba(232, 220, 196, 0.72);
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -919,8 +919,8 @@
   align-items: center;
   gap: 5px;
   color: rgba(232, 220, 196, 0.58);
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -933,8 +933,8 @@
   border: 1px solid rgba(232, 220, 196, 0.14);
   background: rgba(0,0,0,0.22);
   color: rgba(255,255,255,0.9);
-  font-size: 0.62rem;
-  font-weight: 900;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   text-align: center;
 }
 
@@ -988,8 +988,8 @@
 .harmony-engine-panel .harmony-step-slot-actions > span {
   grid-column: 1 / -1;
   color: rgba(232, 220, 196, 0.5);
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -998,8 +998,8 @@
   min-width: 0;
   overflow: hidden;
   color: rgba(255,255,255,0.9);
-  font-size: 0.66rem;
-  font-weight: 900;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1012,8 +1012,8 @@
 }
 
 .harmony-engine-panel .harmony-inspector-grid label span {
-  font-size: 0.56rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.5);
@@ -1028,8 +1028,8 @@
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.045);
   color: rgba(255,255,255,0.9);
-  font-size: 0.64rem;
-  font-weight: 700;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-bold);
 }
 
 .harmony-engine-panel .harmony-inspector-actions {
@@ -1254,8 +1254,8 @@
 }
 
 .harmony-engine-panel .harmony-tension-label span {
-  font-size: 0.58rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.56);
@@ -1273,7 +1273,7 @@
   min-width: 32px;
   text-align: right;
   color: rgba(255,255,255,0.88);
-  font-size: 0.64rem;
+  font-size: var(--k-fs-2);
 }
 
 .harmony-engine-panel .harmony-tension-character {
@@ -1285,8 +1285,8 @@
 }
 
 .harmony-engine-panel .harmony-tension-character span {
-  font-size: 0.54rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.48);
@@ -1296,8 +1296,8 @@
   max-width: 92px;
   overflow: hidden;
   color: var(--harmony-ice);
-  font-size: 0.64rem;
-  font-weight: 900;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1318,8 +1318,8 @@
   border-radius: var(--radius-sm);
   background: rgba(255,255,255,0.025);
   color: rgba(232, 220, 196, 0.58);
-  font-size: 0.52rem;
-  font-weight: 900;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1378,8 +1378,8 @@
 }
 
 .harmony-engine-panel .harmony-palette-select span {
-  font-size: 0.56rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.5);
@@ -1389,7 +1389,7 @@
 .harmony-engine-panel .harmony-palette-select select {
   min-height: 24px;
   padding: 2px 6px;
-  font-size: 0.65rem;
+  font-size: var(--k-fs-2);
   color: var(--harmony-warm);
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(232, 220, 196, 0.12);
@@ -1415,8 +1415,8 @@
   border: 1px solid rgba(232, 220, 196, 0.12);
   background: rgba(255,255,255,0.045);
   color: rgba(255,255,255,0.9);
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
 }
 
 /* ═══════════════ Visual hierarchy: larger primary controls ═══════════════ */
@@ -1424,5 +1424,5 @@
 .harmony-engine-panel .harmony-chip {
   min-height: 36px;
   padding: 6px 11px;
-  font-size: 0.66rem;
+  font-size: var(--k-fs-2);
 }

@@ -443,7 +443,12 @@ export function PresetManagerPanel({
           <button style={{ ...s.slotBtn, ...s.slotA }} onClick={() => controller.loadToSlot('A')} title={`Load into Slot ${slotALabel}`}>{slotALabel}</button>
           <button style={{ ...s.slotBtn, ...s.slotB }} onClick={() => controller.loadToSlot('B')} title={`Load into Slot ${slotBLabel}`}>{slotBLabel}</button>
           {onOpenPool && <button type="button" style={{ ...s.poolBtn, color, borderColor: `${color}55` }} onClick={onOpenPool} title={poolButtonTitle} aria-label={poolButtonAriaLabel}>{poolButtonLabel}</button>}
-          <button style={s.saveBtn} disabled={controller.mutationBusy} onClick={controller.openSaveDialog} title={`Save current state as ${controller.selectedEntryName}`}>💾</button>
+          <button style={s.saveBtn} disabled={controller.mutationBusy} onClick={controller.openSaveDialog} title={`Save current state as ${controller.selectedEntryName}`}>
+            <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="M2.5 2.5h8.25L13.5 5.25v8.25a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z" />
+              <path d="M5 2.5v4h5.5v-4M4.5 14.5v-4h7v4" />
+            </svg>
+          </button>
           {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || selectedSummary?.library !== 'stock') && <button style={s.deleteBtn} disabled={controller.mutationBusy} onClick={controller.deleteSelected} title={`Delete ${controller.selectedEntryName}`}>✕</button>}
           {selectedSummary && selectedSummary.versionCount > 1 && <button style={{ ...s.expandBtn, ...(controller.showVersions ? { color: '#a5c4d4' } : {}) }} onClick={() => { void controller.toggleVersions(); }} title="Show version history">+</button>}
         </div>

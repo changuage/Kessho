@@ -397,7 +397,15 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             >
               {direction === 'forward' ? '→' : direction === 'reverse' ? '←' : '↔'}
             </button>
-            {linked && <span className="seq-link-badge">🔗</span>}
+            {linked && (
+              <span className="seq-link-badge">
+                <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                  <path d="m6 10-1.25 1.25a2.25 2.25 0 0 1-3.18-3.18l2.25-2.25a2.25 2.25 0 0 1 3.18 0" />
+                  <path d="m10 6 1.25-1.25a2.25 2.25 0 0 1 3.18 3.18l-2.25 2.25a2.25 2.25 0 0 1-3.18 0" />
+                  <path d="m5.75 10.25 4.5-4.5" />
+                </svg>
+              </span>
+            )}
             {/* Pitch-specific controls */}
             {hasPitchControls && (
               <div className="seq-pitch-controls">

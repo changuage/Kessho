@@ -107,6 +107,7 @@ import { OptionalVisualizerGate } from '../components/OptionalVisualizerGate';
 import { getRuntimeValue, removeRuntimeValues } from '../runtimeValueState';
 import { getRuntimeSliderPosition } from '../runtimeSliderState';
 import { blurSelectAfterChange } from '../shared/selectFocus';
+import '../sequencer/sequencer.css';
 import './synth.css';
 import SynthPresetManager from './SynthPresetManager';
 import SynthKeyboardKeys, { type SynthKeyboardKeysHandle, type SynthKeyboardKeyView } from './SynthKeyboardKeys';

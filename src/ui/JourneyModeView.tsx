@@ -29,7 +29,12 @@ const PANEL_SYMBOLS = {
   updated: '◷\uFE0E',
   az: 'A↧',
   load: '↗\uFE0E',
-  save: '💾\uFE0E',
+  save: (
+    <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M2.5 2.5h8.25L13.5 5.25v8.25a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z" />
+      <path d="M5 2.5v4h5.5v-4M4.5 14.5v-4h7v4" />
+    </svg>
+  ),
   undo: '↺',
   delete: '×',
   empty: '∅',

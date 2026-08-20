@@ -36,7 +36,7 @@
 }
 .reverb-root .reverb-title {
   font-size: var(--font-md);
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   color: var(--text-primary);
   letter-spacing: 0.3px;
   flex: 1;
@@ -48,7 +48,7 @@
   background: rgba(30, 30, 40, 0.6);
   color: var(--text-muted);
   font-size: var(--font-sm);
-  font-weight: 600;
+  font-weight: var(--k-fw-semi);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -64,7 +64,7 @@
   background: rgba(30, 30, 40, 0.6);
   color: var(--text-muted);
   font-size: var(--font-sm);
-  font-weight: 600;
+  font-weight: var(--k-fw-semi);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -148,13 +148,13 @@
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .reverb-root .reverb-section-title {
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: var(--k-fs-5);
+  font-weight: var(--k-fw-bold);
   color: var(--text-primary);
   letter-spacing: 0.3px;
 }
 .reverb-root .reverb-section-note {
-  font-size: 0.6rem;
+  font-size: var(--k-fs-1);
   color: var(--text-dim);
   line-height: 1.3;
   text-align: right;
@@ -185,7 +185,7 @@
 }
 .reverb-root .reverb-preset-description {
   color: rgba(255,255,255,0.92);
-  font-size: 0.83rem;
+  font-size: var(--k-fs-5);
   line-height: 1.35;
 }
 
@@ -243,7 +243,7 @@
   background: rgba(30, 30, 40, 0.6);
   color: var(--text-muted);
   font-size: var(--font-xs);
-  font-weight: 600;
+  font-weight: var(--k-fw-semi);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -296,7 +296,7 @@
 }
 
 .reverb-root .reverb-mode-btn.active {
-  font-weight: bold;
+  font-weight: var(--k-fw-bold);
   color: #fff;
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.24), rgba(139, 92, 246, 0.08));
   border-color: var(--accent-reverb);
@@ -344,8 +344,8 @@
   border: 1px solid rgba(255,255,255,0.075);
   background: rgba(0,0,0,0.14);
   color: rgba(232,220,196,0.74);
-  font-size: 0.58rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }

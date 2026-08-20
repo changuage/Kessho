@@ -44,7 +44,7 @@
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 2px;
-  font-size: .6rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-shared-chord-matrix-table th,
@@ -89,7 +89,7 @@
 }
 
 .harmony-shared-matrix-pitch small {
-  font-size: .48rem;
+  font-size: var(--k-fs-1);
   opacity: .65;
 }
 
@@ -125,7 +125,7 @@
 
 .harmony-exact-selection {
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .6rem;
+  font-size: var(--k-fs-1);
 }
 
 /* Shared Overview/Seq chord-row architecture. */
@@ -185,9 +185,9 @@
 
 .harmony-compact-chord-index {
   color: var(--k-text-soft, rgba(247, 250, 252, .7));
-  font-size: .66rem;
+  font-size: var(--k-fs-2);
   font-variant-numeric: tabular-nums;
-  font-weight: 800;
+  font-weight: var(--k-fw-semi);
 }
 
 .harmony-compact-chord-source,
@@ -229,12 +229,12 @@
 
 .harmony-compact-chord-identity strong {
   color: var(--k-text, #f7fafc);
-  font-size: .68rem;
+  font-size: var(--k-fs-3);
 }
 
 .harmony-compact-chord-identity small {
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .59rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-compact-chord-row .harmony-relative-dot-map {
@@ -283,7 +283,7 @@
 .harmony-compact-chord-legacy-meta {
   overflow: hidden;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .59rem;
+  font-size: var(--k-fs-1);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -322,7 +322,7 @@
   border-radius: var(--k-radius-control, 6px);
   color: var(--k-text-soft, rgba(247, 250, 252, .7));
   background: var(--k-control, rgba(255, 255, 255, .055));
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .seq-chord-scope-switch button.active,
@@ -339,7 +339,7 @@
 .seq-chord-scope-status {
   margin-left: auto;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .seq-chord-scopes,
@@ -369,7 +369,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: .64rem;
+  font-size: var(--k-fs-2);
 }
 
 .seq-chord-matrix-heading {
@@ -403,7 +403,7 @@
   align-items: center;
   gap: 3px;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .58rem;
+  font-size: var(--k-fs-1);
 }
 
 .seq-chord-choice-controls select,
@@ -415,7 +415,7 @@
   border-radius: var(--k-radius-control, 6px);
   color: var(--k-text-soft, rgba(247, 250, 252, .7));
   background: var(--k-control, rgba(255, 255, 255, .055));
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .seq-chord-choice-rows {
@@ -442,7 +442,7 @@
   border-radius: var(--k-radius-control, 6px);
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
   cursor: pointer;
-  font-size: .58rem;
+  font-size: var(--k-fs-1);
   list-style: none;
 }
 
@@ -464,8 +464,8 @@
 .seq-draft-advanced > summary {
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
   cursor: pointer;
-  font-size: .58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: .06em;
   text-transform: uppercase;
 }
@@ -481,7 +481,7 @@
   display: grid;
   gap: 3px;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .56rem;
+  font-size: var(--k-fs-1);
   text-transform: uppercase;
 }
 
@@ -519,7 +519,7 @@
 .seq-live-slot-pads small {
   overflow: hidden;
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .55rem;
+  font-size: var(--k-fs-1);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -543,7 +543,7 @@
   cursor: pointer;
   list-style: none;
   box-sizing: border-box;
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .seq-chord-playback-options > summary::-webkit-details-marker,
@@ -635,7 +635,7 @@
 
 .harmony-suggestion-grid button strong,
 .harmony-suggestion-grid button small {
-  font-size: .59rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-suggestion-grid button .harmony-relative-dot-map {
@@ -652,7 +652,7 @@
   align-items: center;
   gap: 7px;
   margin-top: 4px;
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .harmony-suggestion-action-dock strong {
@@ -665,7 +665,7 @@
   border-radius: var(--k-radius-control, 6px);
   color: var(--k-text, #f7fafc);
   background: var(--page-accent-soft, rgba(184, 224, 255, .1));
-  font-size: .58rem;
+  font-size: var(--k-fs-1);
 }
 
 /* Recognition appears only when a decision is actually required. */
@@ -760,7 +760,7 @@
 .harmony-overview-manage small,
 .harmony-overview-edit-status span {
   color: var(--k-text-muted, rgba(247, 250, 252, .44));
-  font-size: .6rem;
+  font-size: var(--k-fs-1);
 }
 
 .harmony-overview-mode-tabs {
@@ -822,7 +822,7 @@
 
 .harmony-overview-pool-row strong {
   overflow: hidden;
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -842,7 +842,7 @@
   border: 1px solid color-mix(in srgb, #ef8f8f 48%, transparent);
   border-radius: var(--k-radius-control, 6px);
   color: #ffc0c0;
-  font-size: .62rem;
+  font-size: var(--k-fs-2);
 }
 
 .harmony-overview-suggestions {
@@ -916,6 +916,6 @@
   }
 
   .seq-chord-scope-status {
-    font-size: .56rem;
+    font-size: var(--k-fs-1);
   }
 }

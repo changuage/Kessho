@@ -79,8 +79,10 @@ assert(
 
 assert(
   optionalVisualizerGateCss.includes('.optional-visualizer-hide-button {\n  min-height: 28px') &&
-    optionalVisualizerGateCss.includes('font-size: 0.72rem') &&
-    optionalVisualizerGateCss.includes('padding-block: 4px'),
+    optionalVisualizerGateCss.includes('  padding: 0 10px;') &&
+    optionalVisualizerGateCss.includes('  font-size: var(--k-fs-3);') &&
+    optionalVisualizerGateCss.includes('  border-radius: 999px;') &&
+    optionalVisualizerGateCss.includes('  line-height: 1;'),
   'Active visualizer hide control must stay compact'
 );
 

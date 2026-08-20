@@ -29,14 +29,14 @@
 .midi-panel h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 0.84rem;
-  font-weight: 800;
+  font-size: var(--k-fs-5);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0;
 }
 
 .midi-page-header h2 {
   color: var(--accent-primary);
-  font-size: 0.76rem;
+  font-size: var(--k-fs-4);
   text-transform: uppercase;
 }
 
@@ -77,7 +77,7 @@
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--k-fs-4);
 }
 
 .midi-page button,
@@ -125,8 +125,8 @@
 .midi-tabs button {
   flex: 1 1 0;
   min-width: 0;
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
 }
 
 .midi-three-zone {
@@ -246,8 +246,8 @@
   border-color: transparent;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
 }
 
 .midi-matrix-row.selected {
@@ -280,7 +280,7 @@
 .midi-profile-actions button {
   min-height: 26px;
   padding: 4px 7px;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
 }
 
 .midi-page .danger {

@@ -5,6 +5,7 @@
  *   .container → .sound-panel + .sequencer-panel
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import '../sequencer/sequencer.css';
 import './drums.css';
 import type { SerializedStepOverrides, SliderMode, SliderState } from '../state';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
