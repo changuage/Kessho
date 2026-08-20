@@ -14,7 +14,7 @@
 
 .optional-visualizer-placeholder__text h2 {
   margin: 0 0 6px;
-  font-size: 1rem;
+  font-size: var(--k-fs-7);
   letter-spacing: 0;
 }
 
@@ -32,7 +32,7 @@
   background: color-mix(in srgb, var(--page-accent, #b8e0ff) 18%, rgba(255, 255, 255, 0.055));
   color: var(--text-primary, #f7fafc);
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   cursor: pointer;
 }
 
@@ -44,8 +44,8 @@
   background: color-mix(in srgb, var(--page-accent, #b8e0ff) 12%, rgba(255, 255, 255, 0.045));
   color: var(--text-secondary, rgba(247, 250, 252, 0.76));
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   line-height: 1;
   cursor: pointer;
 }

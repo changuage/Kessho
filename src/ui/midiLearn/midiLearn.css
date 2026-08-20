@@ -9,8 +9,8 @@
   border-radius: 6px;
   background: rgba(7, 12, 15, 0.9);
   color: #d8eef6;
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0;
   padding: 0 12px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
@@ -48,8 +48,8 @@
 
 .midi-learn-bar-title {
   flex: 0 0 auto;
-  font-size: 0.68rem;
-  font-weight: 800;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
 }
 
 .midi-learn-bar-copy {
@@ -58,7 +58,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.72rem;
+  font-size: var(--k-fs-3);
   color: rgba(232, 247, 251, 0.84);
 }
 
@@ -74,7 +74,7 @@
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.06);
   color: inherit;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
   padding: 6px 8px;
 }
 
@@ -90,8 +90,8 @@
   border-radius: 999px;
   background: rgba(165, 196, 212, 0.1);
   color: #d8eef6;
-  font-size: 0.58rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0;
   line-height: 1;
   padding: 4px 6px;
@@ -136,7 +136,7 @@
 .midi-mapping-popover label {
   display: grid;
   gap: 4px;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
   color: rgba(232, 247, 251, 0.72);
 }
 

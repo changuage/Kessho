@@ -1126,7 +1126,12 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                 onMouseEnter={e => { e.currentTarget.style.color = '#8fd18f'; e.currentTarget.style.background = 'rgba(95,143,95,0.1)'; }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                 title={`Save current state as ${selectedParentName}`}
-              >💾</button>
+              >
+                <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                  <path d="M2.5 2.5h8.25L13.5 5.25v8.25a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z" />
+                  <path d="M5 2.5v4h5.5v-4M4.5 14.5v-4h7v4" />
+                </svg>
+              </button>
               {PRESET_DELETE_ENABLED && (SHARED_PRESET_TEST_MODE || presets.find(p => p.name === selectedParentName)?.library !== 'stock') && (
                 <button
                   style={treeStyles.deleteBtn}
@@ -1194,7 +1199,12 @@ export const PresetFamilyTree: React.FC<PresetFamilyTreeProps> = ({
                         onMouseEnter={e => { e.currentTarget.style.color = '#8fd18f'; e.currentTarget.style.background = 'rgba(95,143,95,0.1)'; }}
                         onMouseLeave={e => { e.currentTarget.style.color = '#5f8f5f'; e.currentTarget.style.background = 'none'; }}
                         title={`Save current state as v${(child.currentVersion || 1) + 1} of ${child.variantName !== child.familyName ? child.variantName : child.name}`}
-                      >💾</button>
+                      >
+                        <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                          <path d="M2.5 2.5h8.25L13.5 5.25v8.25a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z" />
+                          <path d="M5 2.5v4h5.5v-4M4.5 14.5v-4h7v4" />
+                        </svg>
+                      </button>
                       {PRESET_DELETE_ENABLED && (
                         <button
                           style={treeStyles.deleteBtn}

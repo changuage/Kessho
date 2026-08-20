@@ -22,6 +22,16 @@
   --k-slate: #5A7B8A;
   --k-danger: #FF4444;
   --k-stop: #ED5A24;
+
+  /* Semantic engine state. Sage is the palette green; pages previously
+     reached for Tailwind emerald (#10b981), which belongs to no other token. */
+  --k-on: var(--k-sage);
+  --k-on-text: color-mix(in srgb, var(--k-sage) 78%, var(--k-text));
+  --k-on-bg: color-mix(in srgb, var(--k-sage) 20%, transparent);
+  --k-on-bg-strong: color-mix(in srgb, var(--k-sage) 34%, transparent);
+  --k-on-border: color-mix(in srgb, var(--k-sage) 46%, transparent);
+  --k-on-glow: color-mix(in srgb, var(--k-sage) 18%, transparent);
+  --k-off-text: var(--k-text-muted);
   --tab-global: #5A9CFF;
   --tab-synth: #E07A84;
   --tab-drums: #A870E8;
@@ -32,6 +42,45 @@
   --tab-reverb: #B0785A;
   --tab-routing: #7ABFE8;
   --tab-visualizer: #9CCFBD;
+
+  /* ── type scale: 7 steps replacing 39 ad-hoc rem sizes ── */
+  --k-fs-1: 0.6rem;
+  --k-fs-2: 0.65rem;
+  --k-fs-3: 0.7rem;
+  --k-fs-4: 0.75rem;
+  --k-fs-5: 0.8rem;
+  --k-fs-6: 0.9rem;
+  --k-fs-7: 1.05rem;
+
+  /* ── weight: four values only ── */
+  --k-fw-normal: 400;
+  --k-fw-medium: 500;
+  --k-fw-semi: 600;
+  --k-fw-bold: 700;
+
+  /* ── spacing: 4px based ── */
+  --k-sp-1: 2px;
+  --k-sp-2: 4px;
+  --k-sp-3: 6px;
+  --k-sp-4: 8px;
+  --k-sp-5: 12px;
+  --k-sp-6: 16px;
+  --k-sp-7: 24px;
+
+  /* ── motion: two curves, three durations ── */
+  --k-dur-fast: 0.12s;
+  --k-dur-base: 0.18s;
+  --k-dur-slow: 0.32s;
+  --k-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --k-ease-in-out: cubic-bezier(0.65, 0.05, 0.36, 1);
+
+  /* ── focus ring ── */
+  --k-ring-color: var(--k-icy);
+  --k-ring: 0 0 0 2px color-mix(in srgb, var(--k-icy) 55%, transparent);
+
+  /* ── minimum hit targets ── */
+  --k-hit-min: 32px;
+  --k-hit-touch: 44px;
   --k-radius-card: 8px;
   --k-radius-control: 6px;
   --k-shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 28px rgba(0, 0, 0, 0.18);
@@ -54,6 +103,17 @@
   --fx-card-note-size: 0.6rem;
   --fx-card-title-spacing: 0.02em;
   --fx-card-note-spacing: 0.02em;
+
+  /* One card grammar. Every page's card shell resolves to these; pages
+     no longer restate them. The border walks a fallback chain so a card
+     that names its own source colour (--sc / --vc) keeps it. */
+  --k-card-accent: var(--sc, var(--vc, var(--engine-accent, var(--page-accent, var(--k-icy)))));
+  --k-card-border: 1px solid color-mix(in srgb, var(--k-card-accent) 20%, rgba(255, 255, 255, 0.08));
+  --k-card-border-open: 1px solid color-mix(in srgb, var(--k-card-accent) 32%, rgba(255, 255, 255, 0.12));
+  --k-card-head-rule: 1px solid rgba(255, 255, 255, 0.055);
+  --k-card-title-weight: 700;
+  --k-card-note-color: var(--k-text-muted);
+
   --k-gap-cards: 10px;
   --k-gap-container: 10px;
   --page-accent: var(--k-icy);
@@ -343,20 +403,14 @@
   backdrop-filter: blur(10px);
 }
 
-/* Toolbars & preset bars: flat card bg, no gradient */
-#root .drum-root .drums-source-preset-bar,
-#root .drum-root .drums-pattern-preset-bar,
+/* Toolbars: flat card bg, no gradient */
 #root .drum-root .master-strip,
 #root .drum-root .seq-transport,
-#root .synth-root .synth-source-preset-bar,
-#root .synth-root .seq-transport,
-#root .delay-root .delay-source-preset-bar,
-#root .earth-root .earth-kit-preset-bar {
+#root .synth-root .seq-transport {
   background: var(--k-bg-card);
   border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.08));
   border-radius: var(--k-radius-card);
   box-shadow: none;
-  backdrop-filter: blur(10px);
 }
 
 #root .drum-root .voice-card {
@@ -593,8 +647,7 @@
 }
 
 #root .reverb-root .reverb-global-bar.fx-page-header,
-#root .granular-root .granular-global-bar.fx-page-header,
-#root .delay-root .delay-source-preset-bar.fx-page-header {
+#root .granular-root .granular-global-bar.fx-page-header {
   border: 1px solid color-mix(in srgb, var(--page-accent) 38%, rgba(255, 255, 255, 0.1));
 }
 
@@ -675,10 +728,6 @@
   min-height: 48px;
   padding: 8px 12px;
   margin-bottom: 8px;
-  background: var(--k-bg-card);
-  border: 1px solid var(--page-accent-border);
-  border-radius: var(--k-radius-card);
-  box-shadow: none;
 }
 
 #root .fx-kit-preset-title {
@@ -757,12 +806,21 @@
 #root .dynamics-root .dynamics-enable-btn,
 #root .dynamics-root .dynamics-fx-toggle,
 #root .granular-root .seq-link-btn,
-#root .granular-root .seq-evolve-btn {
-  border: 1px solid rgba(247, 250, 252, 0.14);
-  background: rgba(255, 255, 255, 0.045);
-  color: var(--text-muted);
+#root .granular-root .seq-evolve-btn,
+#root .earth-root .layer-toggle,
+#root .earth-root .transport-btn,
+#root .delay-root .delay-toggle-btn {
+  border: 1px solid var(--k-border);
+  background: var(--k-control);
+  color: var(--k-off-text);
   border-radius: var(--k-radius-control);
   box-shadow: none;
+  min-height: var(--k-hit-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--k-dur-fast) var(--k-ease-out);
 }
 
 #root .reverb-enable-btn,
@@ -840,7 +898,14 @@
 #root .granular-root .granular-voice-enable-btn.on::before,
 #root .synth-root .sc-enable-btn.on::before,
 #root .dynamics-root .dynamics-enable-btn.on::before,
-#root .dynamics-root .dynamics-fx-toggle.on::before {
+#root .dynamics-root .dynamics-fx-toggle.on::before,
+#root .reverb-enable-btn[aria-pressed="true"]::before,
+#root .drum-root .drum-enable-btn[aria-pressed="true"]::before,
+#root .granular-root .granular-enable-btn[aria-pressed="true"]::before,
+#root .granular-root .granular-voice-enable-btn[aria-pressed="true"]::before,
+#root .synth-root .sc-enable-btn[aria-pressed="true"]::before,
+#root .dynamics-root .dynamics-enable-btn[aria-pressed="true"]::before,
+#root .dynamics-root .dynamics-fx-toggle[aria-pressed="true"]::before {
   background: color-mix(in srgb, var(--engine-dot-color) 86%, white 14%);
   box-shadow:
     0 0 5px color-mix(in srgb, var(--engine-dot-color) 48%, transparent),
@@ -857,11 +922,55 @@
 #root .granular-root .granular-enable-btn.on,
 #root .granular-root .granular-chip-btn.active,
 #root .granular-root .granular-voice-enable-btn.on,
-#root .synth-root .sc-enable-btn.on {
-  background: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 16%, transparent);
-  border-color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 38%, rgba(255, 255, 255, 0.08));
-  color: color-mix(in srgb, var(--engine-accent, var(--page-accent)) 86%, white 14%);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--engine-accent, var(--page-accent)) 16%, transparent);
+#root .synth-root .sc-enable-btn.on,
+#root .reverb-enable-btn[aria-pressed="true"],
+#root .reverb-toggle-btn[aria-pressed="true"],
+#root .reverb-mode-btn[aria-pressed="true"],
+#root .drum-root .drum-enable-btn[aria-pressed="true"],
+#root .drum-root .master-anim-btn[aria-pressed="true"],
+#root .dynamics-root .dynamics-enable-btn[aria-pressed="true"],
+#root .dynamics-root .dynamics-fx-toggle[aria-pressed="true"],
+#root .granular-root .granular-enable-btn[aria-pressed="true"],
+#root .granular-root .granular-chip-btn[aria-pressed="true"],
+#root .granular-root .granular-voice-enable-btn[aria-pressed="true"],
+#root .synth-root .sc-enable-btn[aria-pressed="true"],
+#root .earth-root .layer-toggle.on,
+#root .earth-root .layer-toggle[aria-pressed="true"],
+#root .earth-root .transport-btn.on,
+#root .earth-root .transport-btn[aria-pressed="true"],
+#root .delay-root .delay-toggle-btn.on,
+#root .delay-root .delay-toggle-btn[aria-pressed="true"] {
+  background: var(--k-on-bg);
+  border-color: var(--k-on-border);
+  color: var(--k-on-text);
+}
+
+#root .reverb-toggle-btn:hover,
+#root .reverb-mode-btn:hover,
+#root .drum-root .master-anim-btn:hover,
+#root .granular-root .granular-chip-btn:hover,
+#root .earth-root .layer-toggle:hover,
+#root .earth-root .transport-btn:hover,
+#root .delay-root .delay-toggle-btn:hover {
+  background: var(--k-control-hover);
+  color: var(--k-text-soft);
+}
+
+#root .reverb-toggle-btn.on:hover,
+#root .reverb-toggle-btn[aria-pressed="true"]:hover,
+#root .reverb-mode-btn.active:hover,
+#root .reverb-mode-btn[aria-pressed="true"]:hover,
+#root .drum-root .master-anim-btn.on:hover,
+#root .drum-root .master-anim-btn[aria-pressed="true"]:hover,
+#root .granular-root .granular-chip-btn.active:hover,
+#root .granular-root .granular-chip-btn[aria-pressed="true"]:hover,
+#root .earth-root .layer-toggle.on:hover,
+#root .earth-root .layer-toggle[aria-pressed="true"]:hover,
+#root .earth-root .transport-btn.on:hover,
+#root .earth-root .transport-btn[aria-pressed="true"]:hover,
+#root .delay-root .delay-toggle-btn.on:hover,
+#root .delay-root .delay-toggle-btn[aria-pressed="true"]:hover {
+  background: var(--k-on-bg-strong);
 }
 
 #root .reverb-enable-btn:hover,
@@ -882,7 +991,13 @@
 #root .granular-root .granular-voice-enable-btn.on,
 #root .synth-root .sc-enable-btn.on,
 #root .dynamics-root .dynamics-enable-btn.on,
-#root .dynamics-root .dynamics-fx-toggle.on {
+#root .reverb-enable-btn[aria-pressed="true"],
+#root .drum-root .drum-enable-btn[aria-pressed="true"],
+#root .granular-root .granular-enable-btn[aria-pressed="true"],
+#root .granular-root .granular-voice-enable-btn[aria-pressed="true"],
+#root .synth-root .sc-enable-btn[aria-pressed="true"],
+#root .dynamics-root .dynamics-enable-btn[aria-pressed="true"],
+#root .dynamics-root .dynamics-fx-toggle[aria-pressed="true"] {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -996,4 +1111,359 @@
 
 #root .sl-slider {
   --hero: var(--page-accent, #cfd9e8);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Two-pane advanced page shell.
+   Synth and Drums declared this block verbatim in their own stylesheets;
+   it lives here once so the panes stay in step.
+   ══════════════════════════════════════════════════════════════════ */
+#root .synth-root .container,
+#root .drum-root .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: var(--k-gap-container, 10px);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+#root .synth-root .sound-panel,
+#root .drum-root .sound-panel {
+  flex: 0 0 460px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#root .synth-root .sequencer-panel,
+#root .drum-root .sequencer-panel {
+  flex: 1;
+  min-width: 380px;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  #root .synth-root .sound-panel,
+  #root .synth-root .sequencer-panel,
+  #root .drum-root .sound-panel,
+  #root .drum-root .sequencer-panel {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CARD GRAMMAR
+
+   60 card shells, 18 headers, 17 titles and 13 bodies were each declaring
+   their own background, border, radius and padding across nine
+   stylesheets. They resolve here instead, so a card reads the same on
+   every page and a token change moves all of them at once.
+
+   Layout containers (.sound-panel, .sequencer-panel, .global-summary-panel,
+   .granular-sound-panel, .harmony-right-panel) are deliberately excluded —
+   they position cards, they are not cards.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root .delay-card,
+#root .drum-root .voice-card,
+#root .drum-root .delay-section,
+#root .drum-root .seq-evolve-panel,
+#root .dynamics-section-card,
+#root .dynamics-mod-panel,
+#root .earth-root .earth-card,
+#root .earth-root .mixer-section,
+#root .granular-section-card,
+#root .granular-voice-card,
+#root .granular-delay-section,
+#root .granular-global-bar,
+#root .global-root .global-card,
+#root .global-root .harmony-card,
+#root .global-root .harmony-engine-panel,
+#root .global-root .presets-card,
+#root .global-root .scene-card,
+#root .global-root .utility-card,
+#root .global-root .modulation-card,
+#root .global-root .scene-runtime-card,
+#root .reverb-section-card,
+#root .reverb-visualizer-card,
+#root .routing-card,
+#root .routing-mute-card,
+#root .daw-output-card,
+#root .synth-root .synth-card,
+#root .fx-alt-hero-card {
+  background: var(--fx-card-bg);
+  border: var(--k-card-border);
+  border-radius: var(--k-radius-card);
+  box-shadow: var(--k-shadow-glass);
+  margin-bottom: var(--k-gap-cards);
+}
+
+/* Clipping is opt-in: only shells that already clipped keep doing so, so
+   popovers and dropdowns inside the others are not cut off. */
+#root .delay-card,
+#root .drum-root .voice-card,
+#root .drum-root .delay-section,
+#root .dynamics-section-card,
+#root .earth-root .earth-card,
+#root .earth-root .mixer-section,
+#root .granular-section-card,
+#root .granular-voice-card,
+#root .granular-delay-section,
+#root .global-root .global-card,
+#root .global-root .harmony-card,
+#root .global-root .harmony-engine-panel,
+#root .global-root .presets-card,
+#root .global-root .scene-card,
+#root .global-root .utility-card,
+#root .reverb-section-card,
+#root .routing-card,
+#root .synth-root .synth-card,
+#root .fx-alt-hero-card {
+  overflow: hidden;
+}
+
+/* an open card lifts its border, nothing else */
+#root .delay-card.expanded,
+#root .drum-root .voice-card.editing,
+#root .granular-voice-card.expanded,
+#root .synth-root .synth-card.editing {
+  border: var(--k-card-border-open);
+}
+
+/* ── header ───────────────────────────────────────────────────────── */
+#root .delay-card-header,
+#root .drum-root .voice-card .section-header,
+#root .dynamics-section-head,
+#root .earth-card-header,
+#root .earth-matrix-section-head,
+#root .granular-section-head,
+#root .granular-voice-header,
+#root .global-root .harmony-section-header,
+#root .global-root .scene-card-header,
+#root .mixer-section-header,
+#root .reverb-section-head,
+#root .routing-card-header,
+#root .routing-mute-card-head,
+#root .synth-root .synth-card-header {
+  padding: var(--fx-card-head-padding);
+  background: var(--fx-card-head-bg);
+  border-bottom: var(--k-card-head-rule);
+  border-radius: 0;
+}
+
+#root .delay-card-header:hover,
+#root .granular-section-head.clickable:hover,
+#root .granular-voice-header:hover,
+#root .global-root .harmony-section-header:hover,
+#root .synth-root .synth-card-header.clickable:hover {
+  background: var(--fx-card-head-hover-bg);
+}
+
+/* ── title ────────────────────────────────────────────────────────── */
+#root .delay-card-title,
+#root .dynamics-section-title,
+#root .earth-matrix-section-title,
+#root .granular-section-title,
+#root .granular-voice-name,
+#root .global-root .harmony-card-title,
+#root .global-root .harmony-section-name,
+#root .global-root .presets-card-title,
+#root .global-root .scene-card-title,
+#root .global-root .utility-card-title,
+#root .reverb-section-title,
+#root .routing-card-title,
+#root .synth-root .synth-card-header .sc-name {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--fx-card-title-size);
+  font-weight: var(--k-card-title-weight);
+  letter-spacing: var(--fx-card-title-spacing);
+  text-transform: none;
+  flex: 0 0 auto;
+}
+
+/* ── note / subtitle ──────────────────────────────────────────────── */
+#root .delay-card-subtitle,
+#root .dynamics-section-note,
+#root .earth-matrix-section-meta,
+#root .granular-section-note,
+#root .reverb-section-note {
+  color: var(--k-card-note-color);
+  font-size: var(--fx-card-note-size);
+  letter-spacing: var(--fx-card-note-spacing);
+  line-height: 1.35;
+  /* a long note must not crowd a short title */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+  margin-left: auto;
+  text-align: right;
+  text-wrap: pretty;
+}
+
+/* ── body ─────────────────────────────────────────────────────────── */
+#root .delay-card-body,
+#root .dynamics-section-body,
+#root .earth-card-body,
+#root .granular-voice-body,
+#root .global-root .harmony-section-body,
+#root .mixer-section-body,
+#root .reverb-section-body,
+#root .routing-card-body {
+  padding: var(--fx-card-body-padding);
+  background: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FOCUS + REDUCED MOTION
+   61 `outline: none` declarations across the page stylesheets remove the
+   focus indicator. This restores one consistent ring for keyboard users.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root :is(button, a, select, input, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--k-ring);
+  border-radius: var(--k-radius-control);
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root *,
+  #root *::before,
+  #root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RENDER COST
+   Skip layout and paint for cards below the fold while keeping active cards live.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root .granular-section-card,
+#root .granular-voice-card,
+#root .drum-root .voice-card,
+#root .synth-root .synth-card,
+#root .earth-root .earth-card,
+#root .delay-card,
+#root .reverb-section-card,
+#root .dynamics-section-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
+
+#root .granular-voice-card.expanded,
+#root .drum-root .voice-card.editing,
+#root .synth-root .synth-card.editing,
+#root .earth-root .earth-card.expanded,
+#root .delay-card.expanded {
+  content-visibility: visible;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TAB STRIP SPACING
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root .seq-tab-bar {
+  display: flex;
+  gap: var(--k-sp-3);
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TOUCH TARGETS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (pointer: coarse) {
+  #root .seq-tab,
+  #root .seq-view-btn,
+  #root .seq-link-btn,
+  #root .seq-evolve-btn {
+    min-height: var(--k-hit-touch);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PRESET / KIT BARS + UTILITIES
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root .delay-root .delay-source-preset-bar,
+#root .drum-root .drums-source-preset-bar,
+#root .drum-root .drums-pattern-preset-bar,
+#root .synth-root .synth-source-preset-bar,
+#root .earth-root .earth-kit-preset-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--k-sp-4);
+  padding: var(--k-sp-4) var(--k-sp-5);
+  margin-bottom: var(--k-sp-4);
+  background: var(--k-bg-card);
+  border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.08));
+  border-radius: var(--k-radius-card);
+  box-shadow: none;
+}
+
+#root .fx-kit-preset-card {
+  background: var(--k-bg-card);
+  border: 1px solid color-mix(in srgb, var(--engine-accent, var(--page-accent, var(--k-icy))) 24%, rgba(255, 255, 255, 0.08));
+  border-radius: var(--k-radius-card);
+  box-shadow: none;
+}
+
+#root .delay-root .delay-source-preset-label,
+#root .drum-root .drums-source-preset-label,
+#root .drum-root .drums-pattern-preset-label,
+#root .synth-root .synth-source-preset-label,
+#root .earth-root .earth-kit-label,
+#root .fx-kit-preset-title {
+  color: var(--k-text-soft);
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DISCLOSURE
+   ═══════════════════════════════════════════════════════════════════════ */
+
+#root .earth-root .earth-sub-chevron,
+#root .delay-card-chevron,
+#root .global-root .harmony-section-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  font-size: var(--k-fs-1);
+  color: var(--k-text-muted);
+  transition: transform var(--k-dur-base) var(--k-ease-out), color var(--k-dur-fast) linear;
+  transform: rotate(0deg);
+  transform-origin: 50% 50%;
+}
+
+/* Earth and delay disclosures render ▼ when expanded, so they change color without rotating. */
+#root .earth-root .earth-sub-section.open .earth-sub-chevron,
+#root .earth-root .earth-sub-section:has(> .earth-sub-body) .earth-sub-chevron,
+#root .earth-root .earth-sub-chevron.open,
+#root .earth-root .earth-sub-chevron[aria-expanded="true"],
+#root .delay-card.expanded .delay-card-chevron,
+#root .delay-card.open .delay-card-chevron,
+#root .delay-card-chevron[aria-expanded="true"] {
+  color: var(--k-text-soft);
+}
+
+#root .global-root .harmony-section-chevron.expanded,
+#root .global-root .harmony-section-chevron.open,
+#root .global-root .harmony-section-chevron[aria-expanded="true"] {
+  transform: rotate(90deg);
+  color: var(--k-text-soft);
 }

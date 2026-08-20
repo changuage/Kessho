@@ -32,7 +32,7 @@
   align-items: center;
   gap: 5px;
   color: rgba(232,220,196,0.64);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   text-transform: uppercase;
 }
 
@@ -51,7 +51,7 @@
   border-radius: 4px;
   background: rgba(0,0,0,0.32);
   color: #e8dcc4;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
 }
 
 .orbit-input {
@@ -85,14 +85,14 @@
   gap: 6px;
   min-height: 28px;
   color: rgba(232,220,196,0.64);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   text-transform: uppercase;
 }
 
 .orbit-bars-control strong {
   color: #e8dcc4;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   text-align: right;
 }
 
@@ -166,7 +166,7 @@
   justify-content: space-between;
   gap: 8px;
   color: rgba(232,220,196,0.58);
-  font-size: 0.6rem;
+  font-size: var(--k-fs-1);
   pointer-events: none;
 }
 
@@ -185,7 +185,7 @@
   gap: 8px;
   margin-bottom: 8px;
   color: rgba(232,220,196,0.72);
-  font-size: 0.64rem;
+  font-size: var(--k-fs-2);
   text-transform: uppercase;
   letter-spacing: 0;
 }
@@ -202,12 +202,12 @@
   gap: 3px;
   min-width: 0;
   color: rgba(232,220,196,0.62);
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   text-transform: uppercase;
 }
 
 .orbit-field.compact {
-  font-size: 0.55rem;
+  font-size: var(--k-fs-1);
 }
 
 .orbit-range {
@@ -222,7 +222,7 @@
   justify-content: space-between;
   gap: 8px;
   color: rgba(232,220,196,0.68);
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -286,7 +286,7 @@
   border-radius: 4px;
   background: rgba(0,0,0,0.32);
   color: #e8dcc4;
-  font-size: 0.68rem;
+  font-size: var(--k-fs-3);
 }
 
 .orbit-field.compact input,
@@ -314,7 +314,7 @@
   border-radius: 4px;
   background: rgba(255,255,255,0.035);
   color: rgba(232,220,196,0.7);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   cursor: pointer;
 }
 

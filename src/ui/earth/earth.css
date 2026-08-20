@@ -78,10 +78,6 @@
 
 /* ── Card ── */
 .earth-root .earth-card {
-  background: var(--k-bg-card);
-  border: 1px solid var(--border-accent);
-  border-radius: var(--radius-md);
-  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.2s;
   margin-bottom: 6px;
   padding: 0;
@@ -108,18 +104,11 @@
   background: rgba(255,255,255,0.04);
 }
 .earth-root .ec-name {
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   color: var(--sc, #ccc);
   white-space: nowrap;
 }
-.earth-root .ec-chevron {
-  font-size: 0.55rem;
-  color: var(--text-muted);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-
 /* When expanded, show separator between header and body */
 .earth-root .earth-card.expanded .earth-card-header {
   border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -183,7 +172,7 @@
   border-radius: var(--radius-sm);
   background: rgba(255,255,255,0.06);
   color: var(--text-primary);
-  font-size: 0.62rem;
+  font-size: var(--k-fs-2);
   line-height: 1;
   padding: 6px 8px;
   cursor: pointer;
@@ -208,7 +197,7 @@
 .earth-root .sc-preset-loader-select {
   flex: 1;
   min-width: 0;
-  font-size: 0.75rem;
+  font-size: var(--k-fs-4);
   background: rgba(0, 0, 0, 0.3);
   color: #ccc;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -228,8 +217,8 @@
   border-radius: 3px;
   background: transparent;
   color: var(--slot-color, #a5c4d4);
-  font-size: 0.6rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   line-height: 1.2;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -257,8 +246,8 @@
 
 .earth-root .sc-morph-row .sc-morph-tag {
   flex-shrink: 0;
-  font-size: 0.65rem;
-  font-weight: 800;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-semi);
   line-height: 1;
 }
 
@@ -270,7 +259,7 @@
 .earth-root .sc-morph-row .sc-preset-select {
   width: 100%;
   min-width: 0;
-  font-size: 0.7rem;
+  font-size: var(--k-fs-3);
   background: rgba(0, 0, 0, 0.3);
   color: #ccc;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -343,7 +332,7 @@
   flex-wrap: wrap;
 }
 .earth-root .earth-dual-mode-label {
-  font-size: 0.55rem;
+  font-size: var(--k-fs-1);
   margin-left: 4px;
   opacity: 0.85;
 }
@@ -401,7 +390,7 @@
   z-index: 1;
 }
 .earth-root .earth-dual-range-text {
-  font-size: 0.55rem;
+  font-size: var(--k-fs-1);
   color: var(--text-muted);
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -410,7 +399,7 @@
 /* ── Select ── */
 .earth-root .earth-select {
   width: 100%;
-  font-size: 0.7rem;
+  font-size: var(--k-fs-3);
   background: var(--bg-input);
   color: #ccc;
   border: 1px solid var(--border-medium);
@@ -480,8 +469,8 @@
   overflow: hidden;
 }
 .earth-root .mixer-section-header {
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   color: var(--accent-primary);
   text-transform: none;
   letter-spacing: 0;
@@ -506,22 +495,9 @@
 .earth-root .layer-toggle {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.15);
-  cursor: pointer;
-  font-size: 9px;
   line-height: 16px;
   text-align: center;
-  background: rgba(255,255,255,0.06);
-  color: var(--text-muted);
-  transition: all 0.15s;
   flex-shrink: 0;
-  padding: 0;
-}
-.earth-root .layer-toggle.on {
-  background: rgba(16,185,129,0.2);
-  border-color: rgba(16,185,129,0.4);
-  color: #10b981;
 }
 .earth-root .layer-label {
   font-size: var(--font-sm);
@@ -552,31 +528,12 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
-.earth-root .transport-btn {
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255,255,255,0.15);
-  cursor: pointer;
-  font-weight: 700;
-  font-size: var(--font-sm);
-  transition: all 0.15s;
-  background: var(--bg-control);
-  color: var(--text-secondary);
-}
-.earth-root .transport-btn.play {
-  background: rgba(16,185,129,0.2);
-  border-color: rgba(16,185,129,0.4);
-  color: #10b981;
-}
-.earth-root .transport-btn.play:hover {
-  background: rgba(16,185,129,0.35);
-}
-.earth-root .transport-btn.stop {
+#root .earth-root .transport-btn.stop {
   background: rgba(231,76,60,0.2);
   border-color: rgba(231,76,60,0.4);
   color: #e74c3c;
 }
-.earth-root .transport-btn.stop:hover {
+#root .earth-root .transport-btn.stop:hover {
   background: rgba(231,76,60,0.35);
 }
 .earth-root .transport-label {
@@ -612,7 +569,7 @@
 }
 .earth-root .stat-value {
   color: var(--text-secondary);
-  font-weight: 600;
+  font-weight: var(--k-fw-semi);
   font-variant-numeric: tabular-nums;
 }
 
@@ -631,8 +588,8 @@
   margin-bottom: 6px;
 }
 .earth-root .ec-morph-row .ec-morph-tag {
-  font-size: 0.5rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   flex-shrink: 0;
   min-width: 8px;
   text-align: center;
@@ -652,7 +609,7 @@
   flex: 1.2; display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
 .earth-root .ec-morph-dual-mode {
-  font-size: 0.45rem; text-align: center; font-weight: 600;
+  font-size: var(--k-fs-1); text-align: center; font-weight: var(--k-fw-semi);
   letter-spacing: 0.5px; line-height: 1;
 }
 .earth-root .ec-morph-dual-track {
@@ -683,7 +640,7 @@
 /* ── Section Label (replaces inline styles) ── */
 .earth-root .earth-section-label {
   font-size: var(--font-xs);
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -691,23 +648,8 @@
 }
 
 /* ── Earth Kit Preset Bar ── */
-.earth-root .earth-kit-preset-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  border-radius: 8px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-}
 .earth-root .earth-kit-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
 }
 
 /* ── Collapsible Sub-Section ── */
@@ -728,18 +670,13 @@
 }
 .earth-root .earth-sub-title {
   font-size: var(--font-xs);
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.earth-root .earth-sub-chevron {
-  font-size: 0.45rem;
-  color: var(--text-dim);
-  transition: transform 0.15s;
-}
 .earth-root .earth-sub-count {
-  font-size: 0.45rem;
+  font-size: var(--k-fs-1);
   color: var(--text-dim);
   margin-left: auto;
 }
@@ -854,7 +791,7 @@
 /* ── Mixer Sub-Group ── */
 .earth-root .mixer-group-label {
   font-size: var(--font-xs);
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -887,8 +824,8 @@
 }
 
 .earth-root .earth-selector-group-label {
-  font-size: 0.52rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.42);
@@ -945,15 +882,15 @@
 }
 
 .earth-root .earth-matrix-section-title {
-  font-size: 0.56rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.55);
 }
 
 .earth-root .earth-matrix-section-meta {
-  font-size: 0.5rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.32);
@@ -977,7 +914,7 @@
   border: 1px solid rgba(255,255,255,0.06);
   background: rgba(255,255,255,0.024);
   color: rgba(255,255,255,0.52);
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1011,7 +948,7 @@
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--font-sm);
-  font-weight: 700;
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.02em;
   white-space: nowrap;
   scroll-snap-align: start;
@@ -1044,8 +981,8 @@
 }
 
 .earth-root .earth-matrix-mobile-field-label {
-  font-size: 0.5rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   color: rgba(255,255,255,0.46);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1110,8 +1047,8 @@
   border: 1px solid rgba(255,255,255,0.06);
   background: rgba(255,255,255,0.028);
   color: var(--text-secondary);
-  font-size: 0.62rem;
-  font-weight: 700;
+  font-size: var(--k-fs-2);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1153,8 +1090,8 @@
 }
 
 .earth-root .earth-matrix-rowname {
-  font-size: 0.73rem;
-  font-weight: 600;
+  font-size: var(--k-fs-4);
+  font-weight: var(--k-fw-semi);
   color: color-mix(in srgb, var(--row-accent) 72%, #eef6ff);
   letter-spacing: 0.04em;
   text-transform: none;
@@ -1164,7 +1101,7 @@
 }
 
 .earth-root .earth-matrix-rowdetail {
-  font-size: 0.44rem;
+  font-size: var(--k-fs-1);
   color: rgba(255,255,255,0.4);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1225,15 +1162,15 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 5px;
-  font-size: 0.52rem;
+  font-size: var(--k-fs-1);
   color: rgba(255,255,255,0.72);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .earth-root .earth-matrix-cell-header span:last-child {
-  font-size: 0.56rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   color: rgba(245,249,255,0.92);
 }
 
@@ -1388,8 +1325,8 @@
   gap: 3px;
   min-width: 0;
   color: rgba(235,242,248,0.92);
-  font-size: 0.54rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.03em;
   pointer-events: none;
 }
@@ -1397,15 +1334,15 @@
 .earth-root .earth-matrix-cell-value,
 .earth-root .earth-matrix-cell-range,
 .earth-root .earth-matrix-static-text {
-  font-size: 0.69rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.02em;
 }
 
 .earth-root .earth-matrix-cell-mode {
   color: rgba(235,242,248,0.62);
-  font-size: 0.54rem;
-  font-weight: 800;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-semi);
   letter-spacing: 0.06em;
 }
 
@@ -1469,8 +1406,8 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 0.5rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: rgba(245,249,255,0.62);
@@ -1742,12 +1679,12 @@
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .earth-root .earth-scene-title {
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-bold);
   color: var(--accent-primary);
 }
 .earth-root .earth-scene-hint {
-  font-size: 0.48rem;
+  font-size: var(--k-fs-1);
   color: var(--text-dim);
   margin-left: auto;
   letter-spacing: 0.3px;
@@ -1887,8 +1824,8 @@
 }
 
 .earth-root .earth-scene-group-label {
-  font-size: 0.42rem;
-  font-weight: 700;
+  font-size: var(--k-fs-1);
+  font-weight: var(--k-fw-bold);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.22);
@@ -1928,7 +1865,7 @@
 }
 
 .earth-root .earth-scene-engine-row.sub .earth-scene-engine-name {
-  font-size: 0.52rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0.08em;
   color: rgba(255,255,255,0.48);
 }
@@ -1950,7 +1887,7 @@
 }
 
 .earth-root .earth-scene-engine-name {
-  font-size: 0.52rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.48);
@@ -1966,7 +1903,7 @@
   margin-left: auto;
   min-width: 24px;
   text-align: right;
-  font-size: 0.48rem;
+  font-size: var(--k-fs-1);
   font-variant-numeric: tabular-nums;
   color: rgba(255,255,255,0.28);
 }
@@ -2156,14 +2093,14 @@
 }
 
 .earth-root .earth-scene-zone-info-label {
-  font-size: 0.5rem;
+  font-size: var(--k-fs-1);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.52);
 }
 
 .earth-root .earth-scene-zone-info-value {
-  font-size: 0.58rem;
+  font-size: var(--k-fs-1);
   color: rgba(255,255,255,0.82);
   font-variant-numeric: tabular-nums;
 }
@@ -2460,37 +2397,19 @@
 }
 
 
-/* Unified surface pass: match Granular/Reverb section-card aesthetics. */
-.earth-root .earth-kit-preset-bar,
-.earth-root .earth-card,
-.earth-root .mixer-section,
+/* Card shell and header resolve from designSystem.css. */
 .earth-root .transport-bar,
 .earth-root .stats-bar,
 .earth-root .earth-scene-container {
-  background: var(--k-bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
-}
-
-.earth-root .earth-kit-preset-bar {
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-}
-
-.earth-root .earth-kit-label {
-  color: var(--text-secondary);
-  font-size: var(--font-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  background: var(--fx-card-bg);
+  border: var(--k-card-border);
+  border-radius: var(--k-radius-card);
+  box-shadow: var(--k-shadow-glass);
 }
 
 .earth-root .earth-card,
 .earth-root .mixer-section,
 .earth-root .earth-scene-container {
-  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
-  border-left: 1px solid color-mix(in srgb, var(--sc, var(--accent-primary)) 16%, rgba(255,255,255,0.08));
   margin-bottom: 8px;
 }
 
@@ -2504,18 +2423,13 @@
 }
 
 .earth-root .earth-card.expanded {
-  border-color: color-mix(in srgb, var(--sc, var(--accent-primary)) 26%, rgba(255,255,255,0.1));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.02),
-    0 0 0 1px color-mix(in srgb, var(--sc, var(--accent-primary)) 8%, transparent);
+  border: var(--k-card-border-open);
 }
 
-.earth-root .earth-card-header,
-.earth-root .mixer-section-header,
 .earth-root .earth-scene-header {
-  padding: 9px 12px 8px;
+  padding: var(--fx-card-head-padding);
   background: transparent;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: var(--k-card-head-rule);
 }
 
 .earth-root .earth-card-header.clickable:hover {
@@ -2526,7 +2440,7 @@
 .earth-root .mixer-section-header,
 .earth-root .earth-scene-title {
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: var(--k-fs-5);
   letter-spacing: 0.3px;
 }
 
