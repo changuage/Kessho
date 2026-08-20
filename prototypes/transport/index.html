@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kesshō — Transport Field Visualizer</title>
+<style>
+  :root {
+    --bg-deep: #0c0b0a;
+    --bg-top: #141312;
+    --cream: #E8DCC4;
+    --cream-dim: rgba(232, 220, 196, 0.58);
+    --cream-faint: rgba(232, 220, 196, 0.3);
+    --line: rgba(232, 220, 196, 0.13);
+    --icy: #B8E0FF;
+    --panel: 296px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg-deep);
+    color: var(--cream-dim);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #stage { position: fixed; inset: 0; }
+  #gl { display: block; width: 100%; height: 100%; }
+
+  /* ── preloader ─────────────────────────────────────────── */
+  #boot {
+    position: fixed; inset: 0; z-index: 100;
+    display: grid; place-content: center; justify-items: center; gap: 18px;
+    background: radial-gradient(120% 90% at 50% 45%, var(--bg-top), var(--bg-deep) 72%);
+    transition: opacity .9s ease;
+  }
+  #boot.done { opacity: 0; pointer-events: none; }
+  #bootCanvas { width: 132px; height: 132px; }
+  #boot .bt { color: var(--cream); letter-spacing: .34em; font-size: 10px; text-transform: uppercase; }
+  #boot .bs { color: var(--cream-faint); letter-spacing: .16em; font-size: 9px; }
+
+  /* ── panel ─────────────────────────────────────────────── */
+  #panel {
+    position: fixed; top: 0; left: 0; bottom: 0; width: var(--panel); z-index: 20;
+    display: flex; flex-direction: column;
+    background: rgba(10, 10, 9, 0.82);
+    backdrop-filter: blur(18px) saturate(1.1);
+    border-right: 1px solid var(--line);
+    transition: transform .38s cubic-bezier(.2,.7,.2,1);
+  }
+  #panel.hidden { transform: translateX(calc(-1 * var(--panel))); }
+
+  #panel header { padding: 13px 14px 11px; border-bottom: 1px solid var(--line); flex: none; }
+  #panel header .row { display: flex; align-items: baseline; gap: 8px; }
+  #panel header h1 { margin: 0; font-size: 11px; font-weight: 500; color: var(--cream); letter-spacing: .17em; text-transform: uppercase; }
+  #panel header .v { color: var(--cream-faint); font-size: 9px; letter-spacing: .1em; margin-left: auto; }
+  #panel header p { margin: 6px 0 0; font-size: 9.5px; line-height: 1.5; color: var(--cream-faint); }
+
+  #scroll { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 30px; }
+  #scroll::-webkit-scrollbar { width: 7px; }
+  #scroll::-webkit-scrollbar-thumb { background: rgba(232,220,196,.14); border-radius: 4px; }
+  #scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .sec { border-bottom: 1px solid var(--line); }
+  .sec > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    padding: 9px 14px; display: flex; align-items: center; gap: 8px;
+    font-size: 9px; letter-spacing: .19em; text-transform: uppercase; color: var(--cream-faint);
+    transition: color .15s;
+  }
+  .sec > summary::-webkit-details-marker { display: none; }
+  .sec > summary:hover { color: var(--cream); }
+  .sec[open] > summary { color: var(--cream); }
+  .sec > summary .chev { font-size: 8px; opacity: .5; transition: transform .2s; }
+  .sec[open] > summary .chev { transform: rotate(90deg); }
+  .sec > summary .tag { margin-left: auto; font-size: 8.5px; letter-spacing: .06em; opacity: .55; text-transform: none; }
+  .sec .body { padding: 2px 14px 12px; }
+
+  .ctl { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 4px 0; }
+  .ctl .top { display: flex; align-items: baseline; gap: 6px; }
+  .ctl label { color: var(--cream-dim); font-size: 10px; letter-spacing: .02em; }
+  .ctl .num { margin-left: auto; color: var(--cream-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+  .ctl.modded label { color: var(--icy); }
+  .ctl .poles { display: flex; justify-content: space-between; font-size: 8px; letter-spacing: .07em; color: rgba(232,220,196,.24); text-transform: uppercase; margin-top: 1px; }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 15px; background: transparent; cursor: pointer; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: rgba(232,220,196,.2); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; border-radius: 50%;
+    background: var(--cream); box-shadow: 0 0 0 3px rgba(12,11,10,.9);
+  }
+  input[type=range]:focus-visible { outline: none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(12,11,10,.9), 0 0 0 5px var(--icy); }
+
+  .master { padding: 12px 14px 14px; border-bottom: 1px solid var(--line); background: rgba(232,220,196,.022); }
+  .master .ctl label { color: var(--cream); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+  .master input[type=range]::-webkit-slider-thumb { width: 13px; height: 13px; margin-top: -6px; }
+  .master .poles { font-size: 8.5px; color: rgba(232,220,196,.34); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .chips button, .seg button {
+    border: 1px solid rgba(232,220,196,.16); border-radius: 2px; background: transparent;
+    color: rgba(232,220,196,.5); padding: 4px 7px; font: inherit; font-size: 9px; letter-spacing: .05em;
+    cursor: pointer; transition: color .15s, border-color .15s, background .15s;
+  }
+  .chips button:hover, .seg button:hover { color: var(--cream); border-color: rgba(232,220,196,.38); }
+  .chips button.on, .seg button.on { color: var(--bg-deep); background: var(--cream); border-color: var(--cream); }
+  .seg { display: flex; gap: 3px; flex-wrap: wrap; padding: 4px 0 6px; }
+
+  /* ── hud ───────────────────────────────────────────────── */
+  #hud {
+    position: fixed; right: 12px; top: 12px; z-index: 20; text-align: right;
+    display: grid; gap: 3px; pointer-events: none;
+  }
+  #hud .l { font-size: 9px; letter-spacing: .11em; color: rgba(232,220,196,.34); font-variant-numeric: tabular-nums; }
+  #hud .l b { color: rgba(232,220,196,.72); font-weight: 500; }
+
+  #meters { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: grid; gap: 4px; pointer-events: none; }
+  .meter { display: grid; grid-template-columns: 44px 84px; align-items: center; gap: 6px; }
+  .meter span { font-size: 8.5px; letter-spacing: .1em; color: rgba(232,220,196,.3); text-transform: uppercase; }
+  .meter i { display: block; height: 2px; background: rgba(232,220,196,.12); position: relative; }
+  .meter i b { position: absolute; inset: 0 auto 0 0; background: var(--icy); width: 0; transition: width .06s linear; }
+
+  #tip {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20;
+    font-size: 9px; letter-spacing: .1em; color: rgba(232,220,196,.26); pointer-events: none;
+    transition: opacity .5s; text-transform: uppercase;
+  }
+  #tip.fade { opacity: 0; }
+
+  #toggle {
+    position: fixed; left: 12px; top: 12px; z-index: 30;
+    width: 26px; height: 26px; display: none; place-content: center;
+    border: 1px solid var(--line); border-radius: 2px; background: rgba(10,10,9,.8);
+    color: var(--cream-dim); cursor: pointer; font: inherit; font-size: 11px;
+  }
+  #panel.hidden ~ #toggle { display: grid; }
+
+  #err {
+    position: fixed; inset: auto 12px 12px calc(var(--panel) + 24px); z-index: 40;
+    display: none; padding: 10px 12px; border: 1px solid rgba(224,122,95,.5);
+    background: rgba(30,14,10,.94); color: #f0b8a4; font-size: 10px; line-height: 1.5;
+    max-height: 40vh; overflow: auto; white-space: pre-wrap;
+  }
+
+  @media (max-width: 900px) {
+    #panel { box-shadow: 0 0 60px rgba(0,0,0,.6); }
+    #meters { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+
+<div id="boot">
+  <canvas id="bootCanvas" width="264" height="264"></canvas>
+  <div class="bt">Transport Field</div>
+  <div class="bs" id="bootMsg">compiling optics</div>
+</div>
+
+<aside id="panel">
+  <header>
+    <div class="row">
+      <h1>Transport Field</h1>
+      <span class="v" id="presetName">komorebi noon</span>
+    </div>
+    <p>One operator. The field either <em>blocks</em> light or <em>bends</em> it — komorebi and caustics are the same maths at opposite coefficients.</p>
+  </header>
+
+  <div class="chips" id="presets"></div>
+
+  <div class="master" id="masterHost"></div>
+
+  <div id="scroll"></div>
+</aside>
+
+<button id="toggle" title="Show panel (H)">⌘</button>
+
+<div id="hud">
+  <div class="l"><b id="fps">—</b> fps</div>
+  <div class="l"><b id="resl">—</b> px · <b id="scl">—</b>×</div>
+  <div class="l"><b id="taps">—</b> field taps/px</div>
+</div>
+
+<div id="meters"></div>
+<div id="tip">click to drop an impulse · H panel · space note · R randomise</div>
+<pre id="err"></pre>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   Kesshō — Transport Field Visualizer
+   A field generates a secondary light field. Komorebi = occlusion,
+   caustics = refraction, and the morph between them is one coefficient.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ───────────────────────── control schema ─────────────────────────── */
+// Every module is just a list of params; the shader reads them as u_<key>.
+const GROUPS = [
+  {
+    id: 'field', label: 'A · Field', tag: 'the matter',
+    note: 'Multi-scale height/occlusion field, sliced in 3D so level sets emerge, merge, pinch and vanish instead of drifting.',
+    open: true,
+    controls: [
+      { key: 'fieldScale', label: 'Scale',        min: 1,   max: 14, def: 5.5,  poles: ['coarse', 'fine'] },
+      { key: 'octaves',    label: 'Octaves',      min: 1,   max: 4,  def: 3,  step: 1 },
+      { key: 'churn',      label: 'Churn',        min: 0,   max: 1,  def: 0.34, poles: ['frozen', 'topology'] },
+      { key: 'drift',      label: 'Drift',        min: 0,   max: 1,  def: 0.26, poles: ['still', 'wind'] },
+      { key: 'hierarchy',  label: 'Hierarchy',    min: 0,   max: 1,  def: 0.58, poles: ['independent', 'branch→leaf'] },
+      { key: 'flutter',    label: 'Flutter',      min: 0,   max: 1,  def: 0.38, poles: ['calm', 'leaf spin'] },
+      { key: 'aniso',      label: 'Anisotropy',   min: 0,   max: 1,  def: 0.26, poles: ['isotropic', 'directional'] },
+      { key: 'direction',  label: 'Direction',    min: 0,   max: 6.283, def: 0.7 },
+      { key: 'dirSpread',  label: 'Dir spread',   min: 0,   max: 2,  def: 0.55, poles: ['aligned', 'crossed'] },
+      { key: 'coverage',   label: 'Coverage',     min: 0,   max: 0.9, def: 0.55, poles: ['no canopy', 'dense canopy'] },
+      { key: 'layers',     label: 'Depth layers', min: 1,   max: 3,  def: 2,  step: 1 },
+      { key: 'parallax',   label: 'Parallax',     min: 0,   max: 1,  def: 0.45 },
+      { key: 'swell',      label: 'Swell',        min: 0,   max: 1,  def: 0.0,  poles: ['flat', 'wave trains'] },
+      { key: 'capillary',  label: 'Capillary',    min: 0,   max: 1,  def: 0.24, poles: ['smooth', 'shimmer'] },
+    ],
+  },
+  {
+    id: 'leaves', label: 'A2 · Leaves', tag: 'discrete occluders',
+    note: 'A depth stack of round shadows. Tiers nearer the wall are smaller, crisper and flutter faster; tiers up at the canopy are huge and melted. Opacity below 1 is what makes overlaps grade instead of separating.',
+    controls: [
+      { key: 'leafAmount', label: 'Amount',       min: 0,   max: 1,  def: 0,   poles: ['off', 'full'] },
+      { key: 'leafTiers',  label: 'Depth tiers',  min: 1,   max: 3,  def: 2,  step: 1 },
+      { key: 'leafDepth',  label: 'Depth spread', min: 0,   max: 1,  def: 0.62, poles: ['one plane', 'near + far'] },
+      { key: 'leafCount',  label: 'Count',        min: 0.4, max: 9,  def: 1.6, poles: ['a few huge', 'many small'] },
+      { key: 'leafSize',   label: 'Size',         min: 0.08, max: 0.85, def: 0.55 },
+      { key: 'leafSoft',   label: 'Penumbra',     min: 0.01, max: 1,  def: 0.34, poles: ['crisp', 'melted'] },
+      { key: 'leafOpacity',label: 'Opacity',      min: 0.05, max: 1,  def: 0.45, poles: ['translucent', 'solid'] },
+      { key: 'leafStretch',label: 'Elongation',   min: 0,   max: 1,  def: 0.2, poles: ['disc', 'blade'] },
+      { key: 'leafSway',   label: 'Sway',         min: 0,   max: 1,  def: 0.22 },
+      { key: 'leafVary',   label: 'Variation',    min: 0,   max: 1,  def: 0.6 },
+    ],
+  },
+  {
+    id: 'aperture', label: 'Aperture', tag: 'the window',
+    note: 'The opening the light arrives through. Its edge is geometric and nearly hard, which is exactly what makes the soft foliage inside it read as soft.',
+    controls: [
+      { key: 'apShape',    label: 'Shape', min: 0, max: 3, def: 0, step: 1,
+        options: ['none', 'rect', 'oval', 'arch'] },
+      { key: 'apW',        label: 'Width',        min: 0.04, max: 2.2, def: 0.5, poles: ['slit', 'wall'] },
+      { key: 'apH',        label: 'Height',       min: 0.04, max: 2.2, def: 0.62 },
+      { key: 'apX',        label: 'Offset X',     min: -1.6, max: 1.6, def: 0 },
+      { key: 'apY',        label: 'Offset Y',     min: -1.6, max: 1.6, def: 0 },
+      { key: 'apRot',      label: 'Rotation',     min: -0.7, max: 0.7, def: 0 },
+      { key: 'apRadius',   label: 'Corner',       min: 0,   max: 0.6, def: 0.02 },
+      { key: 'apSoft',     label: 'Edge penumbra',min: 0.002, max: 0.35, def: 0.02 },
+      { key: 'apBars',     label: 'Mullions',     min: 0,   max: 4,  def: 0, step: 1 },
+      { key: 'apBarW',     label: 'Mullion width',min: 0,   max: 0.1, def: 0.03 },
+      { key: 'apSpill',    label: 'Spill',        min: 0,   max: 1,  def: 0.1, poles: ['sealed', 'bounce'] },
+    ],
+  },
+  {
+    id: 'transport', label: 'B · Transport', tag: 'the optics',
+    note: 'E(x) = a(x−d) · 1/|det(I+∇d)| ∗ K(θ). Occlusion gives penumbra and pinhole sun-discs; refraction gives fold caustics. Brightness↔width coupling is not a parameter — it falls out of the determinant.',
+    open: true,
+    controls: [
+      { key: 'sunAngle',   label: 'Sun angle θ',  min: 0.002, max: 0.05, def: 0.014, poles: ['pinpoint', 'broad disc'] },
+      { key: 'sunTaps',    label: 'Disc taps',    min: 3,   max: 12, def: 8,  step: 1 },
+      { key: 'throwZ',     label: 'Throw / depth',min: 0.05, max: 1.4, def: 0.55 },
+      { key: 'ior',        label: 'Index η',      min: 1.0, max: 1.7, def: 1.33 },
+      { key: 'focusGain',  label: 'Focus gain',   min: 0,   max: 2.5, def: 0.95 },
+      { key: 'foldClamp',  label: 'Fold clamp',   min: 0.02, max: 1, def: 0.3, poles: ['razor', 'soft'] },
+      { key: 'dispersion', label: 'Dispersion',   min: 0,   max: 1,  def: 0.22, poles: ['achromatic', 'prism'] },
+      { key: 'exposure',   label: 'Exposure',     min: 0,   max: 4,  def: 2.1 },
+    ],
+  },
+  {
+    id: 'receiver', label: 'Receiver', tag: 'wall / bed',
+    note: 'A static substrate under moving light. The blue sky-fill in shadow is what makes it read as sunlight rather than a glow effect.',
+    controls: [
+      { key: 'substrate',  label: 'Substrate',    min: 0,   max: 1,  def: 0,   poles: ['plaster', 'sand'] },
+      { key: 'subScale',   label: 'Grain scale',  min: 0.3, max: 3,  def: 1.0 },
+      { key: 'albedo',     label: 'Albedo',       min: 0.1, max: 1,  def: 0.82 },
+      { key: 'skyFill',    label: 'Sky fill',     min: 0,   max: 1,  def: 0.3, poles: ['black shadow', 'blue shadow'] },
+      { key: 'warmth',     label: 'Warmth',       min: 0,   max: 1,  def: 0.42 },
+      { key: 'tilt',       label: 'Perspective',  min: 0,   max: 1,  def: 0,   poles: ['flat on', 'grazing'] },
+      { key: 'fresnel',    label: 'Surface sheen',min: 0,   max: 1,  def: 0.16 },
+    ],
+  },
+  {
+    id: 'fold', label: 'C · Fold', tag: 'prism',
+    note: 'Folds the receiver coordinates before transport, so the optics run inside the mirrored world. Dispersion is three refractive indices, not a screen-space offset.',
+    controls: [
+      { key: 'foldType',   label: 'Fold', min: 0, max: 4, def: 0, step: 1,
+        options: ['none', 'mirror', 'rotate', 'droste', 'invert'] },
+      { key: 'foldBlend',  label: 'Fold amount',  min: 0,   max: 1,  def: 0 },
+      { key: 'segments',   label: 'Segments',     min: 2,   max: 24, def: 6 },
+      { key: 'spin',       label: 'Spin',         min: -1,  max: 1,  def: 0.12 },
+      { key: 'foldZoom',   label: 'Zoom',         min: 0.3, max: 2.4, def: 1.0 },
+      { key: 'foldOffX',   label: 'Centre X',     min: -1,  max: 1,  def: 0 },
+      { key: 'foldOffY',   label: 'Centre Y',     min: -1,  max: 1,  def: 0 },
+      { key: 'foldTwist',  label: 'Twist',        min: 0,   max: 1,  def: 0.4 },
+    ],
+  },
+  {
+    id: 'post', label: 'Post', tag: 'grade',
+    controls: [
+      { key: 'bloom',      label: 'Bloom',        min: 0,   max: 1.6, def: 0.5 },
+      { key: 'bloomThr',   label: 'Bloom thresh', min: 0.1, max: 2,  def: 1.0 },
+      { key: 'chroma',     label: 'Aberration',   min: 0,   max: 1,  def: 0.13 },
+      { key: 'grain',      label: 'Grain',        min: 0,   max: 1,  def: 0.32 },
+      { key: 'vignette',   label: 'Vignette',     min: 0,   max: 1,  def: 0.42 },
+      { key: 'contrast',   label: 'Contrast',     min: 0,   max: 1,  def: 0.5 },
+      { key: 'saturation', label: 'Saturation',   min: 0,   max: 1.6, def: 1.0 },
+    ],
+  },
+];
+
+// Master morph lives outside the groups.
+const MASTER = [
+  { key: 'medium', label: 'Medium', min: -1, max: 1, def: -1, poles: ['komorebi · occlude', 'water · refract'] },
+  { key: 'hybrid', label: 'Both',   min: 0,  max: 1, def: 0,  poles: ['crossfade', 'stacked'] },
+  { key: 'motion', label: 'Motion', min: 0,  max: 1.5, def: 0.34, poles: ['still', 'restless'] },
+  { key: 'react',  label: 'Audio intensity', min: 0, max: 2, def: 0.55, poles: ['inert', 'violent'] },
+];
+
+const CONTROLS = {};
+for (const c of MASTER) CONTROLS[c.key] = c;
+for (const g of GROUPS) for (const c of g.controls) CONTROLS[c.key] = c;
+
+const base = {};   // user/preset value
+for (const k in CONTROLS) base[k] = CONTROLS[k].def;
+
+/* ───────────────────────── audio buses ────────────────────────────── */
+const BUSES = ['bass', 'mid', 'high', 'level', 'impact', 'space', 'echo', 'texture'];
+const bus = {}; for (const b of BUSES) bus[b] = 0;
+
+// Fixed, physically-motivated routing. Amounts are in fractions of each
+// control's full range, so a route reads the same for any param.
+const ROUTES = [
+  { bus: 'bass',    target: 'swell',      amt: 0.34, label: 'low end → swell' },
+  { bus: 'bass',    target: 'throwZ',     amt: 0.16, label: 'low end → depth' },
+  { bus: 'mid',     target: 'coverage',   amt: -0.24, label: 'mids → canopy opens' },
+  { bus: 'mid',     target: 'focusGain',  amt: 0.22, label: 'mids → focus' },
+  { bus: 'high',    target: 'flutter',    amt: 0.40, label: 'highs → flutter' },
+  { bus: 'high',    target: 'capillary',  amt: 0.42, label: 'highs → capillary' },
+  { bus: 'level',   target: 'drift',      amt: 0.26, label: 'level → wind' },
+  { bus: 'level',   target: 'churn',      amt: 0.22, label: 'level → churn' },
+  { bus: 'level',   target: 'leafSway',   amt: 0.30, label: 'level → leaf sway' },
+  { bus: 'impact',  target: 'exposure',   amt: 0.20, label: 'impact → exposure' },
+  { bus: 'impact',  target: 'focusGain',  amt: 0.26, label: 'impact → focus' },
+  { bus: 'space',   target: 'sunAngle',   amt: 0.34, label: 'reverb → softness' },
+  { bus: 'space',   target: 'leafSoft',   amt: 0.22, label: 'reverb → leaf penumbra' },
+  { bus: 'space',   target: 'skyFill',    amt: 0.18, label: 'reverb → sky fill' },
+  { bus: 'echo',    target: 'segments',   amt: 0.30, label: 'delay → segments' },
+  { bus: 'echo',    target: 'foldBlend',  amt: 0.26, label: 'delay → fold' },
+  { bus: 'texture', target: 'grain',      amt: 0.30, label: 'earth → grain' },
+  { bus: 'texture', target: 'dispersion', amt: 0.24, label: 'spread → prism' },
+];
+let reactAmount = 1.0;
+
+const eff = {};    // base + modulation, what actually reaches the GPU
+
+function applyModulation() {
+  for (const k in base) eff[k] = base[k];
+  reactAmount = base.react;
+  if (reactAmount > 0.001) {
+    for (const r of ROUTES) {
+      const c = CONTROLS[r.target];
+      if (!c) continue;
+      eff[r.target] += (c.max - c.min) * r.amt * bus[r.bus] * reactAmount;
+    }
+  }
+  for (const k in eff) eff[k] = clamp(eff[k], CONTROLS[k].min, CONTROLS[k].max);
+}
+
+/* ───────────────────────── impulses (note triggers) ───────────────── */
+// A note drops a radial wave packet into the *field*, not into the image,
+// so it propagates through transport correctly at both poles.
+const MAX_IMP = 8;
+const impulses = [];
+
+function dropImpulse({ x, y, strength = 1, speed = 0.55, freq = 26, decay = 1.1, tight = 5 } = {}) {
+  impulses.push({ x, y, t0: clock, strength, speed, freq, decay, tight });
+  while (impulses.length > MAX_IMP) impulses.shift();
+  bus.impact = clamp(bus.impact + strength * 0.55, 0, 1);
+}
+
+function note({ pitch = 60, velocity = 0.8, engine = 'synth' } = {}) {
+  const a = ((pitch % 12) / 12) * TAU + (Math.floor(pitch / 12) % 3) * 0.4;
+  const rad = 0.16 + clamp((pitch - 36) / 52, 0, 1) * 0.62;
+  const prof = {
+    drums:    { speed: 0.95, freq: 34, decay: 2.2, tight: 9 },
+    synth:    { speed: 0.55, freq: 26, decay: 1.2, tight: 5 },
+    lead:     { speed: 0.7,  freq: 30, decay: 1.5, tight: 6.5 },
+    pad:      { speed: 0.26, freq: 14, decay: 0.5, tight: 1.8 },
+    granular: { speed: 0.8,  freq: 44, decay: 2.6, tight: 12 },
+  }[engine] || { speed: 0.55, freq: 26, decay: 1.2, tight: 5 };
+  dropImpulse({ x: Math.cos(a) * rad, y: Math.sin(a) * rad, strength: 0.12 + velocity * 0.5, ...prof });
+}
+
+/* ───────────────────────── shaders ────────────────────────────────── */
+const VERT = `#version 300 es
+in vec2 a_pos; out vec2 v_uv;
+void main(){ v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+const COMMON = `#version 300 es
+precision highp float;
+in vec2 v_uv; out vec4 outColor;
+uniform vec2 u_res;
+uniform float u_time;
+`;
+
+const NOISE = `
+float hash13(vec3 p3){
+  p3 = fract(p3 * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float hash12(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+// 3D value noise with analytic derivative -> (value, d/dx, d/dy, d/dz)
+vec4 vnoise(vec3 x){
+  vec3 i = floor(x), f = fract(x);
+  vec3 u = f*f*f*(f*(f*6.0-15.0)+10.0);
+  vec3 du = 30.0*f*f*(f*(f-2.0)+1.0);
+  float va = hash13(i+vec3(0,0,0)), vb = hash13(i+vec3(1,0,0));
+  float vc = hash13(i+vec3(0,1,0)), vd = hash13(i+vec3(1,1,0));
+  float ve = hash13(i+vec3(0,0,1)), vf = hash13(i+vec3(1,0,1));
+  float vg = hash13(i+vec3(0,1,1)), vh = hash13(i+vec3(1,1,1));
+  float k0 = va, k1 = vb-va, k2 = vc-va, k3 = ve-va;
+  float k4 = va-vb-vc+vd, k5 = va-vc-ve+vg, k6 = va-vb-ve+vf;
+  float k7 = -va+vb+vc-vd+ve-vf-vg+vh;
+  float v = k0 + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z;
+  vec3 g = du * vec3(
+    k1 + k4*u.y + k6*u.z + k7*u.y*u.z,
+    k2 + k5*u.z + k4*u.x + k7*u.z*u.x,
+    k3 + k6*u.x + k5*u.y + k7*u.x*u.y);
+  return vec4(v, g);
+}
+mat2 rot(float a){ float s = sin(a), c = cos(a); return mat2(c,-s,s,c); }
+`;
+
+/* ── pass 1: field + transport → HDR ── */
+const SCENE_FS = COMMON + `
+uniform float u_medium, u_hybrid;
+uniform float u_fieldScale, u_octaves, u_churn, u_drift, u_hierarchy, u_flutter;
+uniform float u_aniso, u_direction, u_dirSpread, u_coverage, u_layers, u_parallax;
+uniform float u_swell, u_capillary;
+uniform float u_sunAngle, u_sunTaps, u_throwZ, u_ior, u_focusGain, u_foldClamp;
+uniform float u_dispersion, u_exposure;
+uniform float u_substrate, u_subScale, u_albedo, u_skyFill, u_warmth, u_tilt, u_fresnel;
+uniform float u_leafAmount, u_leafCount, u_leafSize, u_leafSoft, u_leafSway, u_leafVary;
+uniform float u_leafTiers, u_leafOpacity, u_leafDepth, u_leafStretch;
+uniform float u_apShape, u_apW, u_apH, u_apX, u_apY, u_apRot, u_apRadius, u_apSoft;
+uniform float u_apBars, u_apBarW, u_apSpill;
+uniform float u_foldType, u_foldBlend, u_segments, u_foldPhase, u_foldZoom;
+uniform float u_foldOffX, u_foldOffY, u_foldTwist;
+uniform vec4 u_imp[8];    // x, y, birth, strength
+uniform vec4 u_impM[8];   // speed, freq, decay, tightness
+uniform int u_impCount;
+` + NOISE + `
+const float PI = 3.141592653589793;
+const float TAU = 6.283185307179586;
+
+/* ── Module A · field ───────────────────────────────────────────────
+   Returns (h, dh/dx, dh/dy). Time is the 3rd noise axis, not an
+   advection, so level sets change topology on their own.             */
+vec3 fieldAt(vec2 p, float seed, float scaleMul, float rateMul){
+  float t = u_time;
+  float h = 0.0; vec2 g = vec2(0.0);
+  vec2 warp = vec2(0.0);
+  float amp = 1.0, freq = 1.0, norm = 0.0;
+  int oct = int(u_octaves + 0.5);
+  for (int i = 0; i < 4; ++i){
+    if (i >= oct) break;
+    float fi = float(i);
+    float ang = u_direction + fi * u_dirSpread;
+    float sx = 1.0 + u_aniso * 3.2;
+    mat2 M = mat2(1.0/sx, 0.0, 0.0, sx) * rot(ang) * (u_fieldScale * scaleMul * freq);
+    vec2 adv = vec2(cos(ang), sin(ang)) * (u_drift * t * (0.3 + fi * 0.22));
+    vec2 q = M * p + warp * (u_hierarchy * 0.85) + adv;
+    float zt = t * (u_churn * rateMul * (0.3 + fi * 0.5) + 0.02)
+             + u_flutter * fi * t * 0.85 + seed * 7.31 + fi * 13.7;
+    vec4 n = vnoise(vec3(q, zt));
+    h += amp * (n.x * 2.0 - 1.0);
+    g += amp * (transpose(M) * n.yz) * 2.0;
+    warp = (n.yz * 2.0) * 0.9;          // each octave is dragged by the one above
+    norm += amp;
+    amp *= 0.58; freq *= 2.13;
+  }
+  // fbm of uniform noise lands near 0.5 with a narrow spread; widen it so the
+  // coverage threshold sweeps a useful range instead of clipping at both ends
+  h *= 1.85 / norm; g *= 1.85 / norm;
+
+  // coherent directional wave trains (interference is what makes caustics read)
+  if (u_swell > 0.001){
+    for (int k = 0; k < 2; ++k){
+      float a = u_direction + float(k) * 1.93 + 0.4;
+      vec2 d = vec2(cos(a), sin(a));
+      float w = u_fieldScale * scaleMul * (0.5 + float(k) * 0.37);
+      float sp = 0.5 + float(k) * 0.33;
+      float ph = dot(p, d) * w - t * sp;
+      h += u_swell * 0.5 * sin(ph);
+      g += u_swell * 0.5 * cos(ph) * d * w;
+    }
+  }
+
+  // capillary shimmer
+  if (u_capillary > 0.001){
+    float w = u_fieldScale * scaleMul * 8.5;
+    vec4 n = vnoise(vec3(p * w, t * 2.3 + seed));
+    h += u_capillary * 0.075 * (n.x * 2.0 - 1.0);
+    g += u_capillary * 0.075 * n.yz * 2.0 * w;
+  }
+
+  // note impulses: radial wave packets injected into the field itself
+  for (int k = 0; k < 8; ++k){
+    if (k >= u_impCount) break;
+    vec4 im = u_imp[k]; vec4 mm = u_impM[k];
+    float age = u_time - im.z;
+    if (age < 0.0 || age > 9.0) continue;
+    vec2 dv = p - im.xy;
+    float r = length(dv) + 1e-4;
+    float dr = r - age * mm.x;
+    // (1 - exp) attack, otherwise the packet pops into existence at full amplitude
+    float env = im.w * (1.0 - exp(-age * 7.0)) * exp(-age * mm.z) * exp(-dr * dr * mm.w);
+    float ph = dr * mm.y;
+    h += env * sin(ph);
+    float dhdr = env * (cos(ph) * mm.y - 2.0 * dr * mm.w * sin(ph));
+    g += dhdr * (dv / r);
+  }
+  return vec3(h, g);
+}
+
+/* ── Module B · transport, occluding half ───────────────────────────
+   Each depth layer is a hard mask convolved with the solar disc at
+   radius theta*z. That convolution *is* why a small gap projects a
+   round image of the Sun, and why far foliage is softer than near.  */
+vec2 discTap(int k, int n, float rotJ){
+  float fk = (float(k) + 0.5) / float(n);
+  float r = sqrt(fk);
+  float a = float(k) * 2.39996323 + rotJ;
+  return vec2(cos(a), sin(a)) * r;
+}
+
+float layerTransmission(int i, vec2 p, float rotJ){
+  float fi = float(i);
+  float denom = max(1.0, u_layers - 1.0);
+  float zn = fi / denom;
+  float z = mix(0.34, 1.0, zn);                    // distance to receiver
+  float sm = mix(1.35, 0.66, zn);                  // far foliage projects bigger
+  vec2 off = vec2(cos(u_direction + fi), sin(u_direction + fi)) * (u_parallax * z * 0.35);
+  // radius is relative to feature size, so changing Scale doesn't destroy the look
+  float r = u_sunAngle * z * u_throwZ * 40.0 / max(0.5, u_fieldScale);
+  int n = int(u_sunTaps + 0.5);
+  float acc = 0.0;
+  for (int k = 0; k < 12; ++k){
+    if (k >= n) break;
+    vec2 s = p + off + discTap(k, n, rotJ) * r;
+    vec3 f = fieldAt(s, fi * 3.77, sm, 1.0);
+    float hm = f.x * 0.5 + 0.5;
+    float aa = 0.35 * length(f.yz) * (r / max(float(n), 3.0)) + 0.006;
+    acc += smoothstep(u_coverage - aa, u_coverage + aa, hm);
+  }
+  return acc / float(n);
+}
+
+float transmission(vec2 p, float rotJ){
+  if (u_coverage < 0.02) return 1.0;   // canopy off; leaves/aperture carry the image
+  float T = 1.0;
+  int L = int(u_layers + 0.5);
+  for (int i = 0; i < 3; ++i){
+    if (i >= L) break;
+    // deeper layers thin out, otherwise a 3-layer stack goes almost black
+    float op = 0.94 - float(i) * 0.14;
+    T *= mix(1.0, layerTransmission(i, p, rotJ), op);
+  }
+  return T;
+}
+
+/* ── discrete leaf discs ────────────────────────────────────────────
+   For an analytic occluder the solar-disc convolution collapses into a
+   smoothstep of width theta*z on its SDF, so a stack of very soft, very
+   large round shadows costs 9 taps per tier instead of taps*octaves.
+   Opacity below 1 is what lets overlaps grade into each other rather
+   than reading as separate cut-outs.                                  */
+float leafTier(vec2 p, float cells, float size, float soft, float op, float sway, float seed){
+  vec2 g = p * cells;
+  vec2 id = floor(g);
+  float t = 1.0;
+  for (int j = -1; j <= 1; ++j){
+    for (int i = -1; i <= 1; ++i){
+      vec2 c = id + vec2(float(i), float(j));
+      float h1 = hash13(vec3(c, seed + 1.7));
+      float h2 = hash13(vec3(c, seed + 5.3));
+      float h3 = hash13(vec3(c, seed + 9.1));
+      vec2 ctr = c + 0.5 + (vec2(h1, h2) - 0.5) * (0.95 * u_leafVary);
+      float ph = (h1 + h2) * TAU + u_time * (0.16 + h3 * 0.26) * sway;
+      ctr += vec2(cos(ph), sin(ph * 1.27)) * (0.26 * sway);
+      vec2 q = g - ctr;
+      if (u_leafStretch > 0.001){
+        q = rot(h3 * TAU) * q;
+        q.x /= 1.0 + u_leafStretch * 2.2;
+      }
+      float rad = size * (0.62 + h3 * 0.85 * u_leafVary);
+      float d = length(q) - rad;
+      float sf = max(0.012, soft * (0.35 + h1 * 1.1));
+      t *= mix(1.0, smoothstep(-sf, sf, d), op);
+    }
+  }
+  return t;
+}
+
+float leaves(vec2 p){
+  if (u_leafAmount < 0.004) return 1.0;
+  float t = 1.0;
+  int tiers = int(u_leafTiers + 0.5);
+  float denom = max(1.0, float(tiers) - 1.0);
+  for (int i = 0; i < 3; ++i){
+    if (i >= tiers) break;
+    float d = float(i) / denom;              // 0 = up at the canopy, 1 = close to the wall
+    float k = u_leafDepth;
+    // opacity has to fall away fast with depth or the tiers average into flat grey
+    float cells = u_leafCount   * mix(1.0, 1.0 + 2.2 * k, d);
+    float size  = u_leafSize    * mix(1.0, 1.0 - 0.15 * k, d);
+    float soft  = u_leafSoft    * mix(1.0, 1.0 - 0.85 * k, d);
+    float op    = u_leafOpacity * mix(1.0, 1.0 - 0.88 * k, d);
+    float sway  = u_leafSway    * mix(1.0, 1.0 + 2.2 * k, d);
+    t *= leafTier(p, cells, size, soft, op, sway, float(i) * 31.7);
+  }
+  return mix(1.0, t, u_leafAmount);
+}
+
+/* ── aperture · the window the light arrives through ──────────────── */
+float sdRoundBox(vec2 p, vec2 b, float r){
+  vec2 d = abs(p) - b + r;
+  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
+}
+
+float aperture(vec2 p){
+  int s = int(u_apShape + 0.5);
+  if (s == 0) return 1.0;
+  vec2 b = vec2(u_apW, u_apH);
+  vec2 q = rot(-u_apRot) * (p - vec2(u_apX, u_apY));
+  float rad = min(u_apRadius, min(b.x, b.y) * 0.98);
+  float d;
+  if (s == 2){
+    float m = min(b.x, b.y);
+    d = length(q / b) * m - m;
+  } else if (s == 3){
+    float box = sdRoundBox(q + vec2(0.0, b.y * 0.5), vec2(b.x, b.y * 0.5), rad * 0.5);
+    float dome = length(vec2(q.x, max(0.0, q.y))) - b.x;
+    d = min(box, dome);
+  } else {
+    d = sdRoundBox(q, b, rad);
+  }
+  float m = 1.0 - smoothstep(-u_apSoft, u_apSoft, d);
+  int bars = int(u_apBars + 0.5);
+  if (bars > 0 && u_apBarW > 0.001){
+    float w = u_apBarW * 0.5;
+    float fade = u_apSoft * 0.7 + 0.004;
+    float sx = (2.0 * b.x) / float(bars + 1);
+    float sy = (2.0 * b.y) / float(bars + 1);
+    for (int i = 1; i <= 4; ++i){
+      if (i > bars) break;
+      m *= smoothstep(w, w + fade, abs(q.x - (-b.x + sx * float(i))));
+      m *= smoothstep(w, w + fade, abs(q.y - (-b.y + sy * float(i))));
+    }
+  }
+  return clamp(m + (1.0 - m) * u_apSpill * 0.4, 0.0, 1.0);
+}
+
+/* ── Module B · transport, refracting half ──────────────────────────
+   gain = 1/|det(I + grad d)|. Folds of the deflection map are the
+   caustic filaments; cusps, Y-junctions and reconnections are free,
+   and brightness is coupled to width because it is the same term.   */
+vec2 deflectAt(vec2 p, float ior){
+  vec3 f = fieldAt(p, 101.0, 1.0, 1.0);
+  // 1/scale^2 keeps grad(d) near unity as field scale changes, so the
+  // determinant keeps crossing zero instead of exploding into noise
+  float k = (u_throwZ * 0.6) * (1.0 - 1.0 / ior) * 3.0 / max(0.4, u_fieldScale * u_fieldScale);
+  return f.yz * k;
+}
+
+float caustic(vec2 p, float e, float ior, out vec2 d0){
+  d0 = deflectAt(p, ior);
+  vec2 dx = deflectAt(p + vec2(e, 0.0), ior);
+  vec2 dy = deflectAt(p + vec2(0.0, e), ior);
+  vec2 cx = (dx - d0) / e;
+  vec2 cy = (dy - d0) / e;
+  mat2 J = mat2(1.0 + cx.x, cx.y, cy.x, 1.0 + cy.y);
+  // a finite Sun cannot make an infinitely sharp caustic
+  float fl = 0.015 + u_sunAngle * 9.0 + u_foldClamp * 0.55;
+  return u_focusGain / max(abs(determinant(J)), fl);
+}
+
+/* ── Module C · fold ────────────────────────────────────────────────
+   Applied to receiver coordinates *before* transport.                */
+vec2 foldUV(vec2 uv){
+  int type = int(u_foldType + 0.5);
+  if (type == 0 || u_foldBlend < 0.001) return uv;
+  vec2 c = uv * u_foldZoom - vec2(u_foldOffX, u_foldOffY);
+  vec2 res = c;
+  float r = length(c);
+  float a = atan(c.y, c.x);
+  float seg = TAU / max(2.0, u_segments);
+  if (type == 1){
+    float b = mod(a + u_foldPhase, seg);
+    b = abs(b - seg * 0.5);
+    res = vec2(cos(b), sin(b)) * r;
+  } else if (type == 2){
+    float b = mod(a + u_foldPhase, seg) - seg * 0.5;
+    res = vec2(cos(b), sin(b)) * r;
+  } else if (type == 3){
+    float lr = log(max(r, 1e-4));
+    float na = a + lr * (u_foldTwist * 0.9) + u_foldPhase;
+    float nr = exp(fract(lr * (0.18 + u_segments * 0.06)) * 1.1) * 0.55;
+    res = vec2(cos(na), sin(na)) * nr;
+  } else {
+    float r2 = max(dot(c, c), 0.06);
+    res = rot(u_foldPhase * 0.5) * (c / r2) * (0.3 + 0.7 * u_foldTwist);
+  }
+  return mix(uv, res, u_foldBlend);
+}
+
+/* ── receiver plane ─────────────────────────────────────────────── */
+vec2 receiver(vec2 uv){
+  if (u_tilt < 0.001) return uv;
+  float hy = 1.24;
+  float d = max(0.07, hy - uv.y * mix(0.0, 1.0, u_tilt));
+  vec2 w = vec2(uv.x / d, (1.0 / d) * 0.9 - 0.72);
+  return mix(uv, w, u_tilt);
+}
+
+vec3 substrate(vec2 p){
+  float s = u_subScale;
+  float a = vnoise(vec3(p * s * 2.4, 11.0)).x;
+  float b = vnoise(vec3(p * s * 11.0, 3.0)).x;
+  float c = vnoise(vec3(p * s * 28.0, 7.0)).x;
+  vec3 plaster = mix(vec3(0.92, 0.90, 0.87), vec3(0.68, 0.65, 0.62),
+                     clamp(a * 0.42 + b * 0.24 + c * 0.10, 0.0, 1.0));
+  float rg = 1.0 - abs(2.0 * vnoise(vec3(p * s * 7.0, 21.0)).x - 1.0);
+  float peb = smoothstep(0.72, 0.98, rg);
+  vec3 sand = mix(vec3(0.80, 0.72, 0.58), vec3(0.55, 0.49, 0.41), b * 0.7 + c * 0.4);
+  sand = mix(sand, vec3(0.44, 0.42, 0.40), peb * 0.55);
+  return mix(plaster, sand, u_substrate) * u_albedo;
+}
+
+void main(){
+  vec2 uv = (v_uv * 2.0 - 1.0);
+  uv.x *= u_res.x / u_res.y;
+
+  vec2 fp = foldUV(uv);
+  vec2 p  = receiver(fp);
+
+  // world-space epsilon, so caustics stay sharp under perspective/fold
+  vec2 px = vec2(2.0 / u_res.y);
+  float e = max(length(receiver(foldUV(uv + vec2(px.x, 0.0))) - p), 1e-4);
+
+  float wOcc = mix(0.5 - 0.5 * u_medium, 1.0, u_hybrid);
+  float wRef = mix(0.5 + 0.5 * u_medium, 1.0, u_hybrid);
+
+  // stable per-pixel dither for the disc taps; a time-varying one shimmers
+  float rotJ = fract(dot(gl_FragCoord.xy, vec2(0.7548776662, 0.5698402909))) * TAU;
+
+  float T = 1.0;
+  if (wOcc > 0.004) T = mix(1.0, transmission(p, rotJ) * leaves(p), wOcc);
+
+  vec3 gain = vec3(1.0);
+  vec2 d0 = vec2(0.0);
+  if (wRef > 0.004){
+    if (u_dispersion > 0.01){
+      float s = u_dispersion * 0.05;
+      vec2 dr, dg, db;
+      float cr = caustic(p, e, u_ior * (1.0 - s), dr);
+      float cg = caustic(p, e, u_ior, dg);
+      float cb = caustic(p, e, u_ior * (1.0 + s), db);
+      gain = mix(vec3(1.0), vec3(cr, cg, cb), wRef);
+      d0 = dg;
+    } else {
+      float c = caustic(p, e, u_ior, d0);
+      gain = mix(vec3(1.0), vec3(c), wRef);
+    }
+  }
+
+  vec3 sunCol = mix(vec3(1.0, 0.965, 0.92), vec3(1.0, 0.86, 0.68), u_warmth);
+  // outdoors the fill is blue sky; indoors it is warm bounce off the room
+  vec3 skyCol = mix(vec3(0.42, 0.55, 0.85), vec3(0.74, 0.68, 0.62), u_warmth);
+
+  // exposure is applied at composite time; here 1.0 means "full unoccluded sun",
+  // which is what makes the bloom threshold mean something physical
+  vec3 irradiance = sunCol * (T * aperture(p)) * gain + skyCol * (u_skyFill * 0.9);
+
+  // the bottom is seen *through* the moving surface
+  vec3 bed = substrate(p + d0 * 0.55 * wRef);
+  vec3 col = bed * irradiance;
+
+  // grazing-angle surface sheen (Fresnel), water side only
+  if (u_fresnel > 0.001 && wRef > 0.004){
+    vec3 f = fieldAt(p, 101.0, 1.0, 1.0);
+    float slope = clamp(length(f.yz) * 0.35, 0.0, 1.0);
+    float fres = pow(1.0 - clamp(1.0 - u_tilt * 0.8, 0.05, 1.0), 3.0) + slope * 0.35;
+    col += skyCol * fres * u_fresnel * wRef * (0.4 + 0.6 * slope);
+  }
+
+  outColor = vec4(max(col, 0.0), 1.0);
+}`;
+
+const BRIGHT_FS = COMMON + `
+uniform sampler2D u_src; uniform float u_thr;
+void main(){
+  vec3 c = texture(u_src, v_uv).rgb;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  outColor = vec4(c * smoothstep(u_thr, u_thr * 2.0, l), 1.0);
+}`;
+
+const BLUR_FS = COMMON + `
+uniform sampler2D u_src; uniform vec2 u_dir;
+void main(){
+  vec2 t = u_dir / u_res;
+  vec3 s = texture(u_src, v_uv).rgb * 0.1964;
+  s += (texture(u_src, v_uv + t * 1.4117).rgb + texture(u_src, v_uv - t * 1.4117).rgb) * 0.2969;
+  s += (texture(u_src, v_uv + t * 3.2941).rgb + texture(u_src, v_uv - t * 3.2941).rgb) * 0.0944;
+  s += (texture(u_src, v_uv + t * 5.1764).rgb + texture(u_src, v_uv - t * 5.1764).rgb) * 0.0103;
+  outColor = vec4(s, 1.0);
+}`;
+
+const COMPOSITE_FS = COMMON + `
+uniform sampler2D u_scene; uniform sampler2D u_bloom;
+uniform float u_bloom_amt, u_grain, u_vignette, u_contrast, u_saturation, u_chroma, u_seed, u_exposure;
+` + NOISE + `
+vec3 aces(vec3 x){
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+void main(){
+  vec2 uv = v_uv;
+  vec2 c = uv - 0.5;
+  float r2 = dot(c, c);
+  vec2 ca = c * r2 * u_chroma * 0.06;
+  vec3 s = vec3(
+    texture(u_scene, uv + ca).r,
+    texture(u_scene, uv).g,
+    texture(u_scene, uv - ca).b);
+  s += texture(u_bloom, uv).rgb * u_bloom_amt;
+  s *= u_exposure;
+
+  vec3 col = aces(s);
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(vec3(l), col, u_saturation);
+  col = mix(col, clamp((col - 0.5) * 1.5 + 0.5, 0.0, 1.0), u_contrast * 0.6);
+  col *= 1.0 - smoothstep(0.24, 0.92, r2 * 1.7) * u_vignette;
+  float g = hash12(gl_FragCoord.xy + u_seed) - 0.5;
+  col += g * u_grain * 0.085;
+  outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+/* ───────────────────────── gl plumbing ────────────────────────────── */
+const canvas = document.getElementById('gl');
+const errBox = document.getElementById('err');
+function fail(msg) {
+  errBox.style.display = 'block';
+  errBox.textContent = String(msg);
+  console.error(msg);
+}
+
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+if (!gl) fail('WebGL2 unavailable — this prototype needs WebGL2.');
+
+const floatOK = gl && !!gl.getExtension('EXT_color_buffer_float');
+gl && gl.getExtension('OES_texture_float_linear');
+const HDR_FMT = floatOK ? gl.RGBA16F : gl.RGBA8;
+const HDR_TYPE = floatOK ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    fail('Shader compile failed:\n' + log);
+    throw new Error(log);
+  }
+  return s;
+}
+function program(fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'a_pos');
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    const log = gl.getProgramInfoLog(p);
+    fail('Link failed:\n' + log);
+    throw new Error(log);
+  }
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) {
+    const info = gl.getActiveUniform(p, i);
+    const name = info.name.replace(/\[0\]$/, '');
+    u[name] = gl.getUniformLocation(p, info.name);
+  }
+  return { p, u };
+}
+
+let progScene, progBright, progBlur, progComp, vao;
+try {
+  progScene = program(SCENE_FS);
+  progBright = program(BRIGHT_FS);
+  progBlur = program(BLUR_FS);
+  progComp = program(COMPOSITE_FS);
+
+  vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const vb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+} catch (e) { /* surfaced by fail() */ }
+
+function makeTarget(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, HDR_FMT, w, h, 0, gl.RGBA, HDR_TYPE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fbo, w, h };
+}
+
+let sceneRT = null, bloomA = null, bloomB = null;
+let renderScale = 0.85, viewW = 1, viewH = 1;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.max(1, canvas.clientWidth);
+  const cssH = Math.max(1, canvas.clientHeight);
+  const w = Math.max(2, Math.round(cssW * dpr * renderScale));
+  const h = Math.max(2, Math.round(cssH * dpr * renderScale));
+  if (w === viewW && h === viewH && sceneRT) return;
+  viewW = w; viewH = h;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  for (const t of [sceneRT, bloomA, bloomB]) {
+    if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+  }
+  sceneRT = makeTarget(w, h);
+  const bw = Math.max(2, w >> 1), bh = Math.max(2, h >> 1);
+  bloomA = makeTarget(bw, bh);
+  bloomB = makeTarget(bw, bh);
+  document.getElementById('resl').textContent = `${w}×${h}`;
+  document.getElementById('scl').textContent = renderScale.toFixed(2);
+}
+new ResizeObserver(() => resize()).observe(canvas);
+
+function draw(target, prog, setup) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+  const w = target ? target.w : canvas.width;
+  const h = target ? target.h : canvas.height;
+  gl.viewport(0, 0, w, h);
+  gl.useProgram(prog.p);
+  if (prog.u.u_res) gl.uniform2f(prog.u.u_res, w, h);
+  if (prog.u.u_time) gl.uniform1f(prog.u.u_time, clock);
+  setup && setup(prog.u);
+  gl.bindVertexArray(vao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+/* ───────────────────────── frame loop ─────────────────────────────── */
+let clock = 0, wallClock = 0, last = performance.now(), fpsAvg = 60, frames = 0, fpsClock = 0;
+let foldPhase = 0, foldVel = 0;
+const impBuf = new Float32Array(MAX_IMP * 4);
+const impMBuf = new Float32Array(MAX_IMP * 4);
+let running = true;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!running || !sceneRT) return;
+  // one global rate for every animated term, so ambient can be genuinely slow
+  const mdt = dt * base.motion;
+  clock += mdt;
+  wallClock += dt;
+
+  frames++; fpsClock += dt;
+  if (fpsClock > 0.4) {
+    fpsAvg = frames / fpsClock;
+    frames = 0; fpsClock = 0;
+    document.getElementById('fps').textContent = fpsAvg.toFixed(0);
+    autoQuality();
+  }
+
+  driver(dt);
+  applyModulation();
+  refreshModHints();
+
+  // spin with inertia so the fold lags the beat instead of locking to it
+  foldVel += (eff.spin * 1.6 - foldVel) * (1 - Math.exp(-dt * 2.4));
+  foldPhase += foldVel * mdt;
+
+  while (impulses.length && clock - impulses[0].t0 > 9) impulses.shift();
+  impBuf.fill(0); impMBuf.fill(0);
+  for (let i = 0; i < impulses.length; i++) {
+    const im = impulses[i];
+    impBuf.set([im.x, im.y, im.t0, im.strength], i * 4);
+    impMBuf.set([im.speed, im.freq, im.decay, im.tight], i * 4);
+  }
+
+  draw(sceneRT, progScene, (u) => {
+    for (const k in eff) { const loc = u['u_' + k]; if (loc) gl.uniform1f(loc, eff[k]); }
+    if (u.u_foldPhase) gl.uniform1f(u.u_foldPhase, foldPhase);
+    if (u.u_imp) gl.uniform4fv(u.u_imp, impBuf);
+    if (u.u_impM) gl.uniform4fv(u.u_impM, impMBuf);
+    if (u.u_impCount) gl.uniform1i(u.u_impCount, impulses.length);
+  });
+
+  if (eff.bloom > 0.005) {
+    draw(bloomA, progBright, (u) => {
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, sceneRT.tex);
+      gl.uniform1i(u.u_src, 0); gl.uniform1f(u.u_thr, eff.bloomThr);
+    });
+    draw(bloomB, progBlur, (u) => {
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+      gl.uniform1i(u.u_src, 0); gl.uniform2f(u.u_dir, 1, 0);
+    });
+    draw(bloomA, progBlur, (u) => {
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bloomB.tex);
+      gl.uniform1i(u.u_src, 0); gl.uniform2f(u.u_dir, 0, 1);
+    });
+  } else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fbo);
+    gl.viewport(0, 0, bloomA.w, bloomA.h);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  draw(null, progComp, (u) => {
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, sceneRT.tex);
+    gl.uniform1i(u.u_scene, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+    gl.uniform1i(u.u_bloom, 1);
+    gl.uniform1f(u.u_bloom_amt, eff.bloom);
+    gl.uniform1f(u.u_grain, eff.grain);
+    gl.uniform1f(u.u_vignette, eff.vignette);
+    gl.uniform1f(u.u_contrast, eff.contrast);
+    gl.uniform1f(u.u_saturation, eff.saturation);
+    gl.uniform1f(u.u_chroma, eff.chroma);
+    gl.uniform1f(u.u_exposure, eff.exposure);
+    // grain must reshuffle in real time; on the motion-scaled clock it freezes and then pops
+    gl.uniform1f(u.u_seed, (wallClock * 61.7) % 1000);
+  });
+}
+
+let qualityCooldown = 0, lowStreak = 0, highStreak = 0;
+function autoQuality() {
+  // wide dead band + streaks: resizing changes the tap dither, so flapping reads as a jump
+  if (qualityCooldown > 0) {
+    qualityCooldown--;
+  } else {
+    if (fpsAvg < 46) { lowStreak++; highStreak = 0; }
+    else if (fpsAvg > 59) { highStreak++; lowStreak = 0; }
+    else { lowStreak = 0; highStreak = 0; }
+
+    if (lowStreak >= 2 && renderScale > 0.45) {
+      renderScale = Math.max(0.45, renderScale - 0.12);
+      qualityCooldown = 8; lowStreak = 0; viewW = -1; resize();
+    } else if (highStreak >= 8 && renderScale < 0.95) {
+      renderScale = Math.min(0.95, renderScale + 0.05);
+      qualityCooldown = 12; highStreak = 0; viewW = -1; resize();
+    }
+  }
+  const L = Math.round(eff.layers), n = Math.round(eff.sunTaps), o = Math.round(eff.octaves);
+  const wOcc = (0.5 - 0.5 * eff.medium) * (1 - eff.hybrid) + eff.hybrid;
+  const wRef = (0.5 + 0.5 * eff.medium) * (1 - eff.hybrid) + eff.hybrid;
+  const occ = wOcc > 0.004 && eff.coverage >= 0.02 ? L * n * o : 0;
+  const ref = wRef > 0.004 ? 3 * o * (eff.dispersion > 0.01 ? 3 : 1) : 0;
+  document.getElementById('taps').textContent = String(occ + ref);
+}
+
+/* ───────────────────────── audio drivers ──────────────────────────── */
+// 1. sim   — internal generative driver so the page is alive on load
+// 2. mic   — real spectrum via getUserMedia
+// 3. extern— Kessho engine pushes through window.KesshoTransport
+let mode = 'sim';
+let analyser = null, freqData = null, micStream = null;
+let simPhase = 0, nextNote = 0;
+
+function driver(dt) {
+  if (mode === 'mic' && analyser) {
+    analyser.getByteFrequencyData(freqData);
+    const n = freqData.length;
+    const band = (a, b) => {
+      let s = 0; const lo = Math.floor(n * a), hi = Math.floor(n * b);
+      for (let i = lo; i < hi; i++) s += freqData[i];
+      return (s / Math.max(1, hi - lo)) / 255;
+    };
+    const bs = band(0, 0.06), md = band(0.06, 0.3), hi = band(0.3, 0.8);
+    const smooth = (k, v, up, dn) => { bus[k] += (v - bus[k]) * (v > bus[k] ? up : dn); };
+    smooth('bass', bs, 0.4, 0.08); smooth('mid', md, 0.35, 0.07); smooth('high', hi, 0.5, 0.12);
+    smooth('level', (bs + md + hi) / 3, 0.3, 0.05);
+    smooth('space', md * 0.8, 0.05, 0.02); smooth('echo', hi * 0.6, 0.08, 0.02);
+    smooth('texture', hi * 0.7, 0.2, 0.04);
+    if (bs > 0.55 && bus.impact < 0.35 && base.react > 0.02) dropImpulse({
+      x: (Math.random() * 2 - 1) * 0.7, y: (Math.random() * 2 - 1) * 0.5,
+      strength: bs * 0.6 * Math.min(1, base.react), speed: 0.9, freq: 32, decay: 2.0, tight: 8,
+    });
+  } else if (mode === 'sim') {
+    simPhase += dt;
+    const s = (f, p) => 0.5 + 0.5 * Math.sin(simPhase * f + p);
+    const beat = (simPhase * 2.0) % 1;
+    bus.bass = clamp(Math.pow(1 - beat, 3) * 0.9 + s(0.21, 1.1) * 0.18, 0, 1);
+    bus.mid = clamp(s(0.37, 0.4) * 0.55 + s(1.31, 2.2) * 0.2, 0, 1);
+    bus.high = clamp(s(2.9, 0.8) * 0.3 + s(7.1, 1.7) * 0.22 + 0.1, 0, 1);
+    bus.level = clamp((bus.bass + bus.mid + bus.high) / 3, 0, 1);
+    bus.space = clamp(s(0.09, 2.4) * 0.8, 0, 1);
+    bus.echo = clamp(s(0.13, 0.9) * 0.7, 0, 1);
+    bus.texture = clamp(s(0.41, 3.1) * 0.6, 0, 1);
+    if (simPhase > nextNote) {
+      nextNote = simPhase + 0.35 + Math.random() * 1.5;
+      // audio intensity 0 must mean genuinely inert, including note impulses
+      if (base.react > 0.02) {
+        const engines = ['drums', 'synth', 'lead', 'pad', 'granular'];
+        note({
+          pitch: 36 + Math.floor(Math.random() * 48),
+          velocity: (0.35 + Math.random() * 0.6) * Math.min(1, base.react),
+          engine: engines[Math.floor(Math.random() * engines.length)],
+        });
+      }
+    }
+  }
+  bus.impact = Math.max(0, bus.impact - dt * 1.9);
+  paintMeters();
+}
+
+async function useMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(micStream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.6;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    src.connect(analyser);
+    mode = 'mic';
+    syncModeButtons();
+  } catch (e) {
+    fail('Microphone denied — staying on the simulated driver.');
+    setTimeout(() => { errBox.style.display = 'none'; }, 3500);
+  }
+}
+
+// Public driver API — this is the seam the Kessho engine plugs into.
+window.KesshoTransport = {
+  setBus(name, value) { if (name in bus) { bus[name] = clamp(value, 0, 1); mode = 'extern'; syncModeButtons(); } },
+  setBuses(obj) { for (const k in obj) if (k in bus) bus[k] = clamp(obj[k], 0, 1); mode = 'extern'; syncModeButtons(); },
+  note,
+  setParam(key, value) { if (key in base) { base[key] = clamp(value, CONTROLS[key].min, CONTROLS[key].max); syncInputs(); } },
+  preset(name) { const p = PRESETS.find(x => x.name === name); if (p) applyPreset(p); },
+  getState() { return { ...base }; },
+  buses: bus,
+};
+
+/* ───────────────────────── presets ────────────────────────────────── */
+const PRESETS = [
+  { name: 'window · near leaves', v: { medium: -1, hybrid: 0, motion: 0.26, react: 0.45,
+      coverage: 0, layers: 1, fieldScale: 4.0,
+      sunAngle: 0.014, sunTaps: 3, throwZ: 0.5, exposure: 2.8,
+      leafAmount: 1, leafTiers: 3, leafDepth: 0.7, leafCount: 1.25, leafSize: 0.5,
+      leafSoft: 0.26, leafOpacity: 0.9, leafStretch: 0.15, leafSway: 0.2, leafVary: 0.55,
+      apShape: 1, apW: 0.5, apH: 0.64, apX: 0.06, apY: 0.02, apRot: 0.04, apRadius: 0.02,
+      apSoft: 0.018, apBars: 0, apBarW: 0.03, apSpill: 0.12,
+      substrate: 0, subScale: 1.2, albedo: 0.92, skyFill: 0.5, warmth: 0.62, tilt: 0, fresnel: 0,
+      foldType: 0, foldBlend: 0, bloom: 0.18, bloomThr: 1.0, chroma: 0.03,
+      grain: 0.18, vignette: 0.16, contrast: 0.3, saturation: 0.3 } },
+
+  { name: 'shoji lattice', v: { medium: -1, hybrid: 0, motion: 0.3, react: 0.5,
+      coverage: 0.34, layers: 1, fieldScale: 7.0,
+      churn: 0.34, drift: 0.24, hierarchy: 0.5, flutter: 0.36, aniso: 0.2,
+      sunAngle: 0.012, sunTaps: 6, throwZ: 0.5, exposure: 2.5,
+      leafAmount: 0.85, leafTiers: 2, leafDepth: 0.7, leafCount: 2.0, leafSize: 0.4,
+      leafSoft: 0.22, leafOpacity: 0.6, leafStretch: 0.3, leafSway: 0.26, leafVary: 0.6,
+      apShape: 1, apW: 0.72, apH: 0.78, apX: 0, apY: 0, apRot: 0, apRadius: 0.01,
+      apSoft: 0.012, apBars: 3, apBarW: 0.035, apSpill: 0.08,
+      substrate: 0, subScale: 1.1, albedo: 0.9, skyFill: 0.6, warmth: 0.55,
+      bloom: 0.3, bloomThr: 1.0, grain: 0.2, vignette: 0.2, contrast: 0.2, saturation: 0.45 } },
+
+  { name: 'komorebi noon', v: { medium: -1, hybrid: 0, motion: 0.3, react: 0.5,
+      coverage: 0.6, fieldScale: 6.0, aniso: 0.28, dirSpread: 0.5,
+      churn: 0.3, drift: 0.22, hierarchy: 0.6, flutter: 0.3, layers: 2, parallax: 0.5, swell: 0, capillary: 0.18,
+      sunAngle: 0.014, sunTaps: 8, throwZ: 0.55, focusGain: 0.9, dispersion: 0.1, exposure: 2.6,
+      substrate: 0, subScale: 1.0, albedo: 0.86, skyFill: 0.34, warmth: 0.36, tilt: 0, fresnel: 0,
+      foldType: 0, foldBlend: 0, bloom: 0.42, bloomThr: 0.9, grain: 0.3, vignette: 0.4, contrast: 0.5, saturation: 0.95 } },
+
+  { name: 'komorebi wind', v: { medium: -0.86, hybrid: 0, motion: 0.62, react: 0.9,
+      coverage: 0.56, fieldScale: 7.2, aniso: 0.42, dirSpread: 0.8,
+      churn: 0.62, drift: 0.56, hierarchy: 0.78, flutter: 0.72, layers: 2, parallax: 0.7, swell: 0, capillary: 0.3,
+      sunAngle: 0.022, sunTaps: 6, throwZ: 0.62, focusGain: 0.85, dispersion: 0.14, exposure: 2.6,
+      substrate: 0.1, skyFill: 0.42, warmth: 0.5, tilt: 0, fresnel: 0,
+      foldType: 1, foldBlend: 0.12, segments: 5, spin: 0.08, bloom: 0.55, grain: 0.34, vignette: 0.44, saturation: 1.0 } },
+
+  { name: 'wet canopy', v: { medium: -0.18, hybrid: 0.4, motion: 0.38, react: 0.6,
+      coverage: 0.5, fieldScale: 5.4, aniso: 0.34, dirSpread: 0.62,
+      churn: 0.42, drift: 0.34, hierarchy: 0.6, flutter: 0.44, layers: 2, parallax: 0.45, swell: 0.34, capillary: 0.4,
+      sunAngle: 0.016, sunTaps: 6, throwZ: 0.62, ior: 1.33, focusGain: 0.95, foldClamp: 0.3, dispersion: 0.3, exposure: 2.6,
+      substrate: 0.5, subScale: 1.1, albedo: 0.78, skyFill: 0.36, warmth: 0.4, tilt: 0.22, fresnel: 0.2,
+      foldType: 1, foldBlend: 0.18, segments: 6, spin: 0.1, bloom: 0.6, grain: 0.32, vignette: 0.42, saturation: 1.05 } },
+
+  { name: 'tide pool', v: { medium: 0.62, hybrid: 0.16, motion: 0.42, react: 0.6,
+      coverage: 0.26, fieldScale: 6.4, aniso: 0.5, dirSpread: 0.9,
+      churn: 0.36, drift: 0.3, hierarchy: 0.44, flutter: 0.3, layers: 2, parallax: 0.3, swell: 0.44, capillary: 0.5,
+      sunAngle: 0.0085, sunTaps: 5, throwZ: 0.72, ior: 1.33, focusGain: 1.15, foldClamp: 0.22, dispersion: 0.22, exposure: 2.5,
+      substrate: 0.85, subScale: 1.3, albedo: 0.8, skyFill: 0.3, warmth: 0.4, tilt: 0.38, fresnel: 0.28,
+      foldType: 0, foldBlend: 0, bloom: 0.6, bloomThr: 0.85, grain: 0.3, vignette: 0.4, saturation: 1.05 } },
+
+  { name: 'shallow caustics', v: { medium: 1, hybrid: 0, motion: 0.5, react: 0.7,
+      coverage: 0.2, fieldScale: 7.6, aniso: 0.6, dirSpread: 1.1,
+      churn: 0.34, drift: 0.34, hierarchy: 0.4, flutter: 0.34, layers: 1, parallax: 0.2, swell: 0.6, capillary: 0.56,
+      sunAngle: 0.006, sunTaps: 4, throwZ: 0.8, ior: 1.34, focusGain: 1.25, foldClamp: 0.16, dispersion: 0.2, exposure: 2.3,
+      substrate: 1, subScale: 1.4, albedo: 0.82, skyFill: 0.26, warmth: 0.34, tilt: 0.5, fresnel: 0.34,
+      foldType: 0, foldBlend: 0, bloom: 0.72, bloomThr: 0.8, grain: 0.28, vignette: 0.38, saturation: 1.08 } },
+
+  { name: 'prism cathedral', v: { medium: 0.88, hybrid: 0.3, motion: 0.34, react: 0.7,
+      coverage: 0.4, fieldScale: 6.0, aniso: 0.2, dirSpread: 0.5,
+      churn: 0.3, drift: 0.2, hierarchy: 0.5, flutter: 0.3, layers: 2, parallax: 0.4, swell: 0.4, capillary: 0.4,
+      sunAngle: 0.006, sunTaps: 5, throwZ: 0.7, ior: 1.42, focusGain: 1.05, foldClamp: 0.18, dispersion: 0.85, exposure: 2.3,
+      substrate: 0.3, subScale: 0.9, albedo: 0.8, skyFill: 0.24, warmth: 0.2, tilt: 0.1, fresnel: 0.2,
+      foldType: 1, foldBlend: 0.85, segments: 10, spin: 0.16, foldZoom: 1.1, foldTwist: 0.5,
+      bloom: 0.95, bloomThr: 0.7, chroma: 0.3, grain: 0.26, vignette: 0.46, saturation: 1.15 } },
+
+  { name: 'both, stacked', v: { medium: 0, hybrid: 1, motion: 0.4, react: 0.65,
+      coverage: 0.5, fieldScale: 6.0, aniso: 0.36, dirSpread: 0.7,
+      churn: 0.44, drift: 0.36, hierarchy: 0.62, flutter: 0.48, layers: 2, parallax: 0.5, swell: 0.42, capillary: 0.42,
+      sunAngle: 0.013, sunTaps: 6, throwZ: 0.66, ior: 1.36, focusGain: 1.0, foldClamp: 0.24, dispersion: 0.34, exposure: 2.7,
+      substrate: 0.55, subScale: 1.1, albedo: 0.8, skyFill: 0.32, warmth: 0.4, tilt: 0.24, fresnel: 0.22,
+      foldType: 2, foldBlend: 0.28, segments: 8, spin: -0.12, bloom: 0.68, grain: 0.3, vignette: 0.42, saturation: 1.05 } },
+];
+
+function applyPreset(p) {
+  for (const k in base) base[k] = CONTROLS[k].def;
+  for (const k in p.v) if (k in base) base[k] = clamp(p.v[k], CONTROLS[k].min, CONTROLS[k].max);
+  document.getElementById('presetName').textContent = p.name;
+  for (const b of document.querySelectorAll('#presets button')) b.classList.toggle('on', b.dataset.n === p.name);
+  syncInputs();
+}
+
+function randomise() {
+  for (const g of GROUPS) {
+    for (const c of g.controls) {
+      if (c.key === 'sunTaps' || c.key === 'octaves' || c.key === 'layers' || c.key === 'apShape') continue;
+      const t = Math.random();
+      base[c.key] = c.step ? Math.round(lerp(c.min, c.max, t)) : lerp(c.min, c.max, t);
+    }
+  }
+  base.medium = Math.random() * 2 - 1;
+  base.hybrid = Math.random() * 0.5;
+  base.motion = 0.2 + Math.random() * 0.5;
+  base.react = 0.3 + Math.random() * 0.7;
+  base.exposure = 1.6 + Math.random() * 1.6;
+  base.albedo = 0.6 + Math.random() * 0.4;
+  // keep the aperture from collapsing to a pinhole and blacking out the frame
+  base.apShape = Math.random() < 0.45 ? 1 + Math.floor(Math.random() * 3) : 0;
+  base.apW = 0.35 + Math.random() * 1.1;
+  base.apH = 0.35 + Math.random() * 1.1;
+  base.apSpill = Math.random() * 0.4;
+  document.getElementById('presetName').textContent = 'improvised';
+  for (const b of document.querySelectorAll('#presets button')) b.classList.remove('on');
+  syncInputs();
+}
+
+/* ───────────────────────── ui build ───────────────────────────────── */
+const inputs = {};
+const rowEls = {};
+
+function buildControl(c, host) {
+  const row = document.createElement('div');
+  row.className = 'ctl';
+  const top = document.createElement('div');
+  top.className = 'top';
+  const label = document.createElement('label');
+  label.textContent = c.label;
+  const num = document.createElement('span');
+  num.className = 'num';
+  top.append(label, num);
+  row.append(top);
+
+  if (c.options) {
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    c.options.forEach((o, i) => {
+      const b = document.createElement('button');
+      b.textContent = o;
+      b.onclick = () => { base[c.key] = i; syncInputs(); };
+      b.dataset.i = i;
+      seg.append(b);
+    });
+    row.append(seg);
+    inputs[c.key] = { kind: 'seg', el: seg, num };
+  } else {
+    const r = document.createElement('input');
+    r.type = 'range';
+    r.min = c.min; r.max = c.max;
+    r.step = c.step || (c.max - c.min) / 500;
+    r.value = base[c.key];
+    r.oninput = () => { base[c.key] = parseFloat(r.value); syncInputs(); };
+    row.append(r);
+    inputs[c.key] = { kind: 'range', el: r, num };
+    if (c.poles) {
+      const p = document.createElement('div');
+      p.className = 'poles';
+      p.innerHTML = `<span>${c.poles[0]}</span><span>${c.poles[1]}</span>`;
+      row.append(p);
+    }
+  }
+  rowEls[c.key] = row;
+  host.append(row);
+}
+
+function syncInputs() {
+  for (const k in inputs) {
+    const it = inputs[k];
+    const c = CONTROLS[k];
+    if (it.kind === 'range') {
+      if (document.activeElement !== it.el) it.el.value = base[k];
+      it.num.textContent = c.step === 1 ? String(Math.round(base[k])) : base[k].toFixed(3);
+    } else {
+      const i = Math.round(base[k]);
+      it.num.textContent = c.options[i] || '';
+      for (const b of it.el.children) b.classList.toggle('on', +b.dataset.i === i);
+    }
+  }
+}
+
+function refreshModHints() {
+  if (reactAmount < 0.001) return;
+  for (const r of ROUTES) {
+    const row = rowEls[r.target];
+    if (!row) continue;
+    const active = Math.abs(bus[r.bus] * r.amt) > 0.03;
+    if (row.classList.contains('modded') !== active) row.classList.toggle('modded', active);
+  }
+}
+
+function buildUI() {
+  const master = document.getElementById('masterHost');
+  for (const c of MASTER) buildControl(c, master);
+
+  const scroll = document.getElementById('scroll');
+  for (const g of GROUPS) {
+    const d = document.createElement('details');
+    d.className = 'sec';
+    if (g.open) d.open = true;
+    const s = document.createElement('summary');
+    s.innerHTML = `<span class="chev">▶</span>${g.label}<span class="tag">${g.tag || ''}</span>`;
+    d.append(s);
+    const body = document.createElement('div');
+    body.className = 'body';
+    if (g.note) {
+      const n = document.createElement('p');
+      n.style.cssText = 'margin:2px 0 8px;font-size:9px;line-height:1.55;color:rgba(232,220,196,.3)';
+      n.textContent = g.note;
+      body.append(n);
+    }
+    for (const c of g.controls) buildControl(c, body);
+    d.append(body);
+    scroll.append(d);
+  }
+
+  // reactivity section
+  const d = document.createElement('details');
+  d.className = 'sec';
+  d.innerHTML = `<summary><span class="chev">▶</span>Reactivity<span class="tag">audio → field</span></summary>`;
+  const body = document.createElement('div');
+  body.className = 'body';
+
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  seg.id = 'modeSeg';
+  for (const m of [['sim', 'simulated'], ['mic', 'microphone'], ['extern', 'kesshō']]) {
+    const b = document.createElement('button');
+    b.textContent = m[1]; b.dataset.m = m[0];
+    b.onclick = () => {
+      if (m[0] === 'mic') useMic();
+      else { mode = m[0]; syncModeButtons(); }
+    };
+    seg.append(b);
+  }
+  body.append(seg);
+
+  const amt = document.createElement('div');
+  amt.className = 'ctl';
+  amt.innerHTML = `<div class="top"><label style="color:rgba(232,220,196,.34)">Overall amount is the <em>Audio intensity</em> master above</label></div>`;
+  body.append(amt);
+
+  for (const r of ROUTES) {
+    const row = document.createElement('div');
+    row.className = 'ctl';
+    row.innerHTML = `<div class="top"><label>${r.label}</label><span class="num">${r.amt.toFixed(2)}</span></div>`;
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = -1; inp.max = 1; inp.step = 0.01; inp.value = r.amt;
+    inp.oninput = () => { r.amt = parseFloat(inp.value); row.querySelector('.num').textContent = r.amt.toFixed(2); };
+    row.append(inp);
+    body.append(row);
+  }
+  d.append(body);
+  scroll.append(d);
+
+  const presets = document.getElementById('presets');
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.textContent = p.name; b.dataset.n = p.name;
+    b.onclick = () => applyPreset(p);
+    presets.append(b);
+  }
+  const rb = document.createElement('button');
+  rb.textContent = '↻ improvise';
+  rb.onclick = randomise;
+  presets.append(rb);
+
+  const meters = document.getElementById('meters');
+  for (const b of BUSES) {
+    const m = document.createElement('div');
+    m.className = 'meter';
+    m.innerHTML = `<span>${b}</span><i><b data-b="${b}"></b></i>`;
+    meters.append(m);
+  }
+}
+
+function paintMeters() {
+  for (const el of document.querySelectorAll('#meters b')) {
+    el.style.width = (bus[el.dataset.b] * 100).toFixed(1) + '%';
+  }
+}
+
+function syncModeButtons() {
+  for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.m === mode);
+}
+
+/* ───────────────────────── interaction ────────────────────────────── */
+const panel = document.getElementById('panel');
+document.getElementById('toggle').onclick = () => panel.classList.remove('hidden');
+
+canvas.addEventListener('pointerdown', (e) => {
+  const r = canvas.getBoundingClientRect();
+  const aspect = r.width / r.height;
+  const x = ((e.clientX - r.left) / r.width * 2 - 1) * aspect;
+  const y = -((e.clientY - r.top) / r.height * 2 - 1);
+  dropImpulse({ x, y, strength: 0.85, speed: 0.7, freq: 28, decay: 1.0, tight: 4.5 });
+});
+
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'h') panel.classList.toggle('hidden');
+  else if (k === 'r') randomise();
+  else if (k === ' ') {
+    e.preventDefault();
+    note({ pitch: 36 + Math.floor(Math.random() * 48), velocity: 0.9, engine: 'drums' });
+  } else if (k >= '1' && k <= '7') {
+    const p = PRESETS[+k - 1]; if (p) applyPreset(p);
+  }
+});
+
+document.addEventListener('visibilitychange', () => { running = !document.hidden; last = performance.now(); });
+
+/* ───────────────────────── boot ───────────────────────────────────── */
+(function bootAnim() {
+  const c = document.getElementById('bootCanvas');
+  const x = c.getContext('2d');
+  let t = 0, stop = false;
+  (function step() {
+    if (stop) return;
+    requestAnimationFrame(step);
+    t += 0.016;
+    x.clearRect(0, 0, 264, 264);
+    // a tiny 2D preview of the same idea: a field, thresholded, projected
+    for (let i = 0; i < 46; i++) {
+      const a = i / 46 * TAU;
+      const w = 0.5 + 0.5 * Math.sin(t * 1.4 + i * 0.7);
+      const r = 66 + Math.sin(t * 0.9 + i * 0.31) * 30;
+      x.beginPath();
+      x.arc(132 + Math.cos(a) * r, 132 + Math.sin(a) * r, 2 + w * 9, 0, TAU);
+      x.fillStyle = `rgba(232,220,196,${0.03 + w * 0.11})`;
+      x.fill();
+    }
+    x.beginPath();
+    x.arc(132, 132, 42 + Math.sin(t * 2) * 3, 0, TAU);
+    x.strokeStyle = 'rgba(184,224,255,.5)';
+    x.lineWidth = 1;
+    x.stroke();
+  })();
+  window.__stopBoot = () => { stop = true; };
+})();
+
+buildUI();
+syncModeButtons();
+applyPreset(PRESETS[0]);
+resize();
+requestAnimationFrame(frame);
+
+// hide the preloader once we know the first real frame landed
+requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+  document.getElementById('boot').classList.add('done');
+  window.__stopBoot && window.__stopBoot();
+  setTimeout(() => { document.getElementById('boot').style.display = 'none'; }, 950);
+  setTimeout(() => document.getElementById('tip').classList.add('fade'), 7000);
+}, 260)));
+</script>
+</body>
+</html>

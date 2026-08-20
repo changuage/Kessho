@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kesshō — Patch Hero Visualizers</title>
+<style>
+  :root {
+    --bg-deep: #100f0e;
+    --bg-top: #171615;
+    --cream: #E8DCC4;
+    --cream-muted: rgba(232, 220, 196, 0.62);
+    --icy: #B8E0FF;
+    --popup-bg: rgba(20, 23, 27, 0.98);
+    --popup-border: rgba(232, 220, 196, 0.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(120% 90% at 50% 0%, var(--bg-top), var(--bg-deep) 70%);
+    min-height: 100vh;
+    color: var(--cream-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    padding: 14px 22px;
+    background: rgba(16, 15, 14, 0.92);
+    border-bottom: 1px solid rgba(232, 220, 196, 0.12);
+    backdrop-filter: blur(12px);
+  }
+  header h1 { margin: 0; color: var(--cream); font-size: 14px; font-weight: 500; letter-spacing: .02em; }
+  header .sub { color: rgba(232, 220, 196, 0.42); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  header .spacer { flex: 1; }
+  .filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .filters button, .toggles button {
+    border: 1px solid rgba(232, 220, 196, 0.16); border-radius: 999px;
+    background: rgba(232, 220, 196, 0.04); color: rgba(232, 220, 196, 0.5);
+    padding: 5px 11px; font: inherit; font-size: 10px; letter-spacing: .04em; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .filters button:hover, .toggles button:hover { color: var(--cream); }
+  .filters button.active, .toggles button.active {
+    color: var(--cream); border-color: rgba(232, 220, 196, 0.5); background: rgba(232, 220, 196, 0.09);
+  }
+  .toggles { display: flex; gap: 4px; }
+
+  main { padding: 26px 22px 90px; }
+  .gallery {
+    display: grid; gap: 26px;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 340px));
+    justify-content: center;
+  }
+  .gallery.narrow { grid-template-columns: repeat(auto-fill, minmax(300px, 300px)); }
+
+  .slot { display: grid; gap: 8px; justify-items: stretch; }
+  .slot-caption { display: flex; align-items: baseline; gap: 8px; padding-left: 2px; }
+  .slot-caption .arch {
+    color: rgba(232, 220, 196, 0.34); font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .slot-caption .kind { color: var(--cream-muted); font-size: 9px; letter-spacing: .06em; }
+
+  /* ── popup chrome: mirrors .fx-route-popup.journey-popup.node-popup ── */
+  .popup {
+    width: 340px; max-width: 100%;
+    padding: 12px;
+    border: 1px solid var(--popup-border); border-radius: 12px;
+    background: var(--popup-bg);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+    display: grid; gap: 10px;
+    color: var(--cream-muted);
+  }
+  .gallery.narrow .popup { width: 300px; }
+
+  .title { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 8px; }
+  .title > .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 58%, transparent);
+  }
+  .title > strong {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--accent); font-size: 14px; font-weight: 500; letter-spacing: .02em;
+  }
+  .title > b { color: var(--cream); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; font-weight: 400; }
+
+  /* ── hero ── */
+  .hero-wrap { display: grid; gap: 7px; }
+  .hero-canvas {
+    display: block; width: 100%; height: 124px; border-radius: 8px;
+    background: rgba(8, 9, 11, 0.62);
+    border: 1px solid rgba(232, 220, 196, 0.09);
+    touch-action: none; cursor: crosshair;
+  }
+  .hero-canvas:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+  .readout {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(232, 220, 196, 0.44);
+  }
+  .readout b {
+    color: var(--cream); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none; margin-left: 5px;
+  }
+  .readout .live b { color: var(--icy); }
+
+  .hero-collapse {
+    justify-self: center; border: 0; background: none; color: rgba(232, 220, 196, 0.3);
+    font: inherit; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; padding: 1px 6px;
+  }
+  .hero-collapse:hover { color: var(--cream-muted); }
+  .popup.collapsed .hero-wrap > .hero-canvas,
+  .popup.collapsed .hero-wrap > .readout,
+  .popup.collapsed .macros { display: none; }
+
+  /* ── param rows ── */
+  .macros, .section { display: grid; gap: 8px; }
+  .section { padding-top: 10px; border-top: 1px solid rgba(232, 220, 196, 0.15); }
+  .section-label { color: rgba(232, 220, 196, 0.52); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; }
+  .row .name { font-size: 10px; letter-spacing: .02em; color: rgba(232, 220, 196, 0.58); }
+  .row .val { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: var(--cream); }
+  .row.live .val { color: var(--icy); }
+  .track {
+    grid-column: 1 / -1; position: relative; height: 12px; border-radius: 3px;
+    background: rgba(232, 220, 196, 0.07); overflow: hidden; touch-action: none; cursor: ew-resize;
+  }
+  .track .fill { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--accent) 46%, transparent); }
+  .track .ghost { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--icy); opacity: .85; display: none; }
+  .row.live .track .ghost { display: block; }
+  .track .mode {
+    position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+    font-size: 7px; letter-spacing: .08em; color: rgba(232, 220, 196, 0.34); pointer-events: none;
+  }
+
+  .actions { display: flex; gap: 4px; justify-content: flex-end; }
+  .actions button {
+    border: 1px solid rgba(255, 255, 255, .1); border-radius: 6px;
+    background: rgba(255, 255, 255, .04); color: inherit;
+    padding: 5px 7px; font: inherit; font-size: 10px; cursor: pointer;
+  }
+  .actions .danger { margin-right: auto; color: #c4724e; background: rgba(196, 114, 78, .12); border-color: rgba(196, 114, 78, .28); }
+
+  footer { padding: 0 22px 60px; color: rgba(232, 220, 196, 0.3); font-size: 10px; line-height: 1.7; max-width: 760px; margin: 0 auto; }
+  footer code { color: rgba(232, 220, 196, 0.5); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Patch — Hero Visualizers</h1>
+    <div class="sub">Node popup mockup · 24 engines · 7 surface archetypes</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="filters" id="filters"></div>
+  <div class="toggles">
+    <button id="toggleMotion" class="active">Live motion</button>
+    <button id="toggleWidth">300px</button>
+  </div>
+</header>
+
+<main><div class="gallery" id="gallery"></div></main>
+
+<footer>
+  Drag inside a hero to set both axes. Drag any bar to set that parameter. The <span style="color:var(--icy)">icy</span>
+  dot / tick is the live runtime value for params in <code>walk</code> mode — the filled handle is the authored value.
+  Numbers in the readout track the live value, matching <code>useRuntimeSliderIndicator</code> behaviour.
+</footer>
+
+<script>
+// ═══════════════════════ param model ═══════════════════════
+const P = (key, label, min, max, opts = {}) => ({ key, label, min, max, ...opts });
+
+const toUnit = (p, v) => {
+  if (p.curve === 'log') return (Math.log(Math.max(v, 1e-6)) - Math.log(p.min)) / (Math.log(p.max) - Math.log(p.min));
+  return (v - p.min) / (p.max - p.min);
+};
+const fromUnit = (p, u) => {
+  const c = Math.min(1, Math.max(0, u));
+  if (p.curve === 'log') return Math.exp(Math.log(p.min) + c * (Math.log(p.max) - Math.log(p.min)));
+  return p.min + c * (p.max - p.min);
+};
+const fmt = (p, v) => {
+  switch (p.unit) {
+    case 'Hz': return v >= 1000 ? (v / 1000).toFixed(2) + ' kHz' : Math.round(v) + ' Hz';
+    case 'ms': return Math.round(v) + ' ms';
+    case 's': return v.toFixed(v < 10 ? 2 : 1) + ' s';
+    case 'st': return (v > 0 ? '+' : '') + Math.round(v) + ' st';
+    case 'dB': return v.toFixed(1) + ' dB';
+    case 'ratio': return v.toFixed(1) + ':1';
+    case 'x': return v.toFixed(2) + '×';
+    case 'n': return String(Math.round(v));
+    default: return Math.round(toUnit(p, v) * 100) + '%';
+  }
+};
+
+const C = {
+  pad1: '#E07A84', pad2: '#B96A72', lead1: '#D4A520', lead2: '#BFA45A',
+  sample1: '#E8DCC4', sample2: '#8EB6D8', drums: '#A870E8',
+  waves: '#5A7B8A', water: '#6F9AB1', insects: '#7B9A6D', nature: '#A6B98A',
+  delayA: '#5EA8A6', delayB: '#32C7C7', granular: '#E8B44A', degrade: '#A980FF',
+  freeze: '#B8E0FF', reverb: '#B0785A', eq: '#CC7DB8', sidechain: '#B8E0FF',
+  sat: '#D4A520', master: '#B8E0FF', clay: '#C4724E',
+};
+const DRUM = { sub: '#7B9A6D', kick: '#C4724E', click: '#D4A520', beepHi: '#B8E0FF', beepLo: '#5A7B8A', noise: '#8B5CF6', membrane: '#C08A68' };
+
+// ═══════════════════════ engine specs ═══════════════════════
+// Each entry mirrors the proposed HeroDescriptor: surface archetype + pad axes + macro row.
+const ENGINES = [
+  {
+    id: 'pad1', label: 'Pad 1 — Glass Choir', accent: C.pad1, family: 'source', arch: 'A · filter curve',
+    surface: { kind: 'filterCurve', poles: [{ type: 'lowpass', freq: 'filterCutoff', reso: 'padFilterBResonance' }] },
+    pad: { x: P('filterCutoff', 'Cutoff', 40, 8000, { unit: 'Hz', curve: 'log' }), y: P('padFilterBResonance', 'Reso', 0, 1) },
+    macros: [P('padMorph', 'Morph A→B', 0, 1), P('pad1Distance', 'Distance', 0, 1), P('padFilterBQ', 'Filter Q', 0.1, 12, { unit: 'x' })],
+    level: P('synthLevel', 'Level', 0, 1),
+    sends: [['Delay A', .34], ['Reverb', .52], ['Granular', .18]],
+    walk: ['filterCutoff', 'padMorph'],
+  },
+  {
+    id: 'pad2', label: 'Pad 2 — Iron Bell', accent: C.pad2, family: 'source', arch: 'A · filter curve',
+    surface: { kind: 'filterCurve', poles: [{ type: 'highpass', freq: 'padFilterBCutoff', reso: 'padFilterBResonance2' }, { type: 'lowpass', freq: 'filterCutoff2', reso: 'pad2Reso' }] },
+    pad: { x: P('padFilterBCutoff', 'HP Cutoff', 40, 8000, { unit: 'Hz', curve: 'log' }), y: P('padFilterBResonance2', 'Reso', 0, 1) },
+    macros: [P('pad2Morph', 'Morph A→B', 0, 1), P('pad2Distance', 'Distance', 0, 1)],
+    level: P('pad2Level', 'Level', 0, 1),
+    sends: [['Delay B', .41], ['Reverb', .36]],
+    walk: ['pad2Morph'],
+  },
+  {
+    id: 'lead1', label: 'Lead 1 — Bell Choir', accent: C.lead1, family: 'source', arch: 'A · filter curve + FM glyph',
+    surface: { kind: 'filterCurve', glyph: 'fm', poles: [{ type: 'lowpass', freq: 'lead1PostLPF', reso: 'lead1Res' }] },
+    pad: { x: P('lead1PostLPF', 'Post LPF', 20, 20000, { unit: 'Hz', curve: 'log' }), y: P('lead1PostLPFKeyTracking', 'Key Track', 0, 1) },
+    macros: [P('lead1Morph', 'Morph A→B', 0, 1), P('lead1Distance', 'Distance', 0, 1), P('lead1Glide', 'Glide', 0, 1), P('lead1VibratoDepth', 'Vibrato', 0, 1)],
+    level: P('lead1Level', 'Level', 0, 1),
+    sends: [['Delay A', .28], ['Reverb', .61]],
+    walk: ['lead1PostLPF', 'lead1Morph'],
+  },
+  {
+    id: 'lead2', label: 'Lead 2 — Wire Pluck', accent: C.lead2, family: 'source', arch: 'A · filter curve + FM glyph',
+    surface: { kind: 'filterCurve', glyph: 'fm', poles: [{ type: 'lowpass', freq: 'lead2PostLPF', reso: 'lead2Res' }] },
+    pad: { x: P('lead2PostLPF', 'Post LPF', 20, 20000, { unit: 'Hz', curve: 'log' }), y: P('lead2Glide', 'Glide', 0, 1) },
+    macros: [P('lead2Morph', 'Morph C→D', 0, 1), P('lead2StereoWidth', 'Width', 0, 1)],
+    level: P('lead2Level', 'Level', 0, 1),
+    sends: [['Delay B', .22], ['Reverb', .44]],
+    walk: ['lead2Morph'],
+  },
+  {
+    id: 'sample1', label: 'Sample 1', accent: C.sample1, family: 'source', arch: 'C · buffer strip',
+    surface: { kind: 'bufferStrip', heads: 1, region: true, seed: 11 },
+    pad: { x: P('sample1Distance', 'Distance', 0, 1), y: P('sample1PostLPF', 'Post LPF', 20, 20000, { unit: 'Hz', curve: 'log' }) },
+    macros: [P('sample1Sustain', 'Sustain', 0, 1), P('sample1StereoWidth', 'Width', 0, 1), P('sample1DiffuseSend', 'Diffuse', 0, 1)],
+    level: P('sample1Level', 'Level', 0, 2),
+    sends: [['Delay A', .19], ['Reverb', .3]],
+    walk: ['sample1Distance'],
+  },
+  {
+    id: 'sample2', label: 'Sample 2', accent: C.sample2, family: 'source', arch: 'C · buffer strip',
+    surface: { kind: 'bufferStrip', heads: 1, region: true, seed: 29 },
+    pad: { x: P('sample2Distance', 'Distance', 0, 1), y: P('sample2PostLPF', 'Post LPF', 20, 20000, { unit: 'Hz', curve: 'log' }) },
+    macros: [P('sample2Sustain', 'Sustain', 0, 1), P('sample2ReleaseMs', 'Release', 10, 4000, { unit: 'ms' })],
+    level: P('sample2Level', 'Level', 0, 2),
+    sends: [['Reverb', .48]],
+    walk: [],
+  },
+  {
+    id: 'drums', label: 'Drums', accent: C.drums, family: 'source', arch: 'D · lane bars',
+    surface: {
+      kind: 'laneBars', trigger: true, lanes: [
+        { id: 'sub', label: 'Sub', color: DRUM.sub, level: 'drumSubLevel', pattern: 0b1000000010000000 },
+        { id: 'kick', label: 'Kick', color: DRUM.kick, level: 'drumKickLevel', pattern: 0b1000100010001000 },
+        { id: 'click', label: 'Clk', color: DRUM.click, level: 'drumClickLevel', pattern: 0b0010001000100010 },
+        { id: 'beepHi', label: 'BpH', color: DRUM.beepHi, level: 'drumBeepHiLevel', pattern: 0b0100010001000101 },
+        { id: 'beepLo', label: 'BpL', color: DRUM.beepLo, level: 'drumBeepLoLevel', pattern: 0b0000100000001000 },
+        { id: 'noise', label: 'Nse', color: DRUM.noise, level: 'drumNoiseLevel', pattern: 0b0001000000010010 },
+        { id: 'membrane', label: 'Mem', color: DRUM.membrane, level: 'drumMembraneLevel', pattern: 0b0000001000000100 },
+      ],
+    },
+    pad: { x: P('drumKickDecay', 'Kick Decay', 20, 2800, { unit: 'ms' }), y: P('drumKickDistance', 'Distance', 0, 1) },
+    macros: [P('drumKickLevel', 'Kick Level', 0, 1), P('drumKickVariation', 'Variation', 0, 1), P('drumKickTone', 'Tone', 0, 1.5)],
+    level: P('drumLevel', 'Bus Level', 0, 1),
+    sends: [['Delay A', .12], ['Reverb', .27]],
+    walk: ['drumKickVariation'],
+  },
+  {
+    id: 'waves', label: 'Waves', accent: C.waves, family: 'source', arch: 'A · filter curve + slice band',
+    surface: { kind: 'filterCurve', slices: true, poles: [{ type: 'lowpass', freq: 'oceanFilterCutoff', reso: 'oceanFilterResonance' }] },
+    pad: { x: P('oceanFilterCutoff', 'Cutoff', 40, 12000, { unit: 'Hz', curve: 'log' }), y: P('oceanFilterResonance', 'Reso', 0, 1) },
+    macros: [P('oceanSliceDensity', 'Density', 0, 1), P('oceanSliceDuration', 'Slice', 0.5, 12, { unit: 's' })],
+    level: P('oceanSampleLevel', 'Level', 0, 1),
+    sends: [['Reverb', .55]],
+    walk: ['oceanFilterCutoff'],
+  },
+  {
+    id: 'water', label: 'Water', accent: C.water, family: 'source', arch: 'B · XY + layer constellation',
+    surface: {
+      kind: 'xy', field: 'droplets', layers: [
+        { label: 'Hard', color: '#7FA8BA', level: 'waterLayerHardDrops' },
+        { label: 'Drops', color: '#6F9AB1', level: 'waterLayerWaterDrops' },
+        { label: 'Bubble', color: '#82AFA6', level: 'waterLayerBubbling' },
+        { label: 'Surf', color: '#8AAFB9', level: 'waterLayerSurf' },
+        { label: 'Chan', color: '#648EA5', level: 'waterLayerChannels' },
+      ],
+    },
+    pad: { x: P('waterIntensity', 'Intensity', 0, 1), y: P('waterDistance', 'Distance', 0, 1) },
+    macros: [P('waterMorph', 'Morph A→B', 0, 1), P('waterDropSize', 'Drop Size', 0, 1), P('waterHardness', 'Hardness', 0, 1)],
+    level: P('waterLevel', 'Level', 0, 1),
+    sends: [['Delay B', .2], ['Reverb', .42]],
+    walk: ['waterIntensity', 'waterMorph'],
+  },
+  {
+    id: 'insects', label: 'Insects', accent: C.insects, family: 'source', arch: 'B · XY + swarm field',
+    surface: { kind: 'xy', field: 'swarm', densityKey: 'insectsDensity', motionKey: 'insectsMotion' },
+    pad: { x: P('insectsDensity', 'Density', 0, 1), y: P('insectsTemperature', 'Temperature', 0, 1) },
+    macros: [P('insectsMotion', 'Motion', 0, 1), P('insectsProximity', 'Proximity', 0, 1), P('insectsAntiphony', 'Antiphony', 0, 1), P('insectsClickRate', 'Click Rate', 0, 1)],
+    level: P('insectsSharedLevel', 'Level', 0, 1),
+    sends: [['Reverb', .38]],
+    walk: ['insectsDensity', 'insectsMotion'],
+  },
+  {
+    id: 'nature', label: 'Nature', accent: C.nature, family: 'source', arch: 'D · slot bars',
+    surface: {
+      kind: 'laneBars', trigger: true, slow: true, lanes: [
+        { id: 'birds', label: 'Birds', color: '#A6B98A', level: 'natureSlot1Level', pattern: 0b1000000100000010 },
+        { id: 'birds2', label: 'Birds 2', color: '#91AA7D', level: 'natureSlot2Level', pattern: 0b0010000000100000 },
+        { id: 'frogs', label: 'Frogs', color: '#D4A520', level: 'natureSlot3Level', pattern: 0b0000100000001000 },
+      ],
+    },
+    pad: null,
+    macros: [P('natureSlot1Level', 'Birds', 0, 1), P('natureSlot2Level', 'Birds 2', 0, 1), P('natureSlot3Level', 'Frogs', 0, 1)],
+    level: P('natureLevel', 'Shared Level', 0, 1),
+    sends: [['Reverb', .5]],
+    walk: [],
+  },
+
+  // ── FX nodes ──
+  {
+    id: 'delayA', label: 'Delay A', accent: C.delayA, family: 'fx', arch: 'F · decay field (taps)',
+    surface: { kind: 'decayField', taps: true, timeKey: 'delayATime', fbKey: 'delayAFeedback', toneKey: 'delayAFilter' },
+    pad: { x: P('delayATime', 'Time', 20, 2000, { unit: 'ms' }), y: P('delayAFeedback', 'Feedback', 0, 1) },
+    macros: [P('delayAFilter', 'Tone', 200, 12000, { unit: 'Hz', curve: 'log' }), P('delayAWidth', 'Width', 0, 1), P('delayADuck', 'Duck', 0, 1), P('delayAModDepth', 'Mod Depth', 0, 1)],
+    level: P('delayAMix', 'Level', 0, 1),
+    sends: [['Reverb', .33], ['Delay B', .15]],
+    walk: ['delayAFeedback'],
+  },
+  {
+    id: 'delayB', label: 'Delay B — Clocked Space', accent: C.delayB, family: 'fx', arch: 'D · tape head bars',
+    surface: {
+      kind: 'laneBars', trigger: true, pan: true, lanes: [
+        { id: 'h1', label: 'H1', color: '#32C7C7', level: 'delayBTapeHead1Level', pan: 'delayBTapeHead1Pan', pattern: 0b1000100010001000 },
+        { id: 'h2', label: 'H2', color: '#5EA8A6', level: 'delayBTapeHead2Level', pan: 'delayBTapeHead2Pan', pattern: 0b0010001000100010 },
+        { id: 'h3', label: 'H3', color: '#8AAFB9', level: 'delayBTapeHead3Level', pan: 'delayBTapeHead3Pan', pattern: 0b0001000100010001 },
+        { id: 'h4', label: 'H4', color: '#B8E0FF', level: 'delayBTapeHead4Level', pan: 'delayBTapeHead4Pan', pattern: 0b0000100000001000 },
+      ],
+    },
+    pad: { x: P('delayBWarpIntensity', 'Warp', 0, 1), y: P('delayBSpread', 'Spread', 0, 1) },
+    macros: [P('delayBTapeHead1Level', 'Head 1', 0, 1), P('delayBTapeHead2Level', 'Head 2', 0, 1), P('delayBTapeHead3Level', 'Head 3', 0, 1), P('delayBTapeHead4Level', 'Head 4', 0, 1)],
+    level: P('granularDelayMix', 'Level', 0, 1),
+    sends: [['Reverb', .29], ['Granular', .11]],
+    walk: ['delayBWarpIntensity'],
+  },
+  {
+    id: 'granular', label: 'Granular', accent: C.granular, family: 'fx', arch: 'C · buffer strip + XY',
+    surface: { kind: 'bufferStrip', heads: 4, grains: true, seed: 7, speedKey: 'granularV2Speed' },
+    pad: { x: P('granularV2Speed', 'Speed', 0, 4, { unit: 'x' }), y: P('granularV2Pitch', 'Pitch', -24, 24, { unit: 'st' }) },
+    macros: [P('granularSprayMacro', 'Spray', 0, 1), P('granularCloudMacro', 'Cloud', 0, 1), P('granularV2Density', 'Density', 1, 64, { unit: 'n' }), P('granularV2GrainSize', 'Grain', 10, 500, { unit: 'ms' })],
+    level: P('granularLevel', 'Level', 0, 1),
+    sends: [['Delay B', .24], ['Reverb', .46]],
+    walk: ['granularV2Speed', 'granularSprayMacro'],
+  },
+  {
+    id: 'degrade', label: 'Degrade', accent: C.degrade, family: 'fx', arch: 'G · wobble trace',
+    surface: { kind: 'wobbleTrace', wowKey: 'erosionWow', flutterKey: 'erosionFlutter', aliasKey: 'erosionAlias', ageKey: 'erosionAge' },
+    pad: { x: P('erosionAge', 'Age', 0, 1), y: P('erosionAlias', 'Alias', 0, 1) },
+    macros: [P('driftMix', 'Drift Mix', 0, 1), P('erosionMix', 'Erosion Mix', 0, 1), P('erosionWow', 'Wow', 0, 1), P('erosionFlutter', 'Flutter', 0, 1)],
+    level: P('degradeLevel', 'Level', 0, 1),
+    sends: [['Reverb', .2]],
+    walk: ['erosionAge'],
+  },
+  {
+    id: 'freeze', label: 'Spectral Freeze', accent: C.freeze, family: 'fx', arch: 'C · spectral bins',
+    surface: { kind: 'bufferStrip', spectral: true, seed: 3, posKey: 'spectralFreezePosition', toneKey: 'spectralFreezeTone' },
+    pad: { x: P('spectralFreezePosition', 'Position', 0, 1), y: P('spectralFreezeStretchSpeed', 'Stretch', 0, 1) },
+    macros: [P('spectralFreezeTone', 'Tone', 0, 1), P('spectralFreezeDiffusion', 'Diffusion', 0, 1), P('spectralFreezeSustain', 'Sustain', 0, 1), P('spectralFreezeWidth', 'Width', 0, 1)],
+    level: P('spectralFreezeMix', 'Level', 0, 1),
+    sends: [['Reverb', .34]],
+    walk: ['spectralFreezePosition'],
+    action: { label: 'FREEZE', key: 'spectralFreezeActive' },
+  },
+  {
+    id: 'reverb', label: 'Reverb', accent: C.reverb, family: 'fx', arch: 'F · decay field',
+    surface: { kind: 'decayField', sizeKey: 'reverbSize', decayKey: 'reverbDecay', dampKey: 'reverbDampHigh' },
+    pad: { x: P('reverbSize', 'Size', 0.5, 10, { unit: 'x' }), y: P('reverbDecay', 'Decay', 0, 1) },
+    macros: [P('reverbDiffusion', 'Diffusion', 0, 1), P('reverbDampHigh', 'HF Damp', 0, 1), P('reverbShimmer', 'Shimmer', 0, 1), P('reverbBloom', 'Bloom', -1, 1)],
+    level: P('reverbLevel', 'Level', 0, 1),
+    sends: [['Degrade', .08]],
+    walk: ['reverbDecay', 'reverbShimmer'],
+  },
+  {
+    id: 'eq1', label: 'EQ 1', accent: C.eq, family: 'fx', arch: 'A · 3-band response',
+    surface: {
+      kind: 'filterCurve', bands: [
+        { freq: 'dynamicsEq1LowFreq', gain: 'dynamicsEq1LowGain', q: 'dynamicsEq1LowQ', label: 'Low' },
+        { freq: 'dynamicsEq1MidFreq', gain: 'dynamicsEq1MidGain', q: 'dynamicsEq1MidQ', label: 'Mid' },
+        { freq: 'dynamicsEq1HighFreq', gain: 'dynamicsEq1HighGain', q: 'dynamicsEq1HighQ', label: 'High' },
+      ],
+    },
+    pad: null,
+    macros: [P('dynamicsEq1Mix', 'Dry / Wet', 0, 1), P('dynamicsEq1OutputGain', 'Output', -12, 12, { unit: 'dB' })],
+    level: P('dynamicsEq1Mix', 'Dry / Wet', 0, 1),
+    sends: [['Master', 1]],
+    walk: [],
+  },
+  {
+    id: 'eq2', label: 'EQ 2', accent: '#B96AA8', family: 'fx', arch: 'A · 3-band response',
+    surface: {
+      kind: 'filterCurve', bands: [
+        { freq: 'dynamicsEq2LowFreq', gain: 'dynamicsEq2LowGain', q: 'dynamicsEq2LowQ', label: 'Low' },
+        { freq: 'dynamicsEq2MidFreq', gain: 'dynamicsEq2MidGain', q: 'dynamicsEq2MidQ', label: 'Mid' },
+        { freq: 'dynamicsEq2HighFreq', gain: 'dynamicsEq2HighGain', q: 'dynamicsEq2HighQ', label: 'High' },
+      ],
+    },
+    pad: null,
+    macros: [P('dynamicsEq2Mix', 'Dry / Wet', 0, 1)],
+    level: P('dynamicsEq2Mix', 'Dry / Wet', 0, 1),
+    sends: [['Master', 1]],
+    walk: [],
+  },
+  {
+    id: 'sidechain', label: 'Sidechain', accent: C.sidechain, family: 'fx', arch: 'E · transfer curve',
+    surface: { kind: 'transferCurve', shape: 'compress', thrKey: 'sidechainThreshold', ratioKey: 'sidechainRatio', kneeKey: 'sidechainKnee', pump: true },
+    pad: { x: P('sidechainThreshold', 'Threshold', -60, 0, { unit: 'dB' }), y: P('sidechainRatio', 'Ratio', 1, 20, { unit: 'ratio' }) },
+    macros: [P('sidechainAmount', 'Amount', 0, 1), P('sidechainAttackMs', 'Attack', 0.1, 200, { unit: 'ms' }), P('sidechainReleaseMs', 'Release', 10, 1000, { unit: 'ms' }), P('sidechainMix', 'Dry / Wet', 0, 1)],
+    level: P('sidechainMix', 'Dry / Wet', 0, 1),
+    sends: [['Master', 1]],
+    walk: [],
+  },
+  {
+    id: 'creativeSaturation', label: 'Creative Saturation', accent: C.sat, family: 'fx', arch: 'E · transfer curve',
+    surface: { kind: 'transferCurve', shape: 'saturate', driveKey: 'dynamicsSaturationDrive', biasKey: 'dynamicsSaturationBias' },
+    pad: { x: P('dynamicsSaturationDrive', 'Drive', 0, 1), y: P('dynamicsSaturationBias', 'Bias', 0, 1) },
+    macros: [P('dynamicsSaturationTone', 'Tone', 0, 1)],
+    level: P('dynamicsSaturationDrive', 'Drive', 0, 1),
+    sends: [['Master', 1]],
+    walk: ['dynamicsSaturationDrive'],
+  },
+
+  // ── master ──
+  {
+    id: 'master', label: 'Master', accent: C.master, family: 'master', arch: 'D · mixer bars',
+    surface: {
+      kind: 'laneBars', meter: true, lanes: [
+        { id: 'pad1', label: 'Pd1', color: C.pad1, level: 'mSynthLevel' },
+        { id: 'pad2', label: 'Pd2', color: C.pad2, level: 'mPad2Level' },
+        { id: 'lead1', label: 'Ld1', color: C.lead1, level: 'mLead1Level' },
+        { id: 'drums', label: 'Drm', color: C.drums, level: 'mDrumLevel' },
+        { id: 'water', label: 'Wtr', color: C.water, level: 'mWaterLevel' },
+        { id: 'insects', label: 'Ins', color: C.insects, level: 'mInsectsLevel' },
+        { id: 'delayA', label: 'DlA', color: C.delayA, level: 'mDelayAMix' },
+        { id: 'granular', label: 'Grn', color: C.granular, level: 'mGranularLevel' },
+        { id: 'reverb', label: 'Rvb', color: C.reverb, level: 'mReverbLevel' },
+      ],
+    },
+    pad: null,
+    macros: [P('mSynthLevel', 'Pad 1', 0, 1), P('mDrumLevel', 'Drums', 0, 1), P('mReverbLevel', 'Reverb Return', 0, 1)],
+    level: P('masterLevel', 'Master', 0, 1),
+    sends: [],
+    walk: ['mDrumLevel'],
+  },
+  {
+    id: 'masterSaturation', label: 'Master Saturation', accent: '#D69A62', family: 'master', arch: 'E · transfer curve',
+    surface: { kind: 'transferCurve', shape: 'saturate', driveKey: 'masterSaturationDrive', biasKey: 'masterSaturationBias' },
+    pad: { x: P('masterSaturationDrive', 'Drive', 0, 1), y: P('masterSaturationBias', 'Bias', 0, 1) },
+    macros: [P('masterSaturationTone', 'Tone', 0, 1)],
+    level: P('masterSaturationDrive', 'Drive', 0, 1),
+    sends: [],
+    walk: ['masterSaturationDrive'],
+  },
+  {
+    id: 'masterCompression', label: 'Master Compression', accent: C.master, family: 'master', arch: 'E · transfer curve',
+    surface: { kind: 'transferCurve', shape: 'compress', thrKey: 'endCompThreshold', ratioKey: 'endCompRatio', pump: true },
+    pad: { x: P('endCompThreshold', 'Threshold', -60, 0, { unit: 'dB' }), y: P('endCompRatio', 'Ratio', 1, 20, { unit: 'ratio' }) },
+    macros: [P('endCompAttackMs', 'Attack', 0.1, 200, { unit: 'ms' }), P('endCompReleaseMs', 'Release', 10, 1000, { unit: 'ms' }), P('endCompMix', 'Dry / Wet', 0, 1)],
+    level: P('endCompMix', 'Dry / Wet', 0, 1),
+    sends: [],
+    walk: [],
+  },
+];
+
+// ═══════════════════════ value store ═══════════════════════
+const V = {};
+const seedDefault = (p, frac) => { if (V[p.key] === undefined) V[p.key] = p.min + (p.max - p.min) * frac; };
+const FRACS = [0.62, 0.34, 0.5, 0.72, 0.28, 0.44, 0.58];
+let fi = 0;
+for (const e of ENGINES) {
+  if (e.pad) { seedDefault(e.pad.x, 0.44); seedDefault(e.pad.y, 0.3); }
+  for (const m of e.macros) seedDefault(m, FRACS[fi++ % FRACS.length]);
+  seedDefault(e.level, 0.72);
+  if (e.surface.lanes) for (const l of e.surface.lanes) if (V[l.level] === undefined) {
+    V[l.level] = 0.45 + Math.random() * 0.45;
+    if (l.pan) V[l.pan] = -1 + Math.random() * 2;
+  }
+  if (e.surface.layers) for (const l of e.surface.layers) if (V[l.level] === undefined) V[l.level] = Math.random() * 0.9;
+  for (const b of e.surface.bands || []) {
+    const fp = { min: 20, max: 20000, curve: 'log' };
+    if (V[b.freq] === undefined) V[b.freq] = fromUnit(fp, b.label === 'Low' ? 0.18 : b.label === 'Mid' ? 0.5 : 0.82);
+    if (V[b.gain] === undefined) V[b.gain] = (b.label === 'Mid' ? -4.5 : 3.5);
+    if (V[b.q] === undefined) V[b.q] = 1.1;
+  }
+  for (const pole of e.surface.poles || []) {
+    if (V[pole.freq] === undefined) V[pole.freq] = pole.type === 'highpass' ? 180 : 1700;
+    if (V[pole.reso] === undefined) V[pole.reso] = 0.24;
+  }
+}
+V.spectralFreezeActive = 1;
+
+// ═══════════════════════ live motion ═══════════════════════
+let motionOn = true;
+let clock = 0;
+const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+const rng = (seed) => { let s = seed * 9301 + 49297; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
+
+// live (walk) value for a param: authored value modulated inside a range
+function liveUnit(engine, p) {
+  const authored = toUnit(p, V[p.key]);
+  if (!motionOn || !engine.walk.includes(p.key)) return authored;
+  const ph = hash(p.key) * Math.PI * 2;
+  const rate = 0.22 + hash(p.key + 'r') * 0.4;
+  const span = 0.16 + hash(p.key + 's') * 0.14;
+  return Math.min(1, Math.max(0, authored + Math.sin(clock * rate + ph) * span));
+}
+const isLive = (engine, p) => motionOn && engine.walk.includes(p.key);
+
+// ═══════════════════════ canvas helpers ═══════════════════════
+const mix = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+const FMIN = 20, FMAX = 20000;
+const fx = (f, w) => (Math.log(f) - Math.log(FMIN)) / (Math.log(FMAX) - Math.log(FMIN)) * w;
+
+function gridBg(g, w, h, accent) {
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(232,220,196,0.05)'; g.lineWidth = 1;
+  for (let i = 1; i < 6; i++) { const x = (i / 6) * w; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+  for (let i = 1; i < 4; i++) { const y = (i / 4) * h; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+}
+
+function drawHandle(g, x, y, accent, live) {
+  if (live) {
+    g.beginPath(); g.arc(live.x, live.y, 5, 0, 7);
+    g.strokeStyle = '#B8E0FF'; g.lineWidth = 1.4; g.stroke();
+    g.beginPath(); g.arc(live.x, live.y, 1.4, 0, 7); g.fillStyle = '#B8E0FF'; g.fill();
+  }
+  g.beginPath(); g.arc(x, y, 12, 0, 7); g.fillStyle = mix(accent, 0.14); g.fill();
+  g.beginPath(); g.arc(x, y, 5.5, 0, 7); g.fillStyle = accent; g.fill();
+  g.strokeStyle = 'rgba(10,10,14,0.8)'; g.lineWidth = 1.2; g.stroke();
+}
+
+// ── A · filter / EQ response ──
+function drawFilterCurve(g, w, h, e) {
+  const accent = e.accent;
+  gridBg(g, w, h, accent);
+  const mid = h * 0.62;
+
+  if (e.surface.slices) {
+    const r = rng(5);
+    for (let i = 0; i < 9; i++) {
+      const x = ((i / 9) + (clock * 0.02) % (1 / 9)) * w;
+      g.fillStyle = mix(accent, 0.05 + r() * 0.05 * (V[e.macros[0].key] ?? .5));
+      g.fillRect(x, 0, w / 11, h);
+    }
+  }
+
+  const mag = (f) => {
+    let db = 0;
+    for (const pole of e.surface.poles || []) {
+      const fc = V[pole.freq], reso = V[pole.reso] ?? 0;
+      const r = Math.log(f / fc);
+      if (pole.type === 'lowpass') db += -12 * Math.max(0, r / Math.LN2) + reso * 14 * Math.exp(-(r * r) / 0.06);
+      else db += -12 * Math.max(0, -r / Math.LN2) + reso * 14 * Math.exp(-(r * r) / 0.06);
+    }
+    for (const b of e.surface.bands || []) {
+      const r = Math.log(f / V[b.freq]);
+      db += V[b.gain] * Math.exp(-(r * r) * V[b.q] * 1.6);
+    }
+    return db;
+  };
+  const yOf = (db) => mid - db * (h * 0.028);
+
+  g.beginPath();
+  for (let px = 0; px <= w; px += 2) {
+    const f = Math.exp(Math.log(FMIN) + (px / w) * (Math.log(FMAX) - Math.log(FMIN)));
+    const y = Math.max(3, Math.min(h - 3, yOf(mag(f))));
+    px === 0 ? g.moveTo(px, y) : g.lineTo(px, y);
+  }
+  g.strokeStyle = accent; g.lineWidth = 1.6; g.stroke();
+  g.lineTo(w, h); g.lineTo(0, h); g.closePath();
+  g.fillStyle = mix(accent, 0.07); g.fill();
+
+  g.strokeStyle = 'rgba(232,220,196,0.08)'; g.setLineDash([2, 4]);
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke(); g.setLineDash([]);
+
+  if (e.surface.glyph === 'fm') {
+    const ops = 4, bx = w - 58;
+    for (let i = 0; i < ops; i++) {
+      const x = bx + (i % 2) * 22, y = 12 + Math.floor(i / 2) * 20;
+      const lit = 0.2 + 0.5 * Math.abs(Math.sin(clock * (0.6 + i * 0.25)));
+      g.fillStyle = mix(accent, motionOn ? lit * 0.5 : 0.2);
+      g.strokeStyle = mix(accent, 0.5); g.lineWidth = 0.8;
+      g.fillRect(x, y, 15, 12); g.strokeRect(x, y, 15, 12);
+    }
+    g.strokeStyle = mix(accent, 0.3); g.beginPath();
+    g.moveTo(bx + 15, 18); g.lineTo(bx + 22, 18); g.moveTo(bx + 15, 38); g.lineTo(bx + 22, 38); g.stroke();
+  }
+
+  if (e.surface.bands) {
+    for (const b of e.surface.bands) {
+      const x = fx(V[b.freq], w), y = yOf(V[b.gain]);
+      g.beginPath(); g.arc(x, y, 10, 0, 7); g.fillStyle = mix(accent, 0.14); g.fill();
+      g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fillStyle = accent; g.fill();
+      g.fillStyle = 'rgba(232,220,196,0.4)'; g.font = '8px ui-monospace, monospace';
+      g.fillText(b.label, x - 8, h - 4);
+    }
+    return;
+  }
+  const pole = e.surface.poles[0];
+  const hx = fx(V[pole.freq], w);
+  const hy = h - (V[e.pad.y.key] !== undefined ? toUnit(e.pad.y, V[e.pad.y.key]) : 0.3) * h;
+  const lx = fx(fromUnit(e.pad.x, liveUnit(e, e.pad.x)), w);
+  drawHandle(g, hx, hy, accent, isLive(e, e.pad.x) ? { x: lx, y: hy } : null);
+}
+
+// ── B · XY field ──
+function drawXY(g, w, h, e) {
+  const accent = e.accent;
+  gridBg(g, w, h, accent);
+  const ux = toUnit(e.pad.x, V[e.pad.x.key]), uy = toUnit(e.pad.y, V[e.pad.y.key]);
+
+  if (e.surface.field === 'swarm') {
+    const density = V[e.surface.densityKey] ?? .5, motion = V[e.surface.motionKey] ?? .5;
+    const n = Math.round(10 + density * 70), r = rng(21);
+    for (let i = 0; i < n; i++) {
+      const bx = r() * w, by = r() * h, ph = r() * 6.28;
+      const drift = motionOn ? motion * 14 : 0;
+      const x = bx + Math.sin(clock * (0.7 + r() * 1.6) + ph) * drift;
+      const y = by + Math.cos(clock * (0.5 + r() * 1.2) + ph) * drift * 0.5;
+      const a = 0.16 + 0.5 * Math.abs(Math.sin(clock * 2.4 + ph));
+      g.fillStyle = mix(accent, motionOn ? a : 0.35);
+      g.fillRect(x, y, 1.6, 1.6);
+    }
+  } else if (e.surface.field === 'droplets') {
+    const layers = e.surface.layers, intensity = V[e.pad.x.key] ?? .5;
+    layers.forEach((l, i) => {
+      const lvl = V[l.level] ?? 0;
+      if (lvl < 0.02) return;
+      const cx = ((i + 0.5) / layers.length) * w;
+      const cy = h * (0.72 - lvl * 0.42);
+      const rad = 4 + lvl * 13;
+      const pulse = motionOn ? 0.5 + 0.5 * Math.abs(Math.sin(clock * (1.2 + i * 0.7) + i)) : 0.7;
+      g.beginPath(); g.arc(cx, cy, rad * (0.8 + pulse * 0.3 * intensity), 0, 7);
+      g.fillStyle = mix(l.color, 0.1 + pulse * 0.22); g.fill();
+      g.strokeStyle = mix(l.color, 0.5); g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(232,220,196,0.34)'; g.font = '7px ui-monospace, monospace';
+      g.fillText(l.label, cx - 11, h - 4);
+    });
+  }
+  const lx = liveUnit(e, e.pad.x) * w, ly = h - liveUnit(e, e.pad.y) * h;
+  const live = (isLive(e, e.pad.x) || isLive(e, e.pad.y)) ? { x: lx, y: ly } : null;
+  drawHandle(g, ux * w, h - uy * h, accent, live);
+}
+
+// ── C · buffer strip ──
+function drawBufferStrip(g, w, h, e) {
+  const accent = e.accent, s = e.surface;
+  g.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  if (s.spectral) {
+    const r = rng(s.seed), bins = 48, bw = w / bins;
+    const pos = V[s.posKey] ?? .5, tone = V[s.toneKey] ?? .5;
+    const frozen = V.spectralFreezeActive > 0.5;
+    for (let i = 0; i < bins; i++) {
+      const base = r();
+      const tilt = Math.pow(1 - i / bins, 1.4 - tone * 1.1);
+      const jitter = frozen ? 0 : (motionOn ? Math.abs(Math.sin(clock * 3 + i)) * 0.3 : 0);
+      const mag = (base * 0.8 + 0.2) * tilt * (0.7 + jitter);
+      const bh = mag * (h - 10);
+      const near = 1 - Math.min(1, Math.abs(i / bins - pos) * 4);
+      g.fillStyle = mix(accent, 0.14 + near * 0.5);
+      g.fillRect(i * bw + 0.6, h - 5 - bh, bw - 1.2, bh);
+    }
+    const px = pos * w;
+    g.strokeStyle = frozen ? '#B8E0FF' : mix(accent, .6); g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(px, 0); g.lineTo(px, h); g.stroke();
+    if (frozen) { g.fillStyle = 'rgba(184,224,255,0.9)'; g.font = '8px ui-monospace, monospace'; g.fillText('FROZEN', 6, 12); }
+    return;
+  }
+
+  const r = rng(s.seed), peaks = [];
+  for (let i = 0; i < 160; i++) peaks.push(Math.pow(r(), 1.7) * (0.35 + 0.65 * Math.abs(Math.sin(i / 13))));
+  const bw = w / peaks.length;
+
+  if (s.region) {
+    const a = 0.18 * w, b = 0.74 * w;
+    g.fillStyle = mix(accent, 0.07); g.fillRect(a, 0, b - a, h);
+    g.strokeStyle = mix(accent, 0.45); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(a, 0); g.lineTo(a, h); g.moveTo(b, 0); g.lineTo(b, h); g.stroke();
+  }
+  peaks.forEach((p, i) => {
+    const ph = p * (h * 0.42);
+    g.fillStyle = mix(accent, 0.3);
+    g.fillRect(i * bw, mid - ph, Math.max(0.7, bw - 0.4), ph * 2);
+  });
+
+  if (s.heads) {
+    const speed = s.speedKey ? (V[s.speedKey] ?? 1) : 1;
+    for (let v = 0; v < s.heads; v++) {
+      const col = ['#E8B44A', '#7B9A6D', '#E8DCC4', '#5EA8A6'][v % 4];
+      const off = v / s.heads;
+      const t = motionOn ? ((clock * 0.09 * speed + off) % 1) : (0.2 + off * 0.6);
+      const x = t * w;
+      g.strokeStyle = mix(col, 0.85); g.lineWidth = 1.3;
+      g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke();
+      g.beginPath(); g.moveTo(x, 6); g.lineTo(x + (speed >= 0 ? 6 : -6), 10); g.lineTo(x, 14); g.closePath();
+      g.fillStyle = col; g.fill();
+      if (s.grains && motionOn) {
+        const gr = rng(v * 31 + Math.floor(clock * 6));
+        for (let k = 0; k < 5; k++) {
+          const gx = x + (gr() - 0.5) * 46, gy = mid + (gr() - 0.5) * h * 0.7;
+          g.fillStyle = mix(col, 0.5 - k * 0.08);
+          g.beginPath(); g.arc(gx, gy, 1.5, 0, 7); g.fill();
+        }
+      }
+    }
+  }
+  g.strokeStyle = 'rgba(232,220,196,0.07)';
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(w, mid); g.stroke();
+}
+
+// ── D · lane bars ──
+function drawLaneBars(g, w, h, e) {
+  const s = e.surface, lanes = s.lanes;
+  g.clearRect(0, 0, w, h);
+  const base = h - 14, top = 8;
+  const slotW = (w - 10) / lanes.length;
+  const bw = Math.min(26, slotW - 6);
+  const originX = (w - slotW * lanes.length) / 2 + (slotW - bw) / 2;
+  const step = Math.floor(clock * (s.slow ? 1.4 : 4)) % 16;
+
+  g.strokeStyle = 'rgba(232,220,196,0.09)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(4, base + 0.5); g.lineTo(w - 4, base + 0.5); g.stroke();
+  g.strokeStyle = 'rgba(232,220,196,0.04)';
+  g.beginPath(); g.moveTo(4, top + 0.5); g.lineTo(w - 4, top + 0.5); g.stroke();
+
+  lanes.forEach((l, i) => {
+    const lvl = V[l.level] ?? 0.5;
+    const x = originX + i * slotW + (s.pan && l.pan ? (V[l.pan] ?? 0) * slotW * 0.22 : 0);
+    let boost = 0;
+    if (s.trigger && motionOn && l.pattern != null && (l.pattern >> (15 - step)) & 1) {
+      boost = 1 - ((clock * (s.slow ? 1.4 : 4)) % 1);
+    }
+    if (s.meter && motionOn) boost = 0.3 * Math.abs(Math.sin(clock * (1.3 + i * 0.4) + i));
+    const span = base - top;
+    const bh = Math.max(1.5, span * lvl * (1 + boost * 0.28));
+    const dim = e._focus != null && e._focus !== i ? 0.45 : 1;
+
+    g.strokeStyle = mix(l.color, (e._focus === i ? 0.4 : 0.14) * dim); g.lineWidth = 1;
+    g.strokeRect(x + 0.5, top + 0.5, bw - 1, span - 1);
+    g.fillStyle = mix(l.color, (0.26 + boost * 0.5) * dim);
+    g.fillRect(x, base - bh, bw, bh);
+    g.fillStyle = mix(l.color, (0.7 + boost * 0.3) * dim);
+    g.fillRect(x, base - bh, bw, 1.6);
+    if (boost > 0.05) {
+      g.fillStyle = mix(l.color, boost * 0.16 * dim);
+      g.fillRect(x - 3, base - bh - 3, bw + 6, bh + 6);
+    }
+    g.fillStyle = `rgba(232,220,196,${(0.28 + boost * 0.5) * dim})`;
+    g.font = '7px ui-monospace, monospace';
+    g.fillText(l.label, x + bw / 2 - g.measureText(l.label).width / 2, h - 3);
+  });
+  e._laneGeom = { originX, slotW, bw };
+
+  if (s.trigger && motionOn) {
+    const sx = 5 + (step / 16) * (w - 10);
+    g.fillStyle = 'rgba(184,224,255,0.55)';
+    g.fillRect(sx, 0, 1.5, 5);
+  }
+}
+
+// ── E · transfer curve ──
+function drawTransferCurve(g, w, h, e) {
+  const accent = e.accent, s = e.surface;
+  gridBg(g, w, h, accent);
+  g.strokeStyle = 'rgba(232,220,196,0.08)'; g.setLineDash([2, 4]);
+  g.beginPath(); g.moveTo(0, h); g.lineTo(w, 0); g.stroke(); g.setLineDash([]);
+
+  const f = s.shape === 'saturate'
+    ? (x) => { const d = 1 + (V[s.driveKey] ?? 0) * 11, b = ((V[s.biasKey] ?? 0) - 0.5) * 0.8; return Math.tanh(x * d + b) / Math.tanh(d * 0.5 + Math.abs(b)); }
+    : (x) => {
+        const thr = toUnit({ min: -60, max: 0 }, V[s.thrKey] ?? -18), ratio = V[s.ratioKey] ?? 4;
+        return x <= thr ? x : thr + (x - thr) / ratio;
+      };
+
+  g.beginPath();
+  for (let px = 0; px <= w; px++) {
+    const u = px / w;
+    const x = s.shape === 'saturate' ? u * 2 - 1 : u;
+    const y = Math.max(-1, Math.min(1, f(x)));
+    const py = s.shape === 'saturate' ? h / 2 - y * (h / 2 - 4) : h - y * (h - 6);
+    px === 0 ? g.moveTo(px, py) : g.lineTo(px, py);
+  }
+  g.strokeStyle = accent; g.lineWidth = 1.8; g.stroke();
+
+  if (s.pump && motionOn) {
+    const drive = 0.5 + 0.5 * Math.pow(Math.abs(Math.sin(clock * 2.2)), 3);
+    const py = h - Math.max(0, Math.min(1, f(drive))) * (h - 6);
+    g.beginPath(); g.arc(drive * w, py, 4.5, 0, 7);
+    g.fillStyle = '#B8E0FF'; g.fill();
+    g.beginPath(); g.arc(drive * w, py, 9, 0, 7);
+    g.strokeStyle = 'rgba(184,224,255,0.35)'; g.lineWidth = 1; g.stroke();
+  }
+  if (s.shape === 'saturate') {
+    const ux = toUnit(e.pad.x, V[e.pad.x.key]), uy = toUnit(e.pad.y, V[e.pad.y.key]);
+    const lu = liveUnit(e, e.pad.x);
+    drawHandle(g, ux * w, h - uy * h, accent, isLive(e, e.pad.x) ? { x: lu * w, y: h - uy * h } : null);
+  } else {
+    const thr = toUnit({ min: -60, max: 0 }, V[s.thrKey] ?? -18);
+    const ry = h - toUnit({ min: 1, max: 20 }, V[s.ratioKey] ?? 4) * h;
+    drawHandle(g, thr * w, ry, accent, null);
+  }
+}
+
+// ── F · decay field ──
+function drawDecayField(g, w, h, e) {
+  const accent = e.accent, s = e.surface;
+  gridBg(g, w, h, accent);
+
+  if (s.taps) {
+    const time = toUnit({ min: 20, max: 2000 }, V[s.timeKey] ?? 400);
+    const fb = V[s.fbKey] ?? 0.5;
+    const gap = Math.max(9, time * w * 0.42);
+    let amp = 1, x = 6, n = 0;
+    while (x < w - 3 && amp > 0.02 && n < 24) {
+      const bh = amp * (h - 16);
+      const active = motionOn && ((clock * 2.2) % 12 | 0) === n % 12;
+      g.fillStyle = mix(accent, active ? 0.9 : 0.4);
+      g.fillRect(x, h - 8 - bh, 2.5, bh);
+      x += gap; amp *= 0.2 + fb * 0.78; n++;
+    }
+    const tone = toUnit({ min: 200, max: 12000, curve: 'log' }, V[s.toneKey] ?? 4000);
+    g.beginPath();
+    for (let px = 0; px <= w; px += 3) g.lineTo(px, 8 + (1 - tone) * 10 + Math.pow(px / w, 2) * (1 - tone) * h * 0.6);
+    g.strokeStyle = mix(accent, 0.2); g.lineWidth = 1; g.setLineDash([3, 3]); g.stroke(); g.setLineDash([]);
+    return;
+  }
+
+  const size = toUnit({ min: 0.5, max: 10 }, V[s.sizeKey] ?? 3);
+  const decay = V[s.decayKey] ?? 0.6, damp = V[s.dampKey] ?? 0.4;
+  const tail = 0.1 + decay * 0.9;
+  const env = (t) => Math.exp(-t / tail);
+  g.beginPath();
+  for (let px = 0; px <= w; px += 2) {
+    const t = px / w;
+    g.lineTo(px, h - 6 - env(t) * (h - 14));
+  }
+  g.strokeStyle = accent; g.lineWidth = 1.8; g.stroke();
+  g.lineTo(w, h); g.lineTo(0, h); g.closePath(); g.fillStyle = mix(accent, 0.08); g.fill();
+
+  g.beginPath();
+  for (let px = 0; px <= w; px += 2) {
+    const t = px / w;
+    g.lineTo(px, h - 6 - env(t) * Math.exp(-t * damp * 4) * (h - 14));
+  }
+  g.strokeStyle = mix('#B8E0FF', 0.34); g.lineWidth = 1; g.setLineDash([2, 3]); g.stroke(); g.setLineDash([]);
+
+  const er = Math.round(3 + size * 9);
+  for (let i = 0; i < er; i++) {
+    const t = (i / er) * 0.3 * (0.3 + size);
+    const x = t * w;
+    if (x > w) break;
+    g.fillStyle = mix(accent, 0.5 - i * 0.03);
+    g.fillRect(x, h - 6 - env(t) * (h - 14), 1.4, env(t) * (h - 14));
+  }
+  drawHandle(g, size * w, h - (V[s.decayKey] ?? .6) * h, accent,
+    isLive(e, e.pad.y) ? { x: size * w, y: h - liveUnit(e, e.pad.y) * h } : null);
+}
+
+// ── G · wobble trace ──
+function drawWobbleTrace(g, w, h, e) {
+  const accent = e.accent, s = e.surface;
+  gridBg(g, w, h, accent);
+  const wow = V[s.wowKey] ?? .3, flutter = V[s.flutterKey] ?? .3;
+  const alias = V[s.aliasKey] ?? .2, age = V[s.ageKey] ?? .4;
+  const t0 = motionOn ? clock : 0;
+  const mid = h / 2;
+
+  g.beginPath();
+  for (let px = 0; px <= w; px += 1) {
+    const u = px / w;
+    const ph = u * 7 + t0 * 1.4;
+    let y = Math.sin(ph * 0.7) * wow * 22 + Math.sin(ph * 6.3) * flutter * 9;
+    if (alias > 0.05) y += (Math.round(Math.sin(ph * 19) * alias * 5) / (alias * 5 + 1)) * alias * 7;
+    px === 0 ? g.moveTo(px, mid + y) : g.lineTo(px, mid + y);
+  }
+  g.strokeStyle = accent; g.lineWidth = 1.5; g.stroke();
+
+  const dr = rng(Math.floor(t0 * 1.5) + 3);
+  const drops = Math.round(age * 5);
+  for (let i = 0; i < drops; i++) {
+    const x = dr() * w, dw = 3 + dr() * 12;
+    g.fillStyle = 'rgba(16,15,14,0.86)';
+    g.fillRect(x, mid - 26, dw, 52);
+    g.fillStyle = mix(accent, 0.14);
+    g.fillRect(x, mid - 1, dw, 2);
+  }
+  g.fillStyle = mix(accent, 0.06);
+  for (let i = 0; i < 40 * age; i++) {
+    const r2 = rng(i * 7 + 1);
+    g.fillRect(r2() * w, r2() * h, 1, 1);
+  }
+  drawHandle(g, toUnit(e.pad.x, V[e.pad.x.key]) * w, h - toUnit(e.pad.y, V[e.pad.y.key]) * h, accent,
+    isLive(e, e.pad.x) ? { x: liveUnit(e, e.pad.x) * w, y: h - toUnit(e.pad.y, V[e.pad.y.key]) * h } : null);
+}
+
+const RENDERERS = {
+  filterCurve: drawFilterCurve, xy: drawXY, bufferStrip: drawBufferStrip,
+  laneBars: drawLaneBars, transferCurve: drawTransferCurve,
+  decayField: drawDecayField, wobbleTrace: drawWobbleTrace,
+};
+
+// ═══════════════════════ DOM build ═══════════════════════
+const gallery = document.getElementById('gallery');
+const cards = [];
+
+function paramRow(engine, p, opts = {}) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<span class="name"></span><span class="val"></span>
+    <div class="track"><div class="fill"></div><div class="ghost"></div><span class="mode"></span></div>`;
+  row.querySelector('.name').textContent = p.label;
+  const fill = row.querySelector('.fill'), ghost = row.querySelector('.ghost'), val = row.querySelector('.val');
+  const mode = row.querySelector('.mode');
+  const track = row.querySelector('.track');
+
+  const drag = (ev) => {
+    const r = track.getBoundingClientRect();
+    V[p.key] = fromUnit(p, (ev.clientX - r.left) / r.width);
+  };
+  track.addEventListener('pointerdown', (ev) => { track.setPointerCapture(ev.pointerId); drag(ev); });
+  track.addEventListener('pointermove', (ev) => { if (track.hasPointerCapture(ev.pointerId)) drag(ev); });
+  track.title = 'Drag to set · right-click cycles slider mode';
+  track.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    const i = engine.walk.indexOf(p.key);
+    i >= 0 ? engine.walk.splice(i, 1) : engine.walk.push(p.key);
+  });
+
+  row.update = () => {
+    const live = isLive(engine, p);
+    row.classList.toggle('live', live);
+    const lu = liveUnit(engine, p);
+    fill.style.width = (toUnit(p, V[p.key]) * 100) + '%';
+    ghost.style.left = `calc(${lu * 100}% - 1px)`;
+    val.textContent = fmt(p, live ? fromUnit(p, lu) : V[p.key]);
+    mode.textContent = opts.hideMode ? '' : (live ? 'WALK' : '');
+  };
+  return row;
+}
+
+function buildCard(e) {
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  slot.dataset.family = e.family;
+
+  const cap = document.createElement('div');
+  cap.className = 'slot-caption';
+  cap.innerHTML = `<span class="arch"></span><span class="kind"></span>`;
+  cap.querySelector('.arch').textContent = e.id;
+  cap.querySelector('.kind').textContent = e.arch;
+  slot.appendChild(cap);
+
+  const popup = document.createElement('div');
+  popup.className = 'popup';
+  popup.style.setProperty('--accent', e.accent);
+
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.innerHTML = `<span class="dot"></span><strong></strong><b></b>`;
+  title.querySelector('strong').textContent = e.label;
+  const titleVal = title.querySelector('b');
+  popup.appendChild(title);
+
+  const heroWrap = document.createElement('div');
+  heroWrap.className = 'hero-wrap';
+  const canvas = document.createElement('canvas');
+  canvas.className = 'hero-canvas';
+  canvas.tabIndex = 0;
+  heroWrap.appendChild(canvas);
+
+  const readout = document.createElement('div');
+  readout.className = 'readout';
+  heroWrap.appendChild(readout);
+
+  if (e.action) {
+    const btn = document.createElement('button');
+    btn.className = 'hero-collapse';
+    btn.style.color = e.accent;
+    btn.onclick = () => { V[e.action.key] = V[e.action.key] > 0.5 ? 0 : 1; };
+    btn.textContent = '◼ ' + e.action.label;
+    heroWrap.appendChild(btn);
+  }
+  popup.appendChild(heroWrap);
+
+  const macros = document.createElement('div');
+  macros.className = 'macros';
+  const rows = e.macros.map((m) => { const r = paramRow(e, m); macros.appendChild(r); return r; });
+  popup.appendChild(macros);
+
+  const collapse = document.createElement('button');
+  collapse.className = 'hero-collapse';
+  collapse.textContent = '⌄ hide hero';
+  collapse.onclick = () => {
+    popup.classList.toggle('collapsed');
+    collapse.textContent = popup.classList.contains('collapsed') ? '⌃ show hero' : '⌄ hide hero';
+  };
+  popup.appendChild(collapse);
+
+  const levelRow = paramRow(e, e.level, { hideMode: true });
+  popup.appendChild(levelRow);
+  rows.push(levelRow);
+
+  if (e.sends.length) {
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = `<div class="section-label">Sends</div>`;
+    for (const [label, amt] of e.sends) {
+      const p = P('send:' + e.id + ':' + label, label, 0, 1);
+      if (V[p.key] === undefined) V[p.key] = amt;
+      const r = paramRow(e, p, { hideMode: true });
+      sec.appendChild(r); rows.push(r);
+    }
+    popup.appendChild(sec);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.innerHTML = `<button class="danger">Turn Off</button><button>Done</button>`;
+  popup.appendChild(actions);
+
+  slot.appendChild(popup);
+  gallery.appendChild(slot);
+
+  // hero pointer interaction
+  if (e.pad || e.surface.bands) {
+    let band = -1;
+    const setFromPointer = (ev) => {
+      const r = canvas.getBoundingClientRect();
+      const ux = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+      const uy = Math.min(1, Math.max(0, 1 - (ev.clientY - r.top) / r.height));
+      if (e.surface.bands) {
+        if (band < 0) return;
+        const b = e.surface.bands[band];
+        V[b.freq] = fromUnit({ min: FMIN, max: FMAX, curve: 'log' }, ux);
+        V[b.gain] = -18 + uy * 36;
+        return;
+      }
+      V[e.pad.x.key] = fromUnit(e.pad.x, ux);
+      V[e.pad.y.key] = fromUnit(e.pad.y, uy);
+    };
+    canvas.addEventListener('pointerdown', (ev) => {
+      canvas.setPointerCapture(ev.pointerId);
+      if (e.surface.bands) {
+        const r = canvas.getBoundingClientRect();
+        const px = (ev.clientX - r.left) / r.width * r.width;
+        let best = 1e9;
+        e.surface.bands.forEach((b, i) => {
+          const d = Math.abs(fx(V[b.freq], r.width) - px);
+          if (d < best) { best = d; band = i; }
+        });
+      }
+      setFromPointer(ev);
+    });
+    canvas.addEventListener('pointermove', (ev) => { if (canvas.hasPointerCapture(ev.pointerId)) setFromPointer(ev); });
+    canvas.addEventListener('pointerup', () => { band = -1; });
+  } else {
+    canvas.style.cursor = 'default';
+  }
+
+  if (e.surface.kind === 'laneBars') {
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('pointerdown', (ev) => {
+      const r = canvas.getBoundingClientRect();
+      const geom = e._laneGeom;
+      if (!geom) return;
+      const i = Math.floor((ev.clientX - r.left - geom.originX + (geom.slotW - geom.bw) / 2) / geom.slotW);
+      e._focus = (i >= 0 && i < e.surface.lanes.length && e._focus !== i) ? i : null;
+    });
+  }
+
+  const ctx = canvas.getContext('2d');
+  const card = {
+    engine: e, slot, popup, canvas, ctx, rows, readout, titleVal,
+    draw() {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr; canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      RENDERERS[e.surface.kind](ctx, w, h, e);
+    },
+    sync() {
+      for (const r of this.rows) r.update();
+      const lv = liveUnit(e, e.level);
+      titleVal.textContent = Math.round(lv * 100) + '%';
+      titleVal.style.color = isLive(e, e.level) ? '#B8E0FF' : '';
+      if (e.pad) {
+        const lx = liveUnit(e, e.pad.x), ly = liveUnit(e, e.pad.y);
+        readout.innerHTML = '';
+        [[e.pad.x, lx], [e.pad.y, ly]].forEach(([p, u]) => {
+          const s = document.createElement('span');
+          if (isLive(e, p)) s.className = 'live';
+          s.innerHTML = `${p.label}<b>${fmt(p, fromUnit(p, u))}</b>`;
+          readout.appendChild(s);
+        });
+      } else if (e.surface.bands) {
+        readout.innerHTML = `<span>Drag any band handle</span>`;
+      } else {
+        const lane = e._focus != null ? e.surface.lanes[e._focus] : null;
+        readout.innerHTML = lane
+          ? `<span>Focused<b>${lane.label}</b></span><span>Level<b>${Math.round((V[lane.level] ?? 0) * 100)}%</b></span>`
+          : `<span>Tap a bar to focus</span><span>${e.surface.lanes.length} lanes</span>`;
+      }
+    },
+  };
+  cards.push(card);
+}
+
+ENGINES.forEach(buildCard);
+
+// ═══════════════════════ filters + toggles ═══════════════════════
+const FAMILIES = [['all', 'All 24'], ['source', 'Sound sources'], ['fx', 'FX nodes'], ['master', 'Master']];
+const filters = document.getElementById('filters');
+let activeFamily = 'all';
+FAMILIES.forEach(([id, label]) => {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.className = id === 'all' ? 'active' : '';
+  b.onclick = () => {
+    activeFamily = id;
+    [...filters.children].forEach((c) => c.classList.toggle('active', c === b));
+    for (const c of cards) c.slot.style.display = (id === 'all' || c.engine.family === id) ? '' : 'none';
+  };
+  filters.appendChild(b);
+});
+
+document.getElementById('toggleMotion').onclick = (ev) => {
+  motionOn = !motionOn;
+  ev.currentTarget.classList.toggle('active', motionOn);
+};
+document.getElementById('toggleWidth').onclick = (ev) => {
+  gallery.classList.toggle('narrow');
+  const narrow = gallery.classList.contains('narrow');
+  ev.currentTarget.classList.toggle('active', narrow);
+  ev.currentTarget.textContent = narrow ? '340px' : '300px';
+};
+
+// ═══════════════════════ frame loop ═══════════════════════
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (motionOn) clock += dt;
+  for (const c of cards) {
+    if (c.slot.style.display === 'none') continue;
+    const r = c.popup.getBoundingClientRect();
+    if (r.bottom < -200 || r.top > window.innerHeight + 200) continue;
+    if (!c.popup.classList.contains('collapsed')) c.draw();
+    c.sync();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
