@@ -31,6 +31,10 @@ const t0 = Date.now();
 page.on('console', (msg) => logs.push(`[console:${msg.type()}] ${msg.text()}`));
 page.on('pageerror', (err) => logs.push(`[pageerror] ${err.stack || err.message}`));
 page.on('requestfailed', (req) => logs.push(`[requestfailed] ${req.url()} :: ${req.failure()?.errorText || ''}`));
+page.on('dialog', async (dialog) => {
+  logs.push(`[dialog:${dialog.type()}] ${dialog.message()}`);
+  await dialog.dismiss().catch(() => {});
+});
 
 const sleep = (ms) => page.waitForTimeout(ms);
 function mark(name) {
@@ -65,65 +69,68 @@ async function ensurePlaying() {
 }
 async function nav(shortcut, label) {
   await page.keyboard.press(shortcut).catch(() => {});
-  await sleep(1300);
+  await sleep(1100);
   await clickButton(label).catch(() => false);
-  await sleep(1500);
+  await sleep(1200);
   await ensurePlaying();
 }
 async function centerElement(locator, offset = 0) {
   if (!(await locator.count())) return;
   await locator.first().scrollIntoViewIfNeeded().catch(() => {});
   if (offset) await page.evaluate((dy) => window.scrollBy(0, dy), offset).catch(() => {});
-  await sleep(700);
+  await sleep(600);
 }
 
 try {
-  await page.goto('http://127.0.0.1:5173', { waitUntil: 'domcontentloaded', timeout: 120000 });
+  // Kessho's supported local development reference runtime. This keeps the
+  // actual web UI/sequencers/visualizers while avoiding CI Product Core audio
+  // worklet constraints. It exists specifically for parity/A-B validation.
+  await page.goto('http://127.0.0.1:5173/?engine=web-ts', { waitUntil: 'domcontentloaded', timeout: 120000 });
   await sleep(12000);
   await page.mouse.click(1280, 180).catch(() => {});
   await page.keyboard.press('2').catch(() => {});
-  await sleep(2500);
+  await sleep(2000);
   await ensurePlaying();
-  await sleep(5000);
+  await sleep(4000);
   mark('synth-live-start');
   await screenshot('00-synth-live');
   await sleep(6000);
   mark('synth-live-end');
 
   await clickButton('Detail').catch(() => false);
-  await sleep(1800);
+  await sleep(1600);
   await clickButton('Step').catch(() => false);
-  await sleep(900);
+  await sleep(800);
   const laneOff = page.getByRole('button', { name: 'Off', exact: true });
   if (await laneOff.count() && await laneOff.first().isVisible().catch(() => false)) {
-    await laneOff.first().click();
+    await laneOff.first().click().catch(() => {});
     await sleep(1200);
   }
   await ensurePlaying();
-  await centerElement(page.getByRole('button', { name: 'Step', exact: true }), 130);
+  await centerElement(page.getByRole('button', { name: 'Step', exact: true }), 140);
   mark('step-live-start');
   await screenshot('01-step-live');
-  await sleep(8000);
+  await sleep(8500);
   mark('step-live-end');
 
   await clickButton('Orbit').catch(() => false);
-  await sleep(1800);
+  await sleep(1700);
   await clickButton('SPIN: OFF').catch(() => false);
   await ensurePlaying();
-  await centerElement(page.getByRole('button', { name: 'Orbit', exact: true }), 180);
+  await centerElement(page.getByRole('button', { name: 'Orbit', exact: true }), 190);
   mark('orbit-live-start');
   await screenshot('02-orbit-live');
-  await sleep(10000);
+  await sleep(10500);
   mark('orbit-live-end');
 
   await clickButton('Walker').catch(() => false);
-  await sleep(1800);
+  await sleep(1700);
   await clickButton('Diatonic').catch(() => false);
   await ensurePlaying();
-  await centerElement(page.getByRole('button', { name: 'Walker', exact: true }), 180);
+  await centerElement(page.getByRole('button', { name: 'Walker', exact: true }), 190);
   mark('walker-live-start');
   await screenshot('03-walker-live');
-  await sleep(8500);
+  await sleep(9000);
   mark('walker-live-end');
 
   await nav('5', 'Granular');
@@ -136,7 +143,7 @@ try {
   await nav('6', 'Delay');
   mark('delay-live-start');
   await screenshot('05-delay-live');
-  await sleep(6000);
+  await sleep(6500);
   mark('delay-live-end');
 
   await nav('7', 'Reverb');
@@ -163,7 +170,7 @@ try {
   await centerElement(driftTitle, 260);
   mark('texture-live-start');
   await screenshot('07-texture-live');
-  await sleep(9500);
+  await sleep(10000);
   mark('texture-live-end');
 
   await page.keyboard.press('=').catch(() => {});
@@ -176,7 +183,7 @@ try {
   await sleep(1500);
   mark('visualizer-live-start');
   await screenshot('08-visualizer-live');
-  await sleep(14000);
+  await sleep(15000);
   mark('visualizer-live-end');
 
   fs.writeFileSync(path.join(OUT, 'timeline.json'), JSON.stringify(timeline, null, 2));
