@@ -27,9 +27,7 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install chromium
       - name: Capture production Product Core visuals
-        run: |
-          sed -i '' 's#http://127.0.0.1:5173/?engine=core-product#https://kessho.vercel.app/?engine=core-product#' scripts/promo-visual-capture.mjs
-          node scripts/promo-visual-capture.mjs
+        run: node scripts/promo-visual-capture-final.mjs
       - name: Upload capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
