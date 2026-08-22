@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'scripts/promo-capture-v3.mjs'
+      - 'scripts/promo-capture-v3*'
   workflow_dispatch:
 
 jobs:
