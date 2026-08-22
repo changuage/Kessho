@@ -1,1 +1,1 @@
-trigger Product Core parity PCM promo render
+trigger native Product Core promo render
