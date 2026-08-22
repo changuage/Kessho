@@ -1,1 +1,1 @@
-trigger local headed capture
+trigger local headed capture with built wasm
