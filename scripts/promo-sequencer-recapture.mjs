@@ -131,7 +131,8 @@ async function capture() {
     const before=(await b.innerText()).trim();
     const beforeClass=await b.getAttribute('class');
     const wasPlaying=before.includes('■') || (beforeClass||'').includes('playing');
-    if(!wasPlaying) await b.click();
+    if(wasPlaying) { await b.click(); await wait(page,500); }
+    await b.click();
     await page.waitForFunction(() => { const el=document.querySelector('button[data-sequencer-transport="synth"]'); return !!el && (((el.textContent||'').includes('■')) || el.classList.contains('playing')); }, null, { timeout: 10000 });
     logs.push(`[sequencer] ${label} local PLAY engaged; before=${JSON.stringify(before)} after=${JSON.stringify((await b.innerText()).trim())} class=${await b.getAttribute('class')}`);
     await wait(page,900);
@@ -151,6 +152,9 @@ async function capture() {
     await segment('step-playing-synth-seq-teset', 9000);
     await stopSequencer();
 
+    // Fresh page/runtime so the second preset gets its own AudioContext and scheduler.
+    await page.goto('http://127.0.0.1:5173/?engine=web-ts', { waitUntil:'domcontentloaded', timeout:120000 });
+    await wait(page,10000);
     await loadLocal(TARGETS[1]);
     await ensureGlobalPlaying();
     await navSynth();
