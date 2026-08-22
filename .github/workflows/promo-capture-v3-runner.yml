@@ -32,7 +32,9 @@ jobs:
           pactl load-module module-null-sink sink_name=kessho sink_properties=device.description=Kessho || true
           pactl set-default-sink kessho || true
       - name: Build Product Core runtime assets
-        run: npm run core:build:wasm
+        run: |
+          sed -i '/#include <cmath>/i #include <cstdint>' wasm/reverb/kessho_reverb.cpp
+          npm run core:build:wasm
       - name: Start Kessho locally
         run: |
           nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
