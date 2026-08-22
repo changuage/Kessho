@@ -56,13 +56,42 @@ async function clickButton(label, exact = true) {
   }
   return false;
 }
+async function visibleGlyphButton(glyph) {
+  const buttons = page.locator('button');
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    const text = (await button.innerText().catch(() => '')).trim();
+    if (text.includes(glyph)) return button;
+  }
+  return null;
+}
+async function isTransportRunning() {
+  const advancedStop = page.locator('button[title="Stop"]');
+  if (await advancedStop.count() && await advancedStop.first().isVisible().catch(() => false)) return true;
+  return Boolean(await visibleGlyphButton('■'));
+}
 async function ensurePlaying() {
-  const stop = page.locator('button[title="Stop"]');
-  if (await stop.count() && await stop.first().isVisible().catch(() => false)) return;
-  const start = page.locator('button[title="Start"]');
-  if (!(await start.count())) throw new Error('Global Start button not found');
-  await start.first().click({ timeout: 10000 });
-  await page.waitForFunction(() => document.querySelector('button[title="Stop"]') !== null, null, { timeout: 75000 });
+  if (await isTransportRunning()) return;
+
+  const advancedStart = page.locator('button[title="Start"]');
+  if (await advancedStart.count() && await advancedStart.first().isVisible().catch(() => false)) {
+    await advancedStart.first().click({ timeout: 10000 });
+  } else {
+    const simplePlay = await visibleGlyphButton('▶');
+    if (!simplePlay) {
+      const texts = await page.locator('button').allInnerTexts().catch(() => []);
+      throw new Error(`Global play control not found; visible button texts=${JSON.stringify(texts)}`);
+    }
+    await simplePlay.click({ timeout: 10000 });
+  }
+
+  await page.waitForFunction(() => {
+    const advanced = document.querySelector('button[title="Stop"]');
+    if (advanced) return true;
+    return Array.from(document.querySelectorAll('button')).some((button) => (button.textContent || '').includes('■'));
+  }, null, { timeout: 75000 });
   logs.push(`[playback] verified running; phase=${await page.evaluate(() => document.documentElement.dataset.coreProductRuntimePhase || '')}`);
 }
 async function nav(shortcut, label) {
@@ -87,7 +116,6 @@ async function segment(name, ms, screenshotName = name) {
 try {
   await page.goto('http://127.0.0.1:5173/?engine=core-product&parity=1', { waitUntil: 'domcontentloaded', timeout: 120000 });
   await sleep(page, 4500);
-  await page.mouse.click(1280, 220).catch(() => {});
   await ensurePlaying();
   await sleep(page, 2500);
   await shot('00-product-core-running');
@@ -169,5 +197,3 @@ try {
   await context.close().catch(() => {});
   await browser.close().catch(() => {});
 }
-
-// visual-only capture retry
