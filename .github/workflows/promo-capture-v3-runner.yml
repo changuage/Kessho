@@ -1,0 +1,61 @@
+name: Promo Capture V3 Runner
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/promo-*'
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install app dependencies
+        run: npm ci
+      - name: Install browser, audio sink and WASM toolchain
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio xvfb emscripten
+          pulseaudio --start --exit-idle-time=-1 || true
+          pactl load-module module-null-sink sink_name=kessho sink_properties=device.description=Kessho || true
+          pactl set-default-sink kessho || true
+      - name: Build Product Core runtime assets
+        run: |
+          sed -i '/#include <cmath>/i #include <cstdint>' wasm/reverb/kessho_reverb.cpp
+          npm run core:build:wasm
+      - name: Start Kessho locally
+        run: |
+          nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:5173 >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/kessho-vite.log
+          exit 1
+      - name: Capture active Product Core visuals
+        env:
+          PULSE_SINK: kessho
+        run: xvfb-run -a node scripts/promo-capture-v3.mjs
+      - name: Upload capture artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kessho-promo-capture-v3
+          path: promo-capture-v3-artifacts/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Show Vite log on failure
+        if: failure()
+        run: cat /tmp/kessho-vite.log || true
