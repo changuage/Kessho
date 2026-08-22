@@ -8,8 +8,13 @@ fs.mkdirSync(VIDEO_DIR, { recursive: true });
 const logs = [];
 const timeline = [];
 const t0 = Date.now();
+let page;
 const sleep = (ms) => page.waitForTimeout(ms);
-const mark = (name) => { const ms = Date.now() - t0; timeline.push({ name, ms }); logs.push(`[mark] ${name} ${ms}`); };
+const mark = (name) => {
+  const ms = Date.now() - t0;
+  timeline.push({ name, ms });
+  logs.push(`[mark] ${name} ${ms}`);
+};
 
 const browser = await chromium.launch({
   headless: true,
@@ -27,7 +32,7 @@ const context = await browser.newContext({
   deviceScaleFactor: 1,
   recordVideo: { dir: VIDEO_DIR, size: { width: 2560, height: 1440 } },
 });
-const page = await context.newPage();
+page = await context.newPage();
 page.setDefaultTimeout(20000);
 page.on('console', (m) => logs.push(`[console:${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.stack || e.message}`));
@@ -40,14 +45,10 @@ async function shot(name) {
 async function clickButton(name, exact = true) {
   const loc = page.getByRole('button', { name, exact });
   for (let i = 0; i < await loc.count(); i++) {
-    if (await loc.nth(i).isVisible().catch(() => false)) { await loc.nth(i).click(); return true; }
-  }
-  return false;
-}
-async function clickText(name, exact = true) {
-  const loc = page.getByText(name, { exact });
-  for (let i = 0; i < await loc.count(); i++) {
-    if (await loc.nth(i).isVisible().catch(() => false)) { await loc.nth(i).click(); return true; }
+    if (await loc.nth(i).isVisible().catch(() => false)) {
+      await loc.nth(i).click();
+      return true;
+    }
   }
   return false;
 }
@@ -62,7 +63,7 @@ async function center(locator, offset = 0) {
 }
 async function nav(shortcut, label) {
   await page.keyboard.press(shortcut).catch(() => {});
-  await sleep(800);
+  await sleep(900);
   await clickButton(label).catch(() => false);
   await sleep(900);
 }
@@ -93,7 +94,11 @@ async function ensurePlaying() {
     let clicked = false;
     for (let i = 0; i < await buttons.count(); i++) {
       const b = buttons.nth(i);
-      if (await b.isVisible().catch(() => false) && (await b.innerText().catch(() => '')).includes('▶')) { await b.click(); clicked = true; break; }
+      if (await b.isVisible().catch(() => false) && (await b.innerText().catch(() => '')).includes('▶')) {
+        await b.click();
+        clicked = true;
+        break;
+      }
     }
     if (!clicked) throw new Error('Play transport not found');
   }
@@ -106,178 +111,144 @@ async function ensurePlaying() {
 
 async function selectDynamicPreset() {
   const target = 'String Waves Dynamic';
-  logs.push(`[preset] searching for ${target}`);
+  const presetButton = page.locator('button[title="Presets"]');
+  if (!(await presetButton.count())) throw new Error('Snowflake Presets button not found');
+  await presetButton.first().click();
+  await sleep(700);
 
-  // Native selects first.
-  const selects = page.locator('select');
-  for (let i = 0; i < await selects.count(); i++) {
-    const sel = selects.nth(i);
-    const options = await sel.locator('option').allTextContents().catch(() => []);
-    if (options.some((x) => x.trim() === target)) {
-      await sel.selectOption({ label: target });
-      await sleep(1800);
-      logs.push('[preset] selected through native select');
-      return true;
+  const dialog = page.getByRole('dialog', { name: 'Snowflake preset loader' });
+  await dialog.waitFor({ state: 'visible', timeout: 10000 });
+  const search = dialog.getByPlaceholder('Search');
+  await search.fill(target);
+  await sleep(900);
+  await shot('00-preset-search');
+
+  const matches = dialog.locator('button').filter({ hasText: target });
+  let selected = false;
+  for (let i = 0; i < await matches.count(); i++) {
+    const b = matches.nth(i);
+    const text = (await b.innerText().catch(() => '')).trim();
+    if (await b.isVisible().catch(() => false) && text.includes(target)) {
+      logs.push(`[preset] clicking=${JSON.stringify(text)}`);
+      await b.click();
+      selected = true;
+      break;
     }
   }
-
-  // Open likely preset/browser controls and search the rendered list.
-  const buttons = page.locator('button');
-  const candidateTexts = [];
-  for (let i = 0; i < await buttons.count(); i++) {
-    const b = buttons.nth(i);
-    if (!(await b.isVisible().catch(() => false))) continue;
-    const txt = (await b.innerText().catch(() => '')).trim();
-    if (/preset|string waves|patch/i.test(txt)) candidateTexts.push(txt);
-  }
-  logs.push(`[preset] candidate buttons=${JSON.stringify(candidateTexts)}`);
-
-  for (const pattern of [/presets?/i, /string waves/i, /patch/i]) {
-    const cand = page.getByRole('button', { name: pattern });
-    for (let i = 0; i < await cand.count(); i++) {
-      const b = cand.nth(i);
-      if (!(await b.isVisible().catch(() => false))) continue;
-      await b.click().catch(() => {});
-      await sleep(900);
-      const exact = page.getByText(target, { exact: true });
-      if (await exact.count() && await exact.first().isVisible().catch(() => false)) {
-        await exact.first().click();
-        await sleep(1800);
-        logs.push('[preset] selected through preset browser');
-        return true;
-      }
-    }
+  if (!selected) {
+    const dialogText = await dialog.innerText().catch(() => '');
+    logs.push(`[preset] search results=${JSON.stringify(dialogText.slice(0, 3000))}`);
+    throw new Error(`${target} was not found in Snowflake preset loader`);
   }
 
-  // ARIA combobox/listbox fallback.
-  const combos = page.getByRole('combobox');
-  for (let i = 0; i < await combos.count(); i++) {
-    const c = combos.nth(i);
-    if (!(await c.isVisible().catch(() => false))) continue;
-    await c.click().catch(() => {});
-    await sleep(500);
-    const option = page.getByRole('option', { name: target, exact: true });
-    if (await option.count() && await option.first().isVisible().catch(() => false)) {
-      await option.first().click();
-      await sleep(1800);
-      logs.push('[preset] selected through ARIA combobox');
-      return true;
-    }
-  }
-
-  const allOptions = await page.locator('option').allTextContents().catch(() => []);
-  logs.push(`[preset] available option sample=${JSON.stringify(allOptions.filter((x) => /string|wave/i.test(x)).slice(0, 50))}`);
-  await shot('00-preset-not-found');
-  return false;
+  await dialog.waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {});
+  await sleep(2200);
+  logs.push(`[preset] loaded ${target}`);
+  await shot('00-string-waves-dynamic');
 }
 
 async function expandCard(label) {
   const text = page.getByText(label, { exact: true });
-  if (!(await text.count())) return false;
-  await center(text, -130);
-  // Prefer the nearest button/summary; otherwise click the visible heading itself.
+  if (!(await text.count())) {
+    logs.push(`[card] missing=${label}`);
+    return false;
+  }
+  await center(text, -140);
   const el = text.first();
-  const ancestorButton = el.locator('xpath=ancestor::button[1]');
-  if (await ancestorButton.count()) await ancestorButton.click().catch(() => {});
+  const button = el.locator('xpath=ancestor::button[1]');
+  if (await button.count()) await button.click().catch(() => {});
   else {
     const summary = el.locator('xpath=ancestor::summary[1]');
     if (await summary.count()) await summary.click().catch(() => {});
     else await el.click().catch(() => {});
   }
   await sleep(900);
-  logs.push(`[card] attempted expansion: ${label}`);
+  logs.push(`[card] opened=${label}`);
   return true;
 }
 
 try {
-  // Advanced UI: parity=1 was intentionally removed because it forces Snowflake/simple mode.
   await page.goto('http://127.0.0.1:5173/?engine=core-product', { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await sleep(9000);
-  await shot('00-loaded');
+  await sleep(14000);
+  await shot('00-snowflake-loaded');
 
-  await nav('1', 'Patch');
-  const presetSelected = await selectDynamicPreset();
-  if (!presetSelected) throw new Error('String Waves Dynamic preset was not found in the running app UI');
-  await shot('00-string-waves-dynamic');
+  // Select the requested child preset in the real Snowflake state-preset loader.
+  await selectDynamicPreset();
 
+  // Start Product Core while still in the simple UI, then enter advanced UI.
   await ensurePlaying();
-  await sleep(2600);
+  await sleep(2500);
   await shot('00-product-core-running');
+  await nav('1', 'Patch');
+  await shot('00-advanced-running');
 
-  // Open and record actual engine cards before sequencer shots.
+  // Synth engine cards — open them and hold each framing long enough for editorial push-ins.
   await nav('2', 'Synth');
   await clickButton('Detail').catch(() => false);
   await sleep(900);
-  for (const label of ['Pad Synth', 'Pad 2', 'Lead 1', 'Lead 2', 'Sample 1']) {
+  for (const label of ['Pad 1', 'Pad 2', 'Lead 1', 'Lead 2', 'Sample 1']) {
     await expandCard(label);
     await center(page.getByText(label, { exact: true }), -110);
     await segment(`engine-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, 3000);
   }
 
-  // Step: enable a lane, then keep viewport static so real playhead/dot motion is measurable.
-  await center(page.getByRole('button', { name: 'Step', exact: true }), 160);
-  await clickButton('Step');
-  await sleep(800);
+  // Step: viewport stays static during this raw segment; motion must come from Kessho.
+  await clickButton('Step').catch(() => false);
+  await sleep(900);
   const off = page.getByRole('button', { name: 'Off', exact: true });
   if (await off.count() && await off.first().isVisible().catch(() => false)) await off.first().click();
   await sleep(1300);
-  await center(page.getByRole('button', { name: 'Step', exact: true }), 260);
+  await center(page.getByRole('button', { name: 'Step', exact: true }), 280);
   await segment('step-live', 8500);
 
-  // Orbit: Spin ON and static viewport; any movement is the real UI, not camera movement.
-  await clickButton('Orbit');
+  // Orbit: enable the real Spin control, then keep viewport static for motion verification.
+  await clickButton('Orbit').catch(() => false);
   await sleep(1000);
   const spinOff = page.getByRole('button', { name: /SPIN.*OFF/i });
   if (await spinOff.count() && await spinOff.first().isVisible().catch(() => false)) await spinOff.first().click();
   await sleep(1300);
-  await center(page.getByRole('button', { name: 'Orbit', exact: true }), 330);
+  await center(page.getByRole('button', { name: 'Orbit', exact: true }), 350);
   await segment('orbit-live', 9000);
 
-  await clickButton('Walker');
+  await clickButton('Walker').catch(() => false);
   await sleep(1000);
-  await center(page.getByRole('button', { name: 'Walker', exact: true }), 260);
+  await center(page.getByRole('button', { name: 'Walker', exact: true }), 280);
   await segment('walker-live', 6500);
 
   await nav('3', 'Drums');
-  await expandCard('Drums');
   await segment('drums-live', 4500);
 
   await nav('4', 'Earth');
   await segment('earth-live', 4000);
 
   await nav('5', 'Granular');
-  await expandCard('Granular');
-  await center(page.getByText('Granular', { exact: false }), 230);
+  await center(page.getByText('Granular', { exact: false }), 260);
   await segment('granular-live', 6000);
 
   await nav('6', 'Delay');
-  await expandCard('Delay');
   await segment('delay-live', 4300);
 
   await nav('7', 'Reverb');
-  await expandCard('Reverb');
   await segment('reverb-live', 4300);
 
   await nav('8', 'Texture');
   const drift = page.getByText('Degrade - Drift', { exact: false });
   if (await drift.count()) {
-    await expandCard('Degrade - Drift');
     const section = drift.first().locator('xpath=ancestor::section[1]');
     const fxOff = section.getByRole('button', { name: 'FX Off', exact: true });
     if (await fxOff.count() && await fxOff.first().isVisible().catch(() => false)) await fxOff.first().click();
   }
   const erosion = page.getByText('Degrade - Erosion', { exact: false });
   if (await erosion.count()) {
-    await expandCard('Degrade - Erosion');
     const section = erosion.first().locator('xpath=ancestor::section[1]');
     const fxOff = section.getByRole('button', { name: 'FX Off', exact: true });
     if (await fxOff.count() && await fxOff.first().isVisible().catch(() => false)) await fxOff.first().click();
   }
-  await center(drift, 300);
+  await center(drift, 320);
   await segment('texture-live', 6500);
 
   await page.keyboard.press('=').catch(() => {});
-  await sleep(1000);
+  await sleep(1200);
   await clickButton('Show Visualizer').catch(() => false);
   await page.evaluate(() => window.scrollTo(0, 0));
   await sleep(1200);
