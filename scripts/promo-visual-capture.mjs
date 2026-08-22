@@ -169,3 +169,5 @@ try {
   await context.close().catch(() => {});
   await browser.close().catch(() => {});
 }
+
+// visual-only capture retry
