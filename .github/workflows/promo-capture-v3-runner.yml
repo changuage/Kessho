@@ -26,21 +26,10 @@ jobs:
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install chromium
-      - name: Verify checked-in Product Core runtime assets
+      - name: Capture production Product Core visuals
         run: |
-          test -s public/worklets/kessho_core.wasm
-          test -s public/worklets/kessho-core.worklet.js
-      - name: Start Kessho locally
-        run: |
-          nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
-          for i in {1..90}; do
-            if curl -fsS http://127.0.0.1:5173 >/dev/null; then exit 0; fi
-            sleep 2
-          done
-          cat /tmp/kessho-vite.log
-          exit 1
-      - name: Capture active Product Core visuals
-        run: node scripts/promo-visual-capture.mjs
+          sed -i '' 's#http://127.0.0.1:5173/?engine=core-product#https://kessho.vercel.app/?engine=core-product#' scripts/promo-visual-capture.mjs
+          node scripts/promo-visual-capture.mjs
       - name: Upload capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,6 +38,3 @@ jobs:
           path: promo-capture-v3-artifacts/
           if-no-files-found: error
           retention-days: 7
-      - name: Show Vite log on failure
-        if: failure()
-        run: cat /tmp/kessho-vite.log || true
