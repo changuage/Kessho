@@ -1,0 +1,35 @@
+name: Promo Capture V3 Runner
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/promo-capture-v3.mjs'
+  workflow_dispatch:
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Capture active production Kessho web app
+        run: node scripts/promo-capture-v3.mjs
+      - name: Upload capture artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kessho-promo-capture-v3
+          path: promo-capture-v3-artifacts/
+          if-no-files-found: error
+          retention-days: 7
