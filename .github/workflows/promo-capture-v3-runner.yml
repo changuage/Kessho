@@ -10,7 +10,7 @@ on:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 35
     steps:
       - name: Checkout PR
@@ -22,34 +22,25 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm ci
-      - name: Install browser, audio sink and WASM toolchain
+      - name: Install capture browser
         run: |
           npm install --no-save playwright@1.55.0
-          npx playwright install --with-deps chromium
-          sudo apt-get update
-          sudo apt-get install -y pulseaudio xvfb emscripten
-          pulseaudio --start --exit-idle-time=-1 || true
-          pactl load-module module-null-sink sink_name=kessho sink_properties=device.description=Kessho || true
-          pactl set-default-sink kessho || true
-      - name: Build Product Core runtime assets
+          npx playwright install chromium
+      - name: Verify checked-in Product Core runtime assets
         run: |
-          sed -i '/#include <cmath>/i #include <cstdint>' wasm/reverb/kessho_reverb.cpp
-          npm run core:build:wasm
+          test -s public/worklets/kessho_core.wasm
+          test -s public/worklets/kessho-core.worklet.js
       - name: Start Kessho locally
         run: |
           nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
-          for i in $(seq 1 90); do
+          for i in {1..90}; do
             if curl -fsS http://127.0.0.1:5173 >/dev/null; then exit 0; fi
             sleep 2
           done
           cat /tmp/kessho-vite.log
           exit 1
       - name: Capture active Product Core visuals
-        env:
-          PULSE_SINK: kessho
-        run: |
-          sed -i 's/await sleep(page, 4500);/await sleep(page, 14000);/' scripts/promo-visual-capture.mjs
-          xvfb-run -a node scripts/promo-visual-capture.mjs
+        run: node scripts/promo-visual-capture.mjs
       - name: Upload capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
