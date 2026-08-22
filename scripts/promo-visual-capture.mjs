@@ -17,6 +17,7 @@ function mark(name) {
 }
 
 const browser = await chromium.launch({
+  channel: 'chrome',
   headless: false,
   args: [
     '--autoplay-policy=no-user-gesture-required',
@@ -27,6 +28,9 @@ const browser = await chromium.launch({
     '--disable-background-timer-throttling',
     '--disable-backgrounding-occluded-windows',
     '--disable-renderer-backgrounding',
+    '--disable-features=AudioServiceOutOfProcess',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
   ],
 });
 const context = await browser.newContext({
