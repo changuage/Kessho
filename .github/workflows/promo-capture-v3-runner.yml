@@ -11,7 +11,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
@@ -22,19 +22,15 @@ jobs:
           cache: npm
       - name: Install app dependencies
         run: npm ci
-      - name: Install browser, audio and WASM toolchain
+      - name: Install browser and virtual audio
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
           sudo apt-get update
-          sudo apt-get install -y pulseaudio xvfb emscripten
+          sudo apt-get install -y pulseaudio xvfb
           pulseaudio --start --exit-idle-time=-1 || true
           pactl load-module module-null-sink sink_name=kessho sink_properties=device.description=Kessho || true
           pactl set-default-sink kessho || true
-      - name: Build Product Core runtime assets
-        run: |
-          sed -i '/#include <cmath>/i #include <cstdint>' wasm/reverb/kessho_reverb.cpp
-          npm run core:build:wasm
       - name: Start Kessho locally
         run: |
           nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
@@ -44,7 +40,7 @@ jobs:
           done
           cat /tmp/kessho-vite.log
           exit 1
-      - name: Capture active Kessho session
+      - name: Capture active Kessho reference-runtime session
         env:
           PULSE_SINK: kessho
         run: xvfb-run -a node scripts/promo-capture-v3.mjs
