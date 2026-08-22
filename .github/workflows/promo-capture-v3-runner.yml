@@ -11,7 +11,7 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
@@ -19,12 +19,31 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Playwright
+          cache: npm
+      - name: Install app dependencies
+        run: npm ci
+      - name: Install browser and virtual audio
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Capture active production Kessho web app
-        run: node scripts/promo-capture-v3.mjs
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio xvfb
+          pulseaudio --start --exit-idle-time=-1 || true
+          pactl load-module module-null-sink sink_name=kessho sink_properties=device.description=Kessho || true
+          pactl set-default-sink kessho || true
+      - name: Start Kessho locally
+        run: |
+          nohup npm run dev -- --host 127.0.0.1 > /tmp/kessho-vite.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:5173 >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/kessho-vite.log
+          exit 1
+      - name: Capture active Kessho session
+        env:
+          PULSE_SINK: kessho
+        run: xvfb-run -a node scripts/promo-capture-v3.mjs
       - name: Upload capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -33,3 +52,6 @@ jobs:
           path: promo-capture-v3-artifacts/
           if-no-files-found: error
           retention-days: 7
+      - name: Show Vite log on failure
+        if: failure()
+        run: cat /tmp/kessho-vite.log || true
