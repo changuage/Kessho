@@ -47,7 +47,9 @@ jobs:
       - name: Capture active Product Core visuals
         env:
           PULSE_SINK: kessho
-        run: xvfb-run -a node scripts/promo-visual-capture.mjs
+        run: |
+          sed -i 's/await sleep(page, 4500);/await sleep(page, 14000);/' scripts/promo-visual-capture.mjs
+          xvfb-run -a node scripts/promo-visual-capture.mjs
       - name: Upload capture artifacts
         if: always()
         uses: actions/upload-artifact@v4
