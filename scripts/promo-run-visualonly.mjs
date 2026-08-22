@@ -17,7 +17,7 @@ engine = engine.replace(updateAnchor, updatePatch);
 fs.writeFileSync(enginePath, engine);
 
 let capture = fs.readFileSync(capturePath, 'utf8');
-capture = capture.replace(
+capture = capture.replaceAll(
   'http://127.0.0.1:5173/?engine=web-ts',
   'http://127.0.0.1:5173/?engine=web-ts&promoVisual=1',
 );
