@@ -105,9 +105,10 @@ function modifiedControlMatches(
   state: MidiControllerMacroRuntimeState,
   event: MidiControllerGestureEvent,
 ): boolean {
-  if (macro.trigger.type !== 'modified-control' || event.phase !== 'down') return false;
-  if (macro.trigger.controlID !== event.controlID) return false;
-  const modifier = modifiers.find((candidate) => candidate.id === macro.trigger.modifierID);
+  const trigger = macro.trigger;
+  if (trigger.type !== 'modified-control' || event.phase !== 'down') return false;
+  if (trigger.controlID !== event.controlID) return false;
+  const modifier = modifiers.find((candidate) => candidate.id === trigger.modifierID);
   return !!modifier && state.activeLayers[modifier.layerID] === true;
 }
 
@@ -133,15 +134,16 @@ export function processMidiControllerGesture(
     .filter((macro) => macro.enabled)
     .sort((left, right) => right.priority - left.priority)
     .flatMap((macro) => {
+      const trigger = macro.trigger;
       const matched = chordMatches(macro, state.pressed, event)
         || modifiedControlMatches(macro, modifiers, state, event);
       if (!matched) return [];
       if (macro.consumeInputs) {
-        if (macro.trigger.type === 'chord') {
-          for (const controlID of macro.trigger.controlIDs) consumed.add(controlID);
+        if (trigger.type === 'chord') {
+          for (const controlID of trigger.controlIDs) consumed.add(controlID);
         } else {
-          consumed.add(macro.trigger.controlID);
-          const modifier = modifiers.find((candidate) => candidate.id === macro.trigger.modifierID);
+          consumed.add(trigger.controlID);
+          const modifier = modifiers.find((candidate) => candidate.id === trigger.modifierID);
           if (modifier) consumed.add(modifier.controlID);
         }
       }
