@@ -187,7 +187,7 @@ export function Lpd8WirelessSetupDialog({ open, onClose }: Lpd8WirelessSetupDial
     if (typeof latestMessage.data1 !== 'number' || typeof latestMessage.channel !== 'number') return null;
     return LPD8_WIRELESS_CONTROLS.find((control) => {
       const assignment = surfaceState.assignments[control.id];
-      return assignment?.ccNumber === latestMessage.data1 && assignment.channel === latestMessage.channel;
+      return assignment?.ccNumber === latestMessage.data1 && assignment?.channel === latestMessage.channel;
     })?.id ?? null;
   }, [latestMessage, selectedInput, surfaceState.assignments]);
 
