@@ -106,7 +106,13 @@ const keyStepPerformanceControls: MidiControllerControlDefinition[] = [
   },
 ];
 
-const keyStepLocalControls: MidiControllerControlDefinition[] = [
+type KeyStepLocalControlSpec = readonly [
+  id: string,
+  label: string,
+  kind: MidiControllerControlDefinition['kind'],
+];
+
+const keyStepLocalControlSpecs: readonly KeyStepLocalControlSpec[] = [
   ['shift', 'Shift', 'button'],
   ['octave-down', 'Oct -', 'button'],
   ['octave-up', 'Oct +', 'button'],
@@ -116,12 +122,14 @@ const keyStepLocalControls: MidiControllerControlDefinition[] = [
   ['play', 'Play / Pause', 'transport'],
   ['rate', 'Rate', 'knob'],
   ['time-division', 'Time Division', 'encoder'],
-].map(([id, label, kind]) => ({
+];
+
+const keyStepLocalControls: MidiControllerControlDefinition[] = keyStepLocalControlSpecs.map(([id, label, kind]) => ({
   id,
   label,
-  kind: kind as MidiControllerControlDefinition['kind'],
-  policy: 'device-local' as const,
-  defaultBehavior: kind === 'knob' || kind === 'encoder' ? 'continuous' as const : 'momentary' as const,
+  kind,
+  policy: 'device-local',
+  defaultBehavior: kind === 'knob' || kind === 'encoder' ? 'continuous' : 'momentary',
   group: 'onboard',
   description: 'Shown in the controller visualizer. Kessho does not assume this local control emits observable MIDI.',
 }));
@@ -132,7 +140,7 @@ export const ARTURIA_KEYSTEP_32_MANIFEST: MidiControllerManifest = {
   model: 'KeyStep',
   displayName: 'Arturia KeyStep (32)',
   matcher: {
-    namePatterns: [/keystep(?!.*pro)(?!.*37)/i, /arturia.*keystep/i],
+    namePatterns: [/keystep(?!.*(?:pro|37|mk2))/i],
     manufacturerPatterns: [/arturia/i],
     preferredTransports: ['usb'],
   },
