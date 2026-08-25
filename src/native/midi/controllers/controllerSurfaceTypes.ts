@@ -86,16 +86,6 @@ export type MidiControllerBindingSlot = {
   bindingID: string | null;
 };
 
-export type MidiControllerSurfaceState = {
-  version: 1;
-  manifestID: string;
-  inputUniqueID: number | null;
-  inputName: string | null;
-  inputPersistentIdentity: string | null;
-  slots: Record<string, MidiControllerBindingSlot>;
-  macros: MidiControllerMacroDefinition[];
-};
-
 export type MidiControllerModifierMode = 'hold' | 'toggle';
 
 export type MidiControllerModifierDefinition = {
@@ -106,6 +96,17 @@ export type MidiControllerModifierDefinition = {
   layerID: string;
   /** Prevent the source button from also firing its base assignment. */
   consumeSource: boolean;
+};
+
+export type MidiControllerSurfaceState = {
+  version: 1;
+  manifestID: string;
+  inputUniqueID: number | null;
+  inputName: string | null;
+  inputPersistentIdentity: string | null;
+  slots: Record<string, MidiControllerBindingSlot>;
+  modifiers: MidiControllerModifierDefinition[];
+  macros: MidiControllerMacroDefinition[];
 };
 
 export type MidiControllerMacroTrigger =
@@ -161,6 +162,20 @@ export function controllerSlotKey(controlID: string, layerID = 'base'): string {
   return `${layerID}:${controlID}`;
 }
 
+export function createControllerLayerSlot(
+  state: MidiControllerSurfaceState,
+  controlID: string,
+  layerID: string,
+): MidiControllerBindingSlot {
+  const base = state.slots[controllerSlotKey(controlID, 'base')];
+  return {
+    controlID,
+    layerID,
+    source: base?.source ? { ...base.source } : null,
+    bindingID: null,
+  };
+}
+
 export function createControllerSurfaceState(manifest: MidiControllerManifest): MidiControllerSurfaceState {
   const slots = Object.fromEntries(manifest.controls
     .filter((control) => control.policy === 'mappable' || control.policy === 'hybrid')
@@ -184,6 +199,7 @@ export function createControllerSurfaceState(manifest: MidiControllerManifest): 
     inputName: null,
     inputPersistentIdentity: null,
     slots,
+    modifiers: [],
     macros: [],
   };
 }
