@@ -1,3 +1,4 @@
+import { isMidiMessageKind } from '../midiTypes';
 import {
   controllerSlotKey,
   createControllerSurfaceState,
@@ -18,20 +19,20 @@ function parseSlot(value: unknown): MidiControllerBindingSlot | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Partial<MidiControllerBindingSlot>;
   if (typeof record.controlID !== 'string' || typeof record.layerID !== 'string') return null;
-  const source = record.source && typeof record.source === 'object'
+  const sourceRecord = record.source;
+  const source = sourceRecord && typeof sourceRecord === 'object' && isMidiMessageKind(sourceRecord.kind)
     ? {
-      kind: record.source.kind,
-      channel: typeof record.source.channel === 'number' ? record.source.channel : null,
-      number: typeof record.source.number === 'number' ? record.source.number : null,
+      kind: sourceRecord.kind,
+      channel: typeof sourceRecord.channel === 'number' ? sourceRecord.channel : null,
+      number: typeof sourceRecord.number === 'number' ? sourceRecord.number : null,
     }
     : null;
-  if (source && typeof source.kind !== 'string') return null;
   return {
     controlID: record.controlID,
     layerID: record.layerID,
     source,
     bindingID: typeof record.bindingID === 'string' ? record.bindingID : null,
-  } as MidiControllerBindingSlot;
+  };
 }
 
 export function loadMidiControllerSurfaceState(manifest: MidiControllerManifest): MidiControllerSurfaceState {
