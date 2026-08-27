@@ -229,6 +229,27 @@
       <div id="debugBody">No take committed yet.</div>
     </details>
   </main>
+  <script>
+    (() => {
+      const prepareCaptureSession = () => {
+        const session = navigator.audioSession;
+        if (!session || !("type" in session)) return;
+        try {
+          session.type = "play-and-record";
+        } catch (error) {
+          console.warn("[voice-step-entry] Could not select play-and-record audio session", error);
+        }
+      };
+
+      // WebKit/iOS must be in a capture-compatible category before Product
+      // Core claims browser playback. ProductBrowserAudioSession preserves an
+      // existing play-and-record category while the microphone owns it.
+      prepareCaptureSession();
+      const record = document.getElementById("record");
+      record?.addEventListener("pointerdown", prepareCaptureSession, { capture: true });
+      record?.addEventListener("click", prepareCaptureSession, { capture: true });
+    })();
+  </script>
   <script type="module" src="./main.ts"></script>
 </body>
 </html>
