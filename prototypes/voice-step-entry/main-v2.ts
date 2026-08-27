@@ -12,7 +12,10 @@ import {
 } from '../../src/ui/sequencer/voiceStepEntry';
 
 const STEP_COUNT = 16;
-const ANALYSIS_INTERVAL_MS = 34;
+// Short syllables such as “bum”, “dung” and “deng” have consonant-heavy edges
+// and a much shorter stable vowel nucleus than a sustained hum. Sample more
+// often so several analysis windows can land on the voiced part of each hit.
+const ANALYSIS_INTERVAL_MS = 24;
 const FFT_SIZE = 2048;
 const TEST_LANE_INDEX = 0;
 const TEST_PRESET_ID = 'soft_rhodes';
@@ -295,15 +298,17 @@ async function ensureMicrophone(): Promise<void> {
   micSource = captureContext.createMediaStreamSource(micStream);
   highPass = captureContext.createBiquadFilter();
   highPass.type = 'highpass';
-  highPass.frequency.value = 55;
-  highPass.Q.value = 0.55;
+  // Preserve more of the low fundamental/body in closed-mouth and “um/ung”
+  // syllables while still rejecting sub-bass handling noise.
+  highPass.frequency.value = 45;
+  highPass.Q.value = 0.5;
   analyser = captureContext.createAnalyser();
   analyser.fftSize = FFT_SIZE;
   analyser.smoothingTimeConstant = 0;
   timeDomain = new Float32Array(analyser.fftSize);
   micSource.connect(highPass);
   highPass.connect(analyser);
-  setMicState('live', 'mic live');
+  setMicState('live', 'mic live · hum / bum / dung / deng');
 }
 
 function resetTake(): void {
@@ -355,7 +360,7 @@ async function beginCapture(): Promise<void> {
   recordButton.classList.add('recording');
   recordButton.textContent = 'Listening';
   phaseLabel.textContent = 'count in · 4';
-  hint.innerHTML = 'Follow the full-screen pulse. <strong>Recording begins after four beats.</strong> Hum one monophonic phrase.';
+  hint.innerHTML = 'Follow the full-screen pulse. <strong>Recording begins after four beats.</strong> Hum, sing, or use short pitched syllables such as “bum”, “dung” or “deng”.';
   updateActionVisibility();
   cancelAnimationFrame(animationFrame);
   animationFrame = requestAnimationFrame(frame);
@@ -373,7 +378,7 @@ function frame(): void {
     pulse.style.opacity = String(Math.max(0, Math.min(1, 0.72 * Math.exp(-beatPhase * 12))));
     if (now >= recordStartTime) {
       phase = 'recording';
-      phaseLabel.textContent = 'recording · sing / hum';
+      phaseLabel.textContent = 'recording · hum / bum / dung / deng';
       velocityTracker.reset();
       lastAnalysisAt = -1;
     }
@@ -405,11 +410,14 @@ function frame(): void {
 function analyzeCurrentFrame(step: number): void {
   if (!analyser || !timeDomain || !captureContext) return;
   analyser.getFloatTimeDomainData(timeDomain);
+  // Spoken/pitched syllables briefly lose periodicity on B/D/G attacks and NG
+  // tails. A lower confidence/RMS floor allows the stable vowel nucleus to be
+  // retained without asking the consonant itself to produce a pitch.
   const observation = analyzeMonophonicPitch(timeDomain, captureContext.sampleRate, {
-    minHz: 70,
-    maxHz: 1000,
-    minRms: 0.009,
-    minConfidence: 0.58,
+    minHz: 55,
+    maxHz: 1200,
+    minRms: 0.006,
+    minConfidence: 0.46,
   });
 
   if (!observation) {
@@ -462,7 +470,7 @@ function finishCapture(): void {
   auditionButton.disabled = take.length === 0;
   hint.innerHTML = take.length > 0
     ? 'Review the detected phrase. <strong>Audition uses Lead 1 · Soft Rhodes.</strong> Keep writes the phrase into Product Core synth lane 1.'
-    : 'No stable pitched steps were detected. Try again with a steady <strong>“mmm” or “ah”</strong>, closer to the phone.';
+    : 'No stable pitched steps were detected. Try <strong>“bum”, “dung”, “deng”, “mmm” or “ah”</strong> with a clear voiced vowel/body, closer to the phone.';
   updateActionVisibility();
   renderSteps();
   updateDebugPreview();
@@ -485,6 +493,15 @@ function updateDebugPreview(committed = false): void {
   debugBody.textContent = JSON.stringify({
     state: committed ? 'ENQUEUED TO PRODUCT CORE' : 'DRAFT — NOT YET ENQUEUED',
     testSound: { source: 'lead1', presetId: TEST_PRESET_ID, presetName: 'Soft Rhodes' },
+    captureTuning: {
+      mode: 'short-voiced-syllables',
+      examples: ['bum', 'dung', 'deng', 'mmm', 'ah'],
+      analysisIntervalMs: ANALYSIS_INTERVAL_MS,
+      minHz: 55,
+      maxHz: 1200,
+      minRms: 0.006,
+      minConfidence: 0.46,
+    },
     lifecycle: productEngine.getLifecycleState(),
     coreError: lastCoreError,
     diagnostics,
@@ -580,7 +597,7 @@ function clearAll(): void {
   phase = 'idle';
   pulse.style.opacity = '0';
   phaseLabel.textContent = 'ready · one bar / 16 steps';
-  hint.innerHTML = 'Tap record, then hum or sing <strong>one monophonic phrase</strong>. Audition is fixed to Lead 1 · Soft Rhodes.';
+  hint.innerHTML = 'Tap record, then hum, sing, or vocalize <strong>“bum”, “dung” or “deng”</strong> as a monophonic phrase. Audition is fixed to Lead 1 · Soft Rhodes.';
   keepButton.textContent = 'Keep → Core';
   keepButton.disabled = false;
   auditionButton.disabled = false;
@@ -669,7 +686,7 @@ function renderSteps(): void {
     const normalizedPitch = (event.pitch - plotMin) / span;
     const y = bottom - Math.max(0, Math.min(1, normalizedPitch)) * plotHeight;
     const velocityHeight = 5 + (event.velocity / 127) * 19;
-    const confident = event.confidence >= 0.72;
+    const confident = event.confidence >= 0.62;
     ctx.strokeStyle = confident ? `${ice}.82)` : `${cream}.46)`;
     ctx.fillStyle = confident ? `${ice}.19)` : 'transparent';
     ctx.lineWidth = confident ? 1.5 : 1;
@@ -742,7 +759,7 @@ document.addEventListener('visibilitychange', () => {
 
 setCoreState('cold', 'core cold · Soft Rhodes');
 setMicState('idle', 'mic idle');
-hint.innerHTML = 'Tap record, then hum or sing <strong>one monophonic phrase</strong>. Audition is fixed to Lead 1 · Soft Rhodes.';
+hint.innerHTML = 'Tap record, then hum, sing, or vocalize <strong>“bum”, “dung” or “deng”</strong> as a monophonic phrase. Audition is fixed to Lead 1 · Soft Rhodes.';
 updateActionVisibility();
 renderSteps();
 updateDebugPreview();
