@@ -1,6 +1,3 @@
-import { createCoreProductSynthSequencerLaneStepOverrideEvents } from '../../audio/product/ProductSequencerStepOverrideEvents';
-import type { CoreProductEvent } from '../../audio/coreProductEvents';
-
 export type VoicePitchObservation = Readonly<{
   frequencyHz: number;
   midiFloat: number;
@@ -21,16 +18,6 @@ export type VoiceStepEvent = Readonly<{
 }>;
 
 export type VoiceScaleMode = 'chromatic' | 'major' | 'minor' | 'dorian';
-
-export type VoiceStepProductCoreCommit = Readonly<{
-  laneIndex: number;
-  overrides: {
-    triggerToggles: boolean[][];
-    pitch: Array<Array<number | undefined>>;
-    expression: Array<Array<number | undefined>>;
-  };
-  events: CoreProductEvent[];
-}>;
 
 const SCALE_INTERVALS: Record<Exclude<VoiceScaleMode, 'chromatic'>, readonly number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
@@ -206,7 +193,6 @@ export function aggregateVoiceStep(
     .map((frame, index) => ({
       midiFloat: frame.midiFloat,
       frequencyHz: frame.frequencyHz,
-      cents: frame.cents,
       confidence: frame.confidence,
       velocity: velocities[index] ?? 64,
       weight: Math.max(0.001, frame.confidence * Math.max(0.01, frame.rms)),
@@ -244,41 +230,4 @@ export function aggregateVoiceStep(
     cents,
     frequencyHz: median.frequencyHz,
   };
-}
-
-/**
- * Maps a temporary voice take into the existing Product Core synth lane
- * authoring contract: trigger toggle + MIDI pitch + per-step expression.
- * Gate/confidence/cents remain take metadata because Product Core does not
- * currently expose those as direct synth step fields.
- */
-export function buildVoiceTakeProductCoreCommit(
-  take: readonly VoiceStepEvent[],
-  laneIndex = 0,
-  stepCount = 16,
-): VoiceStepProductCoreCommit {
-  const safeLaneIndex = Math.max(0, Math.min(15, Math.round(laneIndex)));
-  const safeStepCount = Math.max(1, Math.min(64, Math.round(stepCount)));
-  const triggerLane = Array<boolean>(safeStepCount).fill(false);
-  const pitchLane = Array<number | undefined>(safeStepCount).fill(undefined);
-  const expressionLane = Array<number | undefined>(safeStepCount).fill(undefined);
-
-  for (const event of take) {
-    const step = Math.round(event.step);
-    if (step < 0 || step >= safeStepCount) continue;
-    triggerLane[step] = true;
-    pitchLane[step] = Math.max(0, Math.min(127, Math.round(event.pitch)));
-    expressionLane[step] = Math.max(0, Math.min(1, event.velocity / 127));
-  }
-
-  const lanePad = <T>(lane: T): T[] => Array.from({ length: safeLaneIndex + 1 }, (_, index) => (
-    index === safeLaneIndex ? lane : ([] as unknown as T)
-  ));
-  const overrides = {
-    triggerToggles: lanePad(triggerLane),
-    pitch: lanePad(pitchLane),
-    expression: lanePad(expressionLane),
-  };
-  const events = createCoreProductSynthSequencerLaneStepOverrideEvents(safeLaneIndex, overrides);
-  return { laneIndex: safeLaneIndex, overrides, events };
 }
