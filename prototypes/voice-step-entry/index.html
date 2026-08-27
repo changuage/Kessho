@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0d0c0b" />
+  <title>Kesshō — Voice Step Entry</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0c0b;
+      --surface: #151311;
+      --surface-2: #1a1714;
+      --cream: #e8dcc4;
+      --cream-70: rgba(232,220,196,.7);
+      --cream-42: rgba(232,220,196,.42);
+      --cream-20: rgba(232,220,196,.2);
+      --cream-10: rgba(232,220,196,.1);
+      --ice: #b8e0ff;
+      --ice-30: rgba(184,224,255,.3);
+      --warm: #d88f68;
+      --ok: #b8d8af;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--cream); }
+    body {
+      min-height: 100dvh;
+      overflow-x: hidden;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      -webkit-font-smoothing: antialiased;
+      touch-action: manipulation;
+    }
+    button, select, input { font: inherit; }
+    button { touch-action: manipulation; }
+
+    #pulse {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      opacity: 0;
+      background: radial-gradient(circle at 50% 46%, rgba(184,224,255,.18), rgba(184,224,255,.05) 38%, transparent 72%);
+      will-change: opacity;
+    }
+
+    .app {
+      position: relative; z-index: 1;
+      width: min(100%, 540px);
+      min-height: 100dvh;
+      margin: 0 auto;
+      padding: calc(14px + var(--safe-top)) 16px calc(20px + var(--safe-bottom));
+      display: flex; flex-direction: column; gap: 0;
+    }
+
+    header {
+      display: flex; align-items: baseline; gap: 10px;
+      padding: 2px 0 13px;
+      border-bottom: 1px solid var(--cream-10);
+    }
+    h1 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+    header .tag { margin-left: auto; color: var(--cream-42); font-size: 9px; letter-spacing: .08em; }
+
+    .statusline {
+      min-height: 38px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--cream-10);
+      color: var(--cream-42); font-size: 9px; letter-spacing: .07em; text-transform: uppercase;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cream-20); flex: none; }
+    .dot.live { background: var(--ok); box-shadow: 0 0 12px rgba(184,216,175,.42); }
+    .dot.warn { background: var(--warm); }
+    #coreStatus { margin-left: auto; text-align: right; }
+
+    .hero {
+      min-height: 214px;
+      display: grid; place-items: center;
+      text-align: center;
+      padding: 20px 0 12px;
+      position: relative;
+    }
+    .phase {
+      position: absolute; top: 17px; left: 0; right: 0;
+      color: var(--cream-42); font-size: 9px; letter-spacing: .2em; text-transform: uppercase;
+    }
+    .note {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      font-size: clamp(62px, 20vw, 94px); line-height: .9; font-weight: 240; letter-spacing: -.055em;
+      color: var(--cream);
+      font-variant-numeric: tabular-nums;
+    }
+    .note.idle { color: rgba(232,220,196,.16); }
+    .pitchmeta { margin-top: 12px; display: flex; justify-content: center; gap: 15px; color: var(--cream-42); font-size: 10px; }
+    .pitchmeta b { color: var(--cream-70); font-weight: 500; }
+
+    .meter {
+      width: min(78%, 300px); height: 2px; background: var(--cream-10); margin: 15px auto 0; position: relative; overflow: hidden;
+    }
+    .meter > i { display: block; height: 100%; width: 0; background: var(--ice); transition: width 40ms linear; }
+
+    .step-area { border-top: 1px solid var(--cream-10); border-bottom: 1px solid var(--cream-10); padding: 12px 0 10px; }
+    .step-head { display: flex; align-items: center; margin-bottom: 8px; color: var(--cream-42); font-size: 9px; letter-spacing: .13em; text-transform: uppercase; }
+    .step-head #stepReadout { margin-left: auto; color: var(--cream-70); }
+    #steps { width: 100%; height: 176px; display: block; }
+    .legend { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; color: rgba(232,220,196,.28); font-size: 8px; }
+
+    .controls {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 0;
+      border-bottom: 1px solid var(--cream-10);
+    }
+    .control { min-width: 0; padding: 11px 8px 12px 0; }
+    .control + .control { border-left: 1px solid var(--cream-10); padding-left: 8px; }
+    .control label { display: block; color: var(--cream-42); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+    select, input[type=number] {
+      width: 100%; min-height: 31px; border: 0; border-bottom: 1px solid var(--cream-20); border-radius: 0;
+      background: transparent; color: var(--cream); padding: 0 1px; outline: none; font-size: 10px;
+    }
+    select:focus, input:focus { border-bottom-color: var(--ice); }
+
+    .actions { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8px; padding-top: 14px; }
+    .actions.review { grid-template-columns: 1fr 1fr 1fr; }
+    button {
+      min-height: 52px; border: 1px solid var(--cream-20); border-radius: 2px;
+      background: transparent; color: var(--cream-70); padding: 0 12px;
+      letter-spacing: .12em; text-transform: uppercase; font-size: 10px;
+    }
+    button:active { background: var(--cream-10); }
+    button.primary { background: var(--cream); color: var(--bg); border-color: var(--cream); }
+    button.recording { background: var(--warm); color: #140d09; border-color: var(--warm); }
+    button:disabled { opacity: .28; }
+    #reviewActions { display: none; }
+    #reviewActions.visible { display: grid; }
+    #recordActions.hidden { display: none; }
+
+    .hint { min-height: 52px; padding: 12px 0 0; color: rgba(232,220,196,.33); font-size: 9px; line-height: 1.55; }
+    .hint strong { color: var(--cream-70); font-weight: 500; }
+    #error { color: #eab198; display: none; }
+    #error.visible { display: block; }
+
+    .debug {
+      margin-top: auto; padding-top: 14px; color: rgba(232,220,196,.28); font-size: 8px; line-height: 1.55;
+    }
+    .debug summary { cursor: pointer; letter-spacing: .12em; text-transform: uppercase; color: var(--cream-42); padding: 6px 0; }
+    #debugBody { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
+
+    @media (max-height: 720px) {
+      .hero { min-height: 164px; padding-top: 15px; }
+      .note { font-size: 58px; }
+      #steps { height: 144px; }
+      .actions button, button { min-height: 46px; }
+    }
+    @media (max-width: 355px) {
+      .app { padding-left: 11px; padding-right: 11px; }
+      .controls { grid-template-columns: repeat(2, 1fr); }
+      .control:nth-child(3) { border-left: 0; border-top: 1px solid var(--cream-10); }
+      .control:nth-child(4) { border-top: 1px solid var(--cream-10); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #pulse { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="pulse"></div>
+  <main class="app">
+    <header>
+      <h1>Voice Step Entry</h1>
+      <span class="tag">PRODUCT CORE / PROTOTYPE</span>
+    </header>
+
+    <div class="statusline">
+      <span id="micDot" class="dot"></span><span id="micStatus">mic idle</span>
+      <span id="coreStatus">core cold</span><span id="coreDot" class="dot"></span>
+    </div>
+
+    <section class="hero" aria-live="polite">
+      <div id="phase" class="phase">ready · one bar / 16 steps</div>
+      <div>
+        <div id="note" class="note idle">—</div>
+        <div class="pitchmeta">
+          <span id="cents">± 0¢</span>
+          <span>VEL <b id="velocity">—</b></span>
+          <span>CONF <b id="confidence">—</b></span>
+        </div>
+        <div class="meter"><i id="level"></i></div>
+      </div>
+    </section>
+
+    <section class="step-area">
+      <div class="step-head"><span>event field</span><span id="stepReadout">STEP — / 16</span></div>
+      <canvas id="steps" aria-label="Sixteen step voice take"></canvas>
+      <div class="legend"><span>Y = pitch</span><span>height = velocity</span><span>outline = low confidence</span></div>
+    </section>
+
+    <section class="controls">
+      <div class="control">
+        <label for="bpm">Tempo</label>
+        <input id="bpm" type="number" inputmode="numeric" min="50" max="220" step="1" value="100" />
+      </div>
+      <div class="control">
+        <label for="lane">Core lane</label>
+        <select id="lane"><option value="0">Lead 1</option><option value="1">Lead 2</option><option value="2">Synth 3</option><option value="3">Synth 4</option></select>
+      </div>
+      <div class="control">
+        <label for="root">Root</label>
+        <select id="root"><option value="0">C</option><option value="1">C♯</option><option value="2">D</option><option value="3">E♭</option><option value="4">E</option><option value="5">F</option><option value="6">F♯</option><option value="7">G</option><option value="8">A♭</option><option value="9">A</option><option value="10">B♭</option><option value="11">B</option></select>
+      </div>
+      <div class="control">
+        <label for="scale">Snap</label>
+        <select id="scale"><option value="chromatic">Chromatic</option><option value="major">Major</option><option value="minor">Minor</option><option value="dorian">Dorian</option></select>
+      </div>
+    </section>
+
+    <div id="recordActions" class="actions">
+      <button id="record" class="primary">Enable mic + record</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div id="reviewActions" class="actions review">
+      <button id="keep" class="primary">Keep → Core</button>
+      <button id="audition">Audition</button>
+      <button id="redo">Redo</button>
+    </div>
+
+    <div class="hint">
+      <div id="hint">Tap record, then hum or sing <strong>one monophonic phrase</strong>. There is a four-beat count-in, then Kesshō captures one 16-step bar.</div>
+      <div id="error"></div>
+    </div>
+
+    <details class="debug">
+      <summary>Product Core event debug</summary>
+      <div id="debugBody">No take committed yet.</div>
+    </details>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
