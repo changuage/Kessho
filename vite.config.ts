@@ -79,6 +79,9 @@ export default defineConfig(({ mode }) => ({
         ...(existsSync(fileURLToPath(new URL('./point-clouds/alternative-b/index.html', import.meta.url)))
           ? { pointCloudsAlternativeB: fileURLToPath(new URL('./point-clouds/alternative-b/index.html', import.meta.url)) }
           : {}),
+        ...(existsSync(fileURLToPath(new URL('./prototypes/voice-step-entry/index.html', import.meta.url)))
+          ? { voiceStepEntry: fileURLToPath(new URL('./prototypes/voice-step-entry/index.html', import.meta.url)) }
+          : {}),
       },
       output: {
         manualChunks(id) {
