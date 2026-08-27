@@ -22,7 +22,7 @@ const ANALYSIS_INTERVAL_MS = 24;
 const FFT_SIZE = 2048;
 const TEST_LANE_INDEX = 0;
 const TEST_PRESET_ID = 'soft_rhodes';
-const PITCH_CALIBRATION_SEMITONES = 2;
+const PITCH_CALIBRATION_SEMITONES = 1;
 const ONSET_CARRY_SECONDS = 0.12;
 
 type CapturePhase = 'idle' | 'count-in' | 'recording' | 'review' | 'committed';
@@ -540,7 +540,7 @@ function clearAll(): void {
   phase = 'idle';
   pulse.style.opacity = '0';
   phaseLabel.textContent = 'ready · one bar / 16 steps';
-  hint.innerHTML = 'Use <strong>bum / dung / deng / hum / sustained notes</strong>. Pitch is calibrated +2 semitones for this device test.';
+  hint.innerHTML = 'Use <strong>bum / dung / deng / hum / sustained notes</strong>. Pitch is calibrated +1 semitone for this device test.';
   keepButton.textContent = 'Keep → Core';
   keepButton.disabled = false;
   auditionButton.disabled = false;
