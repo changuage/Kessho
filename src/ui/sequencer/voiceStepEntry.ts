@@ -1,3 +1,5 @@
+export { createProductVoiceStepCommit as buildVoiceTakeProductCoreCommit } from '../../audio/product/ProductVoiceStepEntryEvents';
+
 export type VoicePitchObservation = Readonly<{
   frequencyHz: number;
   midiFloat: number;
