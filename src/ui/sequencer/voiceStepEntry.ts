@@ -182,6 +182,58 @@ export class DynamicVoiceVelocityTracker {
   }
 }
 
+type WeightedVoiceFrame = Readonly<{
+  midiFloat: number;
+  frequencyHz: number;
+  confidence: number;
+  velocity: number;
+  weight: number;
+}>;
+
+/**
+ * Pitch for percussive vocal syllables should come from the stable vowel body,
+ * not the consonant attack or decaying tail. Preserve original ordering long
+ * enough to trim those temporal edges, then perform the weighted pitch median.
+ */
+function middlePitchFrames(
+  frames: readonly VoicePitchObservation[],
+  velocities: readonly number[],
+): WeightedVoiceFrame[] {
+  const count = frames.length;
+  let start = 0;
+  let end = count;
+
+  if (count >= 5) {
+    const trim = Math.max(1, Math.floor(count * 0.2));
+    start = trim;
+    end = Math.max(start + 1, count - trim);
+  } else if (count >= 3) {
+    start = 1;
+    end = count - 1;
+  }
+
+  const temporalCore = frames.slice(start, end).map((frame, localIndex) => {
+    const originalIndex = start + localIndex;
+    return {
+      midiFloat: frame.midiFloat,
+      frequencyHz: frame.frequencyHz,
+      confidence: frame.confidence,
+      velocity: velocities[originalIndex] ?? 64,
+      // Confidence is squared so periodic vowel frames dominate borderline
+      // consonant/noise frames that happen to return a plausible F0.
+      weight: Math.max(0.001, frame.confidence * frame.confidence * Math.max(0.01, frame.rms)),
+    };
+  });
+
+  return temporalCore.length > 0 ? temporalCore : frames.map((frame, index) => ({
+    midiFloat: frame.midiFloat,
+    frequencyHz: frame.frequencyHz,
+    confidence: frame.confidence,
+    velocity: velocities[index] ?? 64,
+    weight: Math.max(0.001, frame.confidence * frame.confidence * Math.max(0.01, frame.rms)),
+  }));
+}
+
 export function aggregateVoiceStep(
   step: number,
   frames: readonly VoicePitchObservation[],
@@ -191,22 +243,16 @@ export function aggregateVoiceStep(
   scaleMode: VoiceScaleMode,
 ): VoiceStepEvent | null {
   if (frames.length === 0) return null;
-  const weighted = frames
-    .map((frame, index) => ({
-      midiFloat: frame.midiFloat,
-      frequencyHz: frame.frequencyHz,
-      confidence: frame.confidence,
-      velocity: velocities[index] ?? 64,
-      weight: Math.max(0.001, frame.confidence * Math.max(0.01, frame.rms)),
-    }))
-    .sort((a, b) => a.midiFloat - b.midiFloat);
 
-  const totalWeight = weighted.reduce((sum, frame) => sum + frame.weight, 0);
+  const pitchFrames = middlePitchFrames(frames, velocities)
+    .slice()
+    .sort((a, b) => a.midiFloat - b.midiFloat);
+  const totalPitchWeight = pitchFrames.reduce((sum, frame) => sum + frame.weight, 0);
   let cursor = 0;
-  let median = weighted[0]!;
-  for (const frame of weighted) {
+  let median = pitchFrames[0]!;
+  for (const frame of pitchFrames) {
     cursor += frame.weight;
-    if (cursor >= totalWeight * 0.5) {
+    if (cursor >= totalPitchWeight * 0.5) {
       median = frame;
       break;
     }
@@ -214,11 +260,18 @@ export function aggregateVoiceStep(
 
   const rawMidi = Math.round(median.midiFloat);
   const pitch = snapMidiToScale(rawMidi, rootPitchClass, scaleMode);
+
+  // Dynamics may legitimately live in the attack, so velocity still uses all
+  // accepted voiced frames even though pitch ignores the temporal edges.
+  const velocityWeights = frames.map((frame) => Math.max(0.001, frame.confidence * Math.max(0.01, frame.rms)));
+  const totalVelocityWeight = velocityWeights.reduce((sum, weight) => sum + weight, 0);
   const velocity = Math.max(1, Math.min(127, Math.round(
-    weighted.reduce((sum, frame) => sum + frame.velocity * frame.weight, 0) / totalWeight,
+    frames.reduce((sum, _frame, index) => sum + (velocities[index] ?? 64) * (velocityWeights[index] ?? 0), 0) /
+      Math.max(0.001, totalVelocityWeight),
   )));
   const confidence = Math.max(0, Math.min(1,
-    weighted.reduce((sum, frame) => sum + frame.confidence * frame.weight, 0) / totalWeight,
+    pitchFrames.reduce((sum, frame) => sum + frame.confidence * frame.weight, 0) /
+      Math.max(0.001, totalPitchWeight),
   ));
   const gate = Math.max(0.08, Math.min(1, frames.length / Math.max(1, expectedFrameCount)));
   const cents = (median.midiFloat - rawMidi) * 100;
