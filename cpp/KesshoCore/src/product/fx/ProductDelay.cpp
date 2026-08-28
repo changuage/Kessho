@@ -43,6 +43,9 @@
     std::fill(module_tap_r[bus], module_tap_r[bus] + frames, 0.0f);
   }
   module->processPlanarStereoTaps(input_l + start, input_r + start, tap_l, tap_r, tap_count, static_cast<int>(frames));
+  const float feedback_gain = is_delay_a
+      ? routing.delay_a_to_delay_b_feedback
+      : routing.delay_b_to_delay_a_feedback;
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     const float mute_gain = routingMuteGainForFrame(
@@ -62,12 +65,9 @@
       const uint8_t node = is_delay_a ? kFxNodeDelayA : kFxNodeDelayB;
       fx_node_output_l[node][frame] = output_l_sample;
       fx_node_output_r[node][frame] = output_r_sample;
-      const float feedback_amount = is_delay_a
-          ? routing.delay_a_to_delay_b_feedback
-          : routing.delay_b_to_delay_a_feedback;
-      if (feedback_amount > 0.0001f) {
-        const float feedback_l = cross_l_sample * feedback_amount;
-        const float feedback_r = cross_r_sample * feedback_amount;
+      if (feedback_gain > 0.0001f) {
+        const float feedback_l = cross_l_sample * feedback_gain;
+        const float feedback_r = cross_r_sample * feedback_gain;
         if (is_delay_a) {
           cross_l[frame] += feedback_l;
           cross_r[frame] += feedback_r;

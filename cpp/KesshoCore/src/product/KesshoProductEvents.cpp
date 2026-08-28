@@ -983,7 +983,8 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     return;
   }
   switch (event.event_kind) {
-    case KESSHO_PRODUCT_EVENT_KIND_START:
+    case KESSHO_PRODUCT_EVENT_KIND_START: {
+      const bool was_running = transport.running;
       if (!transport.running) {
         for (uint32_t i = 0; i < synth_lane_count; ++i) {
           resetSequencerLaneRuntime(synth_lanes[i]);
@@ -998,8 +999,16 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         transport.running = true;
       }
       configureSoundscapesModuleFromSource();
+      if (!was_running) {
+        emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_STARTED,
+            KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+            KESSHO_PRODUCT_INTERACTION_ORIGIN_MANUAL, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+            transport.sample_frame, 1.0f, 1.0f);
+      }
       break;
-    case KESSHO_PRODUCT_EVENT_KIND_STOP:
+    }
+    case KESSHO_PRODUCT_EVENT_KIND_STOP: {
+      const bool was_running = transport.running;
       transport.running = false;
       stopSoundscapeTransportRuntime();
       for (uint32_t i = 0; i < synth_lane_count; ++i) {
@@ -1008,7 +1017,14 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       for (uint32_t i = 0; i < drum_lane_count; ++i) {
         resetSequencerLaneRuntime(drum_lanes[i]);
       }
+      if (was_running) {
+        emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_STOPPED,
+            KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+            KESSHO_PRODUCT_INTERACTION_ORIGIN_MANUAL, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+            transport.sample_frame, 0.0f, 1.0f);
+      }
       break;
+    }
     case KESSHO_PRODUCT_EVENT_KIND_RESET_TRANSPORT:
       transport.reset();
       for (uint32_t i = 0; i < synth_lane_count; ++i) {
@@ -1213,7 +1229,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       if (transient_audition) {
         extendSourceTransientAudition(source_id, hold_seconds);
       }
-      triggerVoice(
+      const uint32_t triggered_voice = triggerVoice(
           source_id,
           event.value,
           event.value2,
@@ -1231,6 +1247,11 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
           1.0f,
           false,
           transient_audition);
+      if (triggered_voice != kProductInvalidVoiceIndex) {
+        emitVoiceInteractionEvent(source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_MANUAL,
+            transport.running ? transport.sample_frame : audio_render_sample_frame,
+            event.value, event.value2);
+      }
       break;
     }
     case KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_OFF:
@@ -1244,7 +1265,12 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       applyMidiEvent(event);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_TRIGGER_DRUM_VOICE:
-      triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, midiNoteForDrumVoice(event.target_id), event.value, 0.12f);
+      if (triggerVoice(KESSHO_PRODUCT_SOURCE_DRUM, midiNoteForDrumVoice(event.target_id), event.value, 0.12f) !=
+          kProductInvalidVoiceIndex) {
+        emitVoiceInteractionEvent(KESSHO_PRODUCT_SOURCE_DRUM, KESSHO_PRODUCT_INTERACTION_ORIGIN_MANUAL,
+            transport.running ? transport.sample_frame : audio_render_sample_frame,
+            midiNoteForDrumVoice(event.target_id), event.value);
+      }
       break;
     case KESSHO_PRODUCT_EVENT_KIND_START_JOURNEY_MORPH_CLOCK:
       journey_running = true;
@@ -1539,6 +1565,11 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         1.0f,
         false,
         transient_audition);
+    if (trigger_voice_index != kProductInvalidVoiceIndex) {
+      emitVoiceInteractionEvent(source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_MIDI,
+          transport.running ? transport.sample_frame : audio_render_sample_frame,
+          trigger_midi_note, clampFloat((data2 / 127.0f) * controller_velocity_scale, 0.0f, 1.0f));
+    }
     uint32_t lead_voice_index = kProductInvalidVoiceIndex;
     uint32_t sample_voice_index = kProductInvalidVoiceIndex;
     if (source_id == KESSHO_PRODUCT_SOURCE_LEAD1 || source_id == KESSHO_PRODUCT_SOURCE_LEAD2) {
@@ -1875,7 +1906,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     const uint8_t to = static_cast<uint8_t>(event.target_id % kFxNodeCount);
     const bool topology_changed = event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_ENABLED_ID;
     if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_AMOUNT_ID) {
-      routing.fx_route_amount[from][to] = clampFloat(event.value, 0.0f, 1.0f);
+      routing.fx_route_amount[from][to] = clampFloat(event.value, 0.0f, 4.0f);
     } else if (event.param_id == KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MODE_ID) {
       routing.setFxRouteModulation(from, to,
           static_cast<uint8_t>(clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u)),
@@ -2218,7 +2249,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     }
     case KESSHO_PRODUCT_PARAM_ARRANGEMENT_SYNTH_OCTAVE_ID: {
-      const int32_t next_octave = std::max(-2, std::min(2, static_cast<int32_t>(std::lround(event.value))));
+      const int32_t next_octave = std::max(-4, std::min(4, static_cast<int32_t>(std::lround(event.value))));
       arrangement.requested_synth_octave = next_octave;
       if (!transport.running && arrangement.synth_octave != next_octave) {
         arrangement.synth_octave = next_octave;
@@ -2286,8 +2317,8 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_ID:
       arrangement.lead_octave = std::max(
-          -1,
-          std::min(2, static_cast<int32_t>(std::lround(event.value))));
+          -4,
+          std::min(4, static_cast<int32_t>(std::lround(event.value))));
       break;
     case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_RANGE_ID:
       arrangement.lead_octave_range = clampU32(

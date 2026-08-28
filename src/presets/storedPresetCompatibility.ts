@@ -44,7 +44,6 @@ const RETIRED_INERT_STATE_KEYS = new Set([
   'drumRandomNoiseProb',
   'drumRandomMinInterval',
   'drumRandomMaxInterval',
-  'spectralFreezeActive',
   'spectralFreezeCaptureSerial',
 ]);
 
@@ -145,8 +144,7 @@ function discardInactiveLegacySpectralFreeze(data: JsonRecord): void {
   if (!hasRetiredField || data.spectralFreezeEnabled === true) return;
 
   for (const key of RETIRED_SPECTRAL_FREEZE_KEYS) delete data[key];
-  // A historical capture flag is runtime state, not authored sound state. Never
-  // let an otherwise disabled legacy snapshot engage a capture while loading.
+  // Never arm an otherwise disabled legacy snapshot.
   delete data.spectralFreezeActive;
   delete data.spectralFreezeCaptureSerial;
 }
@@ -193,7 +191,7 @@ function canonicalizeStoredVersion(
   // state and preset layers use one continuous Pitch per oscillator.
   convertLegacyPadPitchFields(data);
   discardInactiveLegacySpectralFreeze(data);
-  delete data.spectralFreezeActive;
+  if (type !== 'state') delete data.spectralFreezeActive;
   delete data.spectralFreezeCaptureSerial;
   canonicalizeLegacyPadCutoffs(version, data);
   version.data = data;

@@ -348,6 +348,28 @@ int32_t kessho_product_set_meter_demand(KesshoProductEngine* engine, uint32_t en
   return KESSHO_PRODUCT_OK;
 }
 
+int32_t kessho_product_set_interaction_demand(
+    KesshoProductEngine* engine, uint32_t demand_mask, uint32_t source_mask) {
+  if (engine == nullptr) return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  engine->setInteractionDemand(demand_mask, source_mask);
+  return KESSHO_PRODUCT_OK;
+}
+int32_t kessho_product_copy_interaction_signals(
+    KesshoProductEngine* engine, KesshoProductInteractionSignalSnapshot* out_snapshot) {
+  if (engine == nullptr || out_snapshot == nullptr) return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  *out_snapshot = engine->interaction_signals;
+  return KESSHO_PRODUCT_OK;
+}
+uint32_t kessho_product_drain_interaction_events(
+    KesshoProductEngine* engine, KesshoProductInteractionEvent* out_events, uint32_t max_event_count,
+    uint32_t* out_overflow_count) {
+  if (engine == nullptr) {
+    if (out_overflow_count != nullptr) *out_overflow_count = 0u;
+    return 0u;
+  }
+  return engine->drainInteractionEvents(out_events, max_event_count, out_overflow_count);
+}
+
 uint64_t kessho_product_get_telemetry_refresh_count(KesshoProductEngine* engine) {
   return engine == nullptr ? 0u : engine->telemetry_refresh_count;
 }

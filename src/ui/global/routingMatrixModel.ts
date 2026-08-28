@@ -19,7 +19,7 @@ import {
   normalizeUnitRange,
   quantize01,
   rangesEqual,
-} from '../sliderSystem';
+} from '../sliderSystem/matrixMath';
 import type {
   ColumnDragMemory,
   ColumnDragMemoryTarget,
@@ -41,6 +41,7 @@ export const COLUMNS: RoutingColumn[] = [
   { id: 'degrade', label: 'Degrade', helpKey: 'routingMatrixDegradeColumn', note: 'Drag the header left or right to trim every Degrade send in this column together.' },
   { id: 'freeze', label: 'Freeze', helpKey: 'routingMatrixFreezeColumn', note: 'Drag the header left or right to trim every Spectral Freeze send in this column together.' },
   { id: 'reverb', label: 'Reverb', helpKey: 'routingMatrixReverbColumn', note: 'Drag the header left or right to trim every reverb send in this column together.' },
+  { id: 'creativeSaturation', label: 'Saturator', helpKey: 'routingMatrixSaturationColumn', note: 'FX processor rows can route directly into the creative Saturator.' },
   { id: 'dynamics', label: 'Dynamics', helpKey: 'routingMatrixTextureColumn', note: 'Click a cell to choose the exclusive Dynamics path: Skip, EQ 1, EQ 2, or Sidechain.' },
 ];
 export const DEFAULT_COLUMN = COLUMNS[0]!;
@@ -95,6 +96,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradePad1Send', label: 'Pad 1 → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezePad1Send', label: 'Pad 1 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'pad1ReverbSend', label: 'Pad 1 → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -110,6 +112,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradePad2Send', label: 'Pad 2 → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezePad2Send', label: 'Pad 2 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'pad2ReverbSend', label: 'Pad 2 → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -124,6 +127,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeLead1Send', label: 'Lead 1 → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeLead1Send', label: 'Lead 1 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'lead1ReverbSend', label: 'Lead 1 → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -138,6 +142,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeLead2Send', label: 'Lead 2 → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeLead2Send', label: 'Lead 2 → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'lead2ReverbSend', label: 'Lead 2 → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -152,6 +157,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeSample1Send', label: 'Sample 1 -> Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeSample1Send', label: 'Sample 1 -> Freeze' } },
       reverb: { kind: 'editable', route: { key: 'sample1ReverbSend', label: 'Sample 1 -> Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -166,6 +172,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeSample2Send', label: 'Sample 2 -> Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeSample2Send', label: 'Sample 2 -> Freeze' } },
       reverb: { kind: 'editable', route: { key: 'sample2ReverbSend', label: 'Sample 2 -> Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -181,6 +188,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeDrumSend', label: 'Drums → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeDrumSend', label: 'Drums → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'drumReverbSend', label: 'Drums → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -196,6 +204,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'granularDegradeSend', label: 'Granular → Degrade' } },
       freeze: { kind: 'blocked', note: 'Granular does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'granularReverbSend', label: 'Granular → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Legacy Granular routing does not expose Saturator.' },
     },
   },
   {
@@ -211,6 +220,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeWaterSend', label: 'Water → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeWaterSend', label: 'Water → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'waterReverbSend', label: 'Water → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -227,6 +237,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeInsectsSend', label: 'Insects → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeInsectsSend', label: 'Insects → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'insectsReverbSend', label: 'Insects → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -243,6 +254,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'degradeNatureSend', label: 'Nature → Degrade' } },
       freeze: { kind: 'editable', route: { key: 'spectralFreezeNatureSend', label: 'Nature → Freeze' } },
       reverb: { kind: 'editable', route: { key: 'natureReverbSend', label: 'Nature → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
     },
   },
   {
@@ -257,6 +269,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'delayADegradeSend', label: 'Delay A → Degrade' } },
       freeze: { kind: 'blocked', note: 'Delay A does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'delayAReverbSend', label: 'Delay A → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Legacy Delay A routing does not expose Saturator.' },
     },
   },
   {
@@ -272,6 +285,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'delayBDegradeSend', label: 'Delay B → Degrade' } },
       freeze: { kind: 'blocked', note: 'Delay B does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'granularDelayReverbSend', label: 'Delay B → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Legacy Delay B routing does not expose Saturator.' },
     },
   },
   {
@@ -287,6 +301,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'self' },
       freeze: { kind: 'blocked', note: 'Degrade does not currently feed Freeze.' },
       reverb: { kind: 'editable', route: { key: 'degradeReverbSend', label: 'Degrade → Reverb' } },
+      creativeSaturation: { kind: 'blocked', note: 'Legacy Degrade routing does not expose Saturator.' },
     },
   },
   {
@@ -302,6 +317,7 @@ export const ROWS: MatrixRow[] = [
       degrade: { kind: 'editable', route: { key: 'reverbDegradeSend', label: 'Reverb → Degrade' } },
       freeze: { kind: 'blocked', note: 'Reverb-to-Freeze is controlled by Freeze routing mode.' },
       reverb: { kind: 'self' },
+      creativeSaturation: { kind: 'blocked', note: 'Legacy Reverb routing does not expose Saturator.' },
     },
   },
 ];
@@ -323,6 +339,7 @@ export function fxMatrixRow(def: (typeof FX_ROW_DEFS)[number]): MatrixRow {
       degrade: cell('degrade'),
       freeze: cell('freeze'),
       reverb: cell('reverb'),
+      creativeSaturation: cell('creativeSaturation'),
     },
   };
 }
@@ -416,6 +433,7 @@ export const blockedChildCells = (levelKey: keyof SliderState, label: string): M
   degrade: { kind: 'blocked', note: 'Uses the parent family send.' },
   freeze: { kind: 'blocked', note: 'Uses the parent family send.' },
   reverb: { kind: 'blocked', note: 'Uses the parent family send.' },
+  creativeSaturation: { kind: 'blocked', note: 'Direct source routing to Saturator is not supported.' },
 });
 
 export function activeEarthChildRows(family: NonNullable<MatrixRow['earthFamily']>, state: SliderState): MatrixRow[] {

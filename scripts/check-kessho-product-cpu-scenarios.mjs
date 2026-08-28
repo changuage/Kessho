@@ -129,7 +129,8 @@ const snowflakeEngineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const presetV2Migration = read('src/presets/presetV2Migration.ts');
 const coreProductEvents = read('src/audio/coreProductEvents.ts');
 const fallbackCoreHost = read('src/audio/coreEngineHost.ts');
-const visualizerPage = read('src/ui/visualizer/ReactiveVisualizerPage.tsx');
+const visualizerPage = read('src/ui/visualizer/TransportVisualizerPage.tsx');
+const visualizerRenderer = read('src/ui/visualizer/TransportVisualizerRenderer.ts');
 const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
 const activeEarthMatrix = read('src/ui/earth/components/ActiveEarthMatrix.tsx');
 const runtimeProjectionState = read('src/ui/runtimeProjectionState.ts');
@@ -241,10 +242,11 @@ assert(
   'fallback random walk must reject inaudible quantized updates before its monolithic state reapplication',
 );
 assert(
-  visualizerPage.includes('frameScratch.automatedControls') &&
-    visualizerPage.includes('frameScratch.modulatedControls') &&
-    visualizerPage.includes('frameScratch.buses'),
-  'visualizer frames must reuse automation, modulation, and bus scratch storage',
+  visualizerPage.includes('assignmentSignalsRef') &&
+    visualizerPage.includes('impulseFrameRef') &&
+    visualizerRenderer.includes('sceneControlValues') &&
+    visualizerRenderer.includes('impulseMotionData'),
+  'Transport visualizer frames must reuse assignment, impulse, and uniform storage',
 );
 assert(
   routingMatrix.includes('columnDragEmitter.schedule') &&

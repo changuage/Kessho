@@ -151,6 +151,10 @@ void KesshoProductEngine::applyAutoStopAtCurrentFrame() {
   if (journey_schedule_runtime.running) {
     setJourneyScheduleEnabled(false);
   }
+  emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_STOPPED,
+      KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+      KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+      transport.sample_frame, 0.0f, 1.0f);
   transport.running = false;
   stopSoundscapeTransportRuntime();
   for (uint32_t index = 0u; index < synth_lane_count; ++index) {

@@ -83,6 +83,7 @@ void requireUniversalFxGraphRejectsFeedback() {
   require(
       routing.setFxEdgeEnabled(kFxNodeFreeze, kFxNodeReverb, true),
       "universal graph did not unlock a reverse edge after every cycle path was removed");
+
 }
 
 void requireModularFxMuteRowsGateGraphOutputs() {
@@ -404,6 +405,9 @@ void requireFxGraphSnapshotAndRuntimeEvents() {
   event.value = 0.6f;
   engine->applyParam(event);
   require(std::fabs(engine->routing.reverb_to_degrade - 0.6f) < 0.001f, "generic FX amount event did not reach legacy render adapter");
+  event.value = 1.2f;
+  engine->applyParam(event);
+  require(std::fabs(engine->routing.reverb_to_degrade - 1.2f) < 0.001f, "generic FX amount event truncated the graph amount domain");
   event.param_id = KESSHO_PRODUCT_PARAM_ROUTING_FX_ROUTE_MODE_ID;
   event.value = 3.0f;
   engine->applyParam(event);
@@ -1408,6 +1412,7 @@ void configureFxToDegradeProbe(KesshoProductSnapshotV2& snapshot, DegradeFeeder 
     case DegradeFeeder::DelayA:
       pad.delay_a_send = 1.0f;
       snapshot.fx.delay_a_enabled = 1u;
+      snapshot.fx.delay_a_mix = 0.0f;
       snapshot.fx.delay_a_time_left_ms = 24.0f;
       snapshot.fx.delay_a_time_right_ms = 36.0f;
       snapshot.fx.delay_a_feedback = 0.25f;
@@ -1416,6 +1421,7 @@ void configureFxToDegradeProbe(KesshoProductSnapshotV2& snapshot, DegradeFeeder 
     case DegradeFeeder::DelayB:
       pad.delay_b_send = 1.0f;
       snapshot.fx.delay_b_enabled = 1u;
+      snapshot.fx.delay_b_mix = 0.0f;
       snapshot.fx.delay_b_activity = 1.0f;
       snapshot.fx.delay_b_repeats = 0.7f;
       snapshot.fx.delay_b_base_time_ms = 36.0f;
@@ -1424,10 +1430,12 @@ void configureFxToDegradeProbe(KesshoProductSnapshotV2& snapshot, DegradeFeeder 
     case DegradeFeeder::Granular:
       pad.granular_send = 1.0f;
       snapshot.fx.granular_enabled = 1u;
+      snapshot.fx.granular_mix = 0.0f;
       snapshot.routing.granular_to_degrade = route_to_degrade ? 1.0f : 0.0f;
       break;
     case DegradeFeeder::Reverb:
       pad.reverb_send = 1.0f;
+      snapshot.fx.reverb_mix = 0.0f;
       snapshot.routing.reverb_to_degrade = route_to_degrade ? 1.0f : 0.0f;
       break;
   }
@@ -1948,7 +1956,7 @@ void requireDisabledDelayDoesNotLeakSpecializedTap() {
   engine->fx.delay_a_enabled = true;
   engine->fx.delay_a_time_left_ms = 10.0f;
   engine->fx.delay_a_time_right_ms = 10.0f;
-  engine->fx.delay_a_mix = 0.0f;
+  engine->fx.delay_a_mix = 1.0f;
   engine->configureFxModules();
 
   float out_l[kFrames]{};
@@ -1970,6 +1978,21 @@ void requireDisabledDelayDoesNotLeakSpecializedTap() {
   }
   require(routed_peak > 0.0001f, "Delay A deterministic route never produced a specialized tap");
 
+  engine->fx.delay_a_mix = 0.0f;
+  engine->configureFxModules();
+  std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
+  std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
+  clearFxBus(engine->reverb_bus_l, engine->reverb_bus_r, kFrames);
+  clearFxBus(engine->graph_delay_a_reverb_send_l, engine->graph_delay_a_reverb_send_r, kFrames);
+  clearFxBus(out_l, out_r, kFrames);
+  engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+  require(
+      fxBufferPeak(
+          engine->graph_delay_a_reverb_send_l,
+          engine->graph_delay_a_reverb_send_r,
+          kFrames) > 0.0001f,
+      "zero-level Delay A did not preserve its pre-Level downstream route");
+
   engine->fx.delay_a_enabled = false;
   engine->configureFxModules();
   std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
@@ -1988,6 +2011,90 @@ void requireDisabledDelayDoesNotLeakSpecializedTap() {
           engine->graph_delay_a_reverb_send_r,
           kFrames) <= 0.000001f,
       "disabled Delay A leaked a stale specialized Reverb tap");
+}
+
+void requireDelayFeedbackStaysPreLevel() {
+  constexpr uint32_t kFrames = 128u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+  engine->graph_taps_enabled = true;
+  engine->routing.clearFxGraph();
+  engine->routing.delay_a_to_delay_b_feedback = 1.0f;
+  engine->routing.delay_b_to_delay_a_feedback = 1.0f;
+  engine->fx.delay_a_enabled = true;
+  engine->fx.delay_b_enabled = true;
+  engine->fx.delay_a_mix = 0.0f;
+  engine->fx.delay_b_mix = 0.0f;
+  engine->fx.delay_a_time_left_ms = 10.0f;
+  engine->fx.delay_a_time_right_ms = 10.0f;
+  engine->fx.delay_b_base_time_ms = 10.0f;
+  engine->configureFxModules();
+
+  float out_l[kFrames]{};
+  float out_r[kFrames]{};
+  const auto render_cross_peak = [&](const float* cross_l, const float* cross_r) {
+    float result = 0.0f;
+    for (uint32_t block = 0u; block < 16u; ++block) {
+      std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
+      std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
+      std::fill(engine->delay_b_bus_l, engine->delay_b_bus_l + kFrames, 0.2f);
+      std::fill(engine->delay_b_bus_r, engine->delay_b_bus_r + kFrames, 0.2f);
+      clearFxBus(engine->graph_delay_a_to_delay_b_send_l, engine->graph_delay_a_to_delay_b_send_r, kFrames);
+      clearFxBus(engine->graph_delay_b_to_delay_a_send_l, engine->graph_delay_b_to_delay_a_send_r, kFrames);
+      clearFxBus(out_l, out_r, kFrames);
+      engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+      result = std::max(result, fxBufferPeak(cross_l, cross_r, kFrames));
+    }
+    return result;
+  };
+
+  require(
+      render_cross_peak(
+          engine->graph_delay_a_to_delay_b_send_l,
+          engine->graph_delay_a_to_delay_b_send_r) > 0.0001f,
+      "zero-level Delay A did not preserve its pre-Level feedback tap");
+  require(
+      render_cross_peak(
+          engine->graph_delay_b_to_delay_a_send_l,
+          engine->graph_delay_b_to_delay_a_send_r) > 0.0001f,
+      "zero-level Delay B did not preserve its pre-Level feedback tap");
+}
+
+void requireReverbCanFeedFreezeAtZeroLevel() {
+  constexpr uint32_t kFrames = 128u;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
+  engine->graph_taps_enabled = true;
+  engine->routing.clearFxGraph();
+  require(
+      engine->routing.setFxRoute(kFxNodeReverb, kFxNodeFreeze, 1.0f, true),
+      "Reverb-to-Freeze route setup failed");
+  engine->fx.reverb_mix = 0.0f;
+  engine->fx.spectral_freeze_enabled = true;
+  engine->fx.spectral_freeze_mix = 0.0f;
+  engine->configureFxModules();
+
+  float out_l[kFrames]{};
+  float out_r[kFrames]{};
+  float freeze_input_peak = 0.0f;
+  for (uint32_t block = 0u; block < 32u; ++block) {
+    std::fill(engine->reverb_bus_l, engine->reverb_bus_l + kFrames, 0.2f);
+    std::fill(engine->reverb_bus_r, engine->reverb_bus_r + kFrames, 0.2f);
+    clearFxBus(engine->spectral_freeze_bus_l, engine->spectral_freeze_bus_r, kFrames);
+    clearFxBus(engine->graph_spectral_freeze_input_l, engine->graph_spectral_freeze_input_r, kFrames);
+    clearFxBus(out_l, out_r, kFrames);
+    engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+    freeze_input_peak = std::max(
+        freeze_input_peak,
+        fxBufferPeak(
+            engine->graph_spectral_freeze_input_l,
+            engine->graph_spectral_freeze_input_r,
+            kFrames));
+  }
+  require(
+      freeze_input_peak > 0.0001f,
+      "zero-level Reverb did not preserve its pre-Level Freeze send");
+  require(
+      fxBufferPeak(out_l, out_r, kFrames) <= 0.000001f,
+      "zero-level Reverb or Freeze leaked into the main return");
 }
 
 void requireDisabledSpecializedRoutesDoNotLeak() {
@@ -2052,6 +2159,8 @@ int main() {
   requireReverbTrimAppliedOnce();
   requireNeutralEqUnity();
   requireDisabledDelayDoesNotLeakSpecializedTap();
+  requireDelayFeedbackStaysPreLevel();
+  requireReverbCanFeedFreezeAtZeroLevel();
   requireDisabledSpecializedRoutesDoNotLeak();
 
   KesshoProductEngine* reverb_engine = kessho_product_create(48000.0, 128, 0);

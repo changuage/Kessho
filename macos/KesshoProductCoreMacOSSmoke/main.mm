@@ -134,6 +134,29 @@ int main() {
       std::cerr << "macOS Product Core source node produced non-finite samples\n";
       return 1;
     }
+    constexpr uint32_t kLargeCallbackFrames = 2048;
+    float large_left[kLargeCallbackFrames] = {};
+    float large_right[kLargeCallbackFrames] = {};
+    AudioBufferList* large_buffers = static_cast<AudioBufferList*>(
+        std::calloc(1, sizeof(AudioBufferList) + sizeof(AudioBuffer)));
+    if (large_buffers == nullptr) {
+      std::cerr << "failed to allocate macOS Product Core large callback buffers\n";
+      return 1;
+    }
+    large_buffers->mNumberBuffers = 2;
+    large_buffers->mBuffers[0].mNumberChannels = 1;
+    large_buffers->mBuffers[0].mDataByteSize = sizeof(large_left);
+    large_buffers->mBuffers[0].mData = large_left;
+    large_buffers->mBuffers[1].mNumberChannels = 1;
+    large_buffers->mBuffers[1].mDataByteSize = sizeof(large_right);
+    large_buffers->mBuffers[1].mData = large_right;
+    const OSStatus large_render_status =
+        [renderer renderOfflineFrames:kLargeCallbackFrames audioBufferList:large_buffers];
+    std::free(large_buffers);
+    if (large_render_status != noErr || !finiteBlock(large_left, large_right, kLargeCallbackFrames)) {
+      std::cerr << "macOS Product Core large source node callback failed\n";
+      return 1;
+    }
     NSError* probe_error = nil;
     NSDictionary<NSString*, NSNumber*>* probe = [audio_engine runOfflineOutputProbeAndReturnError:&probe_error];
     if (probe == nil || [probe[@"peak"] floatValue] <= 0.00001f || [probe[@"rms"] doubleValue] <= 0.000001) {

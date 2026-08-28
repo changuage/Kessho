@@ -709,7 +709,7 @@ export interface SliderState extends NatureSlotState {
   modulationSourceA: ModulationSourceConfig;
   modulationSourceB: ModulationSourceConfig;
   synthVoiceMask: number;     // 0..255 binary mask for which shared pad voice slots are on
-  synthOctave: number;        // -2..+2 octave shift
+  synthOctave: number;        // -4..+4 octave shift
 
   // Timbre / Drive
   hardness: number;           // 0..1 step 0.01 — saturation drive + resonance boost
@@ -989,7 +989,7 @@ export interface SliderState extends NatureSlotState {
   delayAFilter: number;          // shared Delay A lowpass cutoff in Hz
   delayASend: number;            // legacy send level for the old lead-owned delay path
   lead1Density: number;       // 0.1..2 notes per phrase (sparseness)
-  lead1Octave: number;        // -1, 0, 1, 2 octave offset
+  lead1Octave: number;        // -4..+4 octave offset
   lead1OctaveRange: number;   // 1..4 - how many octaves to span for random notes
   leadTimbre: number;         // 0..1 - timbre (LEGACY, ignored by 4op FM engine)
 
@@ -4577,7 +4577,7 @@ const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   synthSustain: { min: 0, max: 1, step: 0.01 },
   synthHold: { min: 0, max: 20, step: 0.01 },
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
-  synthOctave: { min: -2, max: 2, step: 1 },
+  synthOctave: { min: -4, max: 4, step: 1 },
   hardness: { min: 0, max: 2, step: 0.01 },
   warmth: { min: 0, max: 1, step: 0.01 },
   presence: { min: 0, max: 1, step: 0.01 },
@@ -5093,7 +5093,7 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   delayAFilter: { min: 200, max: 8000, step: 10 },
   delayASend: { min: 0, max: 1, step: 0.01 },
   lead1Density: { min: 0.1, max: 12, step: 0.1 },
-  lead1Octave: { min: -1, max: 2, step: 1 },
+  lead1Octave: { min: -4, max: 4, step: 1 },
   lead1OctaveRange: { min: 1, max: 4, step: 1 },
   leadTimbre: { min: 0, max: 1, step: 0.01 },
   // Lead 1/2 morph

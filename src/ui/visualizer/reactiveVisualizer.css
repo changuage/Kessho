@@ -16,8 +16,11 @@
 .visualizer-root:fullscreen {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
   background:
     radial-gradient(circle at 16% 18%, rgba(122, 191, 232, 0.1), transparent 24%),
     linear-gradient(135deg, #100f0e 0%, #171615 48%, #111916 100%);
@@ -29,8 +32,11 @@
   z-index: 9998;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
   background:
     radial-gradient(circle at 16% 18%, rgba(122, 191, 232, 0.1), transparent 24%),
     linear-gradient(135deg, #100f0e 0%, #171615 48%, #111916 100%);
@@ -39,6 +45,8 @@
 .visualizer-root:fullscreen .visualizer-canvas-wrap,
 .visualizer-root--fullscreen-fallback .visualizer-canvas-wrap {
   min-height: calc(100vh - 24px);
+  min-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 
 .visualizer-canvas-wrap {
@@ -1008,6 +1016,86 @@
   color: #9ccfbd;
 }
 
+.visualizer-assignments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.visualizer-assignments > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.visualizer-assignments > summary::-webkit-details-marker {
+  display: none;
+}
+
+.visualizer-assignment-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.visualizer-assignment-row {
+  display: grid;
+  grid-template-columns: 18px minmax(66px, 0.9fr) minmax(66px, 0.9fr) minmax(92px, 1.3fr) 42px minmax(58px, 1fr) 36px 34px 24px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.visualizer-assignment-row select,
+.visualizer-assignment-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.visualizer-assignment-row select {
+  border: 1px solid rgba(247, 250, 252, 0.12);
+  border-radius: 4px;
+  padding: 3px 4px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--visualizer-text);
+  font-size: var(--k-fs-1);
+}
+
+.visualizer-assignment-row button,
+.visualizer-assignment-add {
+  border: 1px solid rgba(247, 250, 252, 0.12);
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--visualizer-text);
+  font: inherit;
+  font-size: var(--k-fs-1);
+  cursor: pointer;
+}
+
+.visualizer-assignment-row button:hover,
+.visualizer-assignment-add:hover:not(:disabled) {
+  border-color: rgba(156, 207, 189, 0.42);
+}
+
+.visualizer-assignment-row button:disabled,
+.visualizer-assignment-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.visualizer-assignment-amount,
+.visualizer-assignment-meter {
+  color: var(--visualizer-muted);
+  font-size: var(--k-fs-1);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.visualizer-assignment-meter {
+  color: var(--page-accent);
+}
+
 @media (max-width: 960px) {
   .visualizer-root {
     grid-template-columns: 1fr;
@@ -1022,5 +1110,14 @@
 
   .visualizer-controls {
     grid-template-columns: 1fr;
+  }
+
+  .visualizer-assignment-row {
+    grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr) 42px 34px 36px 24px;
+  }
+
+  .visualizer-assignment-row select:nth-of-type(3),
+  .visualizer-assignment-row input[type='range'] {
+    grid-column: span 2;
   }
 }

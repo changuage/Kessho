@@ -72,6 +72,8 @@ import { CoreProductTelemetryCallbackScheduler } from './product/host/CoreProduc
 import { CoreProductHostLifecycleCoordinator } from './product/host/CoreProductHostLifecycleCoordinator';
 import { CoreProductGeneratedSequencerCaptureTelemetryHistory } from './product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory';
 import { productSamplePlaybackTriggerCriticalChange } from './product/host/CoreProductSamplePlaybackChange';
+import { publishProductInteractionSignalSnapshot } from './productInteractionSignalStore';
+import { publishProductInteractionEvents } from './productInteractionEventStore';
 import type { BackgroundJourneyPlan } from './product/journey/compileBackgroundJourneyPlan';
 import type { ProductBackgroundJourneyReadiness } from './product/ports/ProductJourneyPort';
 import { CoreProductBackgroundJourneyCoordinator } from './product/host/CoreProductBackgroundJourneyCoordinator';
@@ -782,6 +784,7 @@ class CoreProductEngineHost {
 
   private handleVisualTelemetry(telemetry: CoreProductVisualTelemetrySnapshot): void {
     if (!this.isDocumentVisible()) return;
+    publishProductInteractionSignalSnapshot(telemetry.interactionSignals); publishProductInteractionEvents(telemetry.interactionEvents);
     const merged = mergeCoreProductVisualTelemetry(this.latestTelemetry, telemetry, this.running);
     const hostTelemetry = this.withHostDiagnostics(merged);
     this.latestTelemetry = hostTelemetry;
@@ -988,9 +991,7 @@ class CoreProductEngineHost {
     syncCoreProductSequencerStepState({ sequencer, cache: this.sequencerCacheState(), forceClear, synthSubLaneEnabled: this.synthSubLaneEnabled, drumSubLaneEnabled: this.drumSubLaneEnabled, post: (event) => events.push(event) });
   }
   private setDisplayCallback(name: string, callback: unknown): void { this.displayCallbacks.setCallback(name, callback); this.updateRuntimeTelemetryPolling(); }
-  private invokeDisplayCallback(name: string, ...args: unknown[]): void {
-    this.displayCallbacks.invoke(name, ...args);
-  }
+  private invokeDisplayCallback(name: string, ...args: unknown[]): void { this.displayCallbacks.invoke(name, ...args); }
 }
 const host = new CoreProductEngineHost();
 export const coreProductEngineHost = createCoreProductEngineHostProxy(host);

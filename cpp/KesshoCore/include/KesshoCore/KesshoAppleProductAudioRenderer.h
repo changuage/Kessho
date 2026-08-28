@@ -14,6 +14,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)loadSnapshot:(const KesshoProductSnapshotV2*)snapshot;
 - (BOOL)enqueueEvent:(const KesshoProductEvent*)event;
 - (BOOL)copyTelemetry:(KesshoProductTelemetry*)telemetry;
+- (BOOL)setInteractionDemandMask:(uint32_t)demandMask sourceMask:(uint32_t)sourceMask;
+- (BOOL)copyInteractionSignals:(KesshoProductInteractionSignalSnapshot*)signals;
+- (uint32_t)drainInteractionEvents:(KesshoProductInteractionEvent*)events
+                     maxEventCount:(uint32_t)maxEventCount
+                     overflowCount:(uint32_t*)overflowCount;
 - (BOOL)registerDecodedAssetWithId:(uint32_t)assetId
                            channels:(const float* _Nonnull const* _Nonnull)channels
                        channelCount:(uint32_t)channelCount

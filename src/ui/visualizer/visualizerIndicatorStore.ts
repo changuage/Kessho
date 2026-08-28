@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import type { VisualizerNumericControlKey } from './visualizerModulation';
 
-export type VisualizerControlKey = VisualizerNumericControlKey;
+export type VisualizerControlKey = string;
 
 export interface VisualizerIndicatorSnapshot {
   automationPosition?: number;

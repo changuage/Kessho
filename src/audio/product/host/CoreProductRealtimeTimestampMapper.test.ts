@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { midiSampleOffset } from '../../coreMidiEvents';
 import { CoreProductRealtimeTimestampMapper } from './CoreProductRealtimeTimestampMapper';
 
 function context(currentTime: number, state: AudioContextState = 'running'): AudioContext {
@@ -35,4 +36,16 @@ test('suspended audio context rebases MIDI timestamps', () => {
   mapper.midiContext({ timestamp: 10 }, context(9));
   const suspended = mapper.midiContext({ timestamp: 20 }, context(9, 'suspended'));
   assert.equal(suspended.timestampOriginSeconds, 11);
+});
+
+test('native host timestamps advance against a suspended Web Audio clock', () => {
+  const now = [10, 10.04];
+  const mapper = new CoreProductRealtimeTimestampMapper(() => now.shift() ?? 10.04);
+  const audio = context(0, 'suspended');
+  const first = mapper.midiContext({ timestamp: 100, timestampHostTime: 1 }, audio);
+  const second = mapper.midiContext({ timestamp: 100.1, timestampHostTime: 2 }, audio);
+  assert.equal(first.currentTimeSeconds, 10);
+  assert.equal(second.currentTimeSeconds, 10.04);
+  assert.equal(second.timestampOriginSeconds, 90);
+  assert.equal(midiSampleOffset({ timestamp: 100.1 }, second), 2_880);
 });

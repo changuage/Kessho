@@ -8,6 +8,7 @@ import {
 } from './CoreProductSampleAssetResolver';
 import { isIOSLikeDevice, isMobileDevice } from '../../../platform';
 import { isCapacitorMacShell } from '../../../native/capacitorMacShell';
+import { getMacNativeProductRuntimePlugin } from '../../../native/capacitorAudioSession';
 import { CoreProductAssetWorkingSet, MOBILE_PRODUCT_ASSET_BUDGET } from './CoreProductAssetWorkingSet';
 import { predictedDecodedAssetBytes } from './CoreProductAssetPrediction';
 import {
@@ -49,6 +50,7 @@ export class CoreProductAssetRegistrar {
     decodeAsset: AssetDecoder = decodeCoreProductAsset,
     private readonly documentVisible: () => boolean = () => typeof document === 'undefined' || document.visibilityState === 'visible',
     transferAssets = mobile || isCapacitorMacShell(),
+    nativeFileAssets = getMacNativeProductRuntimePlugin() !== null,
   ) {
     this.mobile = mobile;
     this.transferAssets = transferAssets;
@@ -59,6 +61,7 @@ export class CoreProductAssetRegistrar {
       runtime,
       cache: this.sampleAssetCache,
       mobile,
+      nativeFileAssets,
       transferAssets,
       decodeAsset,
       registeredAssetIds: this.registeredAssetIds,

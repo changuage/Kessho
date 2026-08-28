@@ -22,6 +22,215 @@ struct SoundscapeRenderBlockCache {
 
 } // namespace
 
+void KesshoProductEngine::resetInteractionSignals() {
+  interaction_demand_mask = 0u;
+  interaction_source_mask = 0u;
+  interaction_signals = {};
+  interaction_signals.version = KESSHO_PRODUCT_INTERACTION_VERSION;
+  std::fill(
+      interaction_envelope_state,
+      interaction_envelope_state + KESSHO_PRODUCT_INTERACTION_SOURCE_COUNT,
+      0.0f);
+  std::fill(
+      interaction_previous_peak,
+      interaction_previous_peak + KESSHO_PRODUCT_INTERACTION_SOURCE_COUNT,
+      0.0f);
+}
+
+void KesshoProductEngine::setInteractionDemand(uint32_t demand_mask, uint32_t source_mask) {
+  const uint32_t next_demand = demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_ALL;
+  const uint32_t next_sources = source_mask & KESSHO_PRODUCT_INTERACTION_SOURCE_MASK_ALL;
+  if (interaction_demand_mask == next_demand && interaction_source_mask == next_sources) return;
+  const bool event_demand_changed =
+      (interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_EVENTS) !=
+      (next_demand & KESSHO_PRODUCT_INTERACTION_DEMAND_EVENTS);
+  const uint32_t revision = interaction_signals.revision;
+  resetInteractionSignals();
+  interaction_signals.revision = revision;
+  interaction_demand_mask = next_demand;
+  interaction_source_mask = next_sources;
+  interaction_signals.demand_mask = next_demand;
+  interaction_signals.source_mask = next_sources;
+  if (event_demand_changed) resetInteractionEvents();
+}
+
+void KesshoProductEngine::updateInteractionSignals(uint32_t frames) {
+  constexpr uint32_t analysis_mask =
+      KESSHO_PRODUCT_INTERACTION_DEMAND_ENVELOPE |
+      KESSHO_PRODUCT_INTERACTION_DEMAND_PEAK |
+      KESSHO_PRODUCT_INTERACTION_DEMAND_RMS |
+      KESSHO_PRODUCT_INTERACTION_DEMAND_ONSET;
+  if ((interaction_demand_mask & analysis_mask) == 0u || interaction_source_mask == 0u || frames == 0u) {
+    return;
+  }
+  const float safe_sample_rate = static_cast<float>(std::max(1.0, sample_rate));
+  const float attack = std::exp(-static_cast<float>(frames) / (safe_sample_rate * 0.020f));
+  const float release = std::exp(-static_cast<float>(frames) / (safe_sample_rate * 0.250f));
+  uint32_t valid_mask = 0u;
+  for (uint32_t source = 0u; source < KESSHO_PRODUCT_INTERACTION_SOURCE_COUNT; ++source) {
+    const uint32_t source_bit = 1u << source;
+    if ((interaction_source_mask & source_bit) == 0u) continue;
+    float peak = 0.0f;
+    double sum_squares = 0.0;
+    for (uint32_t frame = 0u; frame < frames; ++frame) {
+      const float left = stem_l[source][frame];
+      const float right = stem_r[source][frame];
+      peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
+      sum_squares += static_cast<double>(left) * static_cast<double>(left);
+      sum_squares += static_cast<double>(right) * static_cast<double>(right);
+    }
+    const float rms = std::sqrt(static_cast<float>(sum_squares / static_cast<double>(frames * 2u)));
+    const float coefficient = rms > interaction_envelope_state[source] ? attack : release;
+    const float envelope = rms + coefficient * (interaction_envelope_state[source] - rms);
+    const float onset = std::max(0.0f, peak - interaction_previous_peak[source]);
+    interaction_envelope_state[source] = std::isfinite(envelope) ? envelope : 0.0f;
+    interaction_previous_peak[source] = std::isfinite(peak) ? peak : 0.0f;
+    interaction_signals.envelope[source] =
+        (interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_ENVELOPE) != 0u
+        ? interaction_envelope_state[source] : 0.0f;
+    interaction_signals.peak[source] =
+        (interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_PEAK) != 0u
+        ? interaction_previous_peak[source] : 0.0f;
+    interaction_signals.rms[source] =
+        (interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_RMS) != 0u
+        ? (std::isfinite(rms) ? rms : 0.0f) : 0.0f;
+    interaction_signals.onset_strength[source] =
+        (interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_ONSET) != 0u
+        ? (std::isfinite(onset) ? onset : 0.0f) : 0.0f;
+    valid_mask |= source_bit;
+  }
+  interaction_signals.version = KESSHO_PRODUCT_INTERACTION_VERSION;
+  interaction_signals.demand_mask = interaction_demand_mask;
+  interaction_signals.source_mask = interaction_source_mask;
+  interaction_signals.valid_source_mask = valid_mask;
+  interaction_signals.sample_frame = audio_render_sample_frame;
+  ++interaction_signals.revision;
+  if (interaction_signals.revision == 0u) interaction_signals.revision = 1u;
+}
+
+void KesshoProductEngine::resetInteractionEvents() {
+  interaction_event_read_index = 0u;
+  interaction_event_write_index = 0u;
+  interaction_event_count = 0u;
+  interaction_event_overflow_count = 0u;
+  interaction_clock_initialized = false;
+  interaction_last_beat_index = 0u;
+  interaction_last_bar_index = 0u;
+  interaction_last_phrase_index = 0u;
+}
+
+void KesshoProductEngine::emitVoiceInteractionEvent(
+    uint32_t source_id,
+    uint32_t origin,
+    uint64_t sample_frame,
+    float midi_note,
+    float strength) {
+  uint32_t type = KESSHO_PRODUCT_INTERACTION_EVENT_VOICE_TRIGGERED;
+  uint32_t parent = KESSHO_PRODUCT_INTERACTION_PARENT_SYNTHS;
+  if (source_id == KESSHO_PRODUCT_SOURCE_DRUM) {
+    type = KESSHO_PRODUCT_INTERACTION_EVENT_DRUM_TRIGGERED;
+    parent = KESSHO_PRODUCT_INTERACTION_PARENT_DRUMS;
+  } else if (source_id == KESSHO_PRODUCT_SOURCE_SAMPLE1 || source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2) {
+    type = KESSHO_PRODUCT_INTERACTION_EVENT_SAMPLE_TRIGGERED;
+    parent = KESSHO_PRODUCT_INTERACTION_PARENT_SAMPLES;
+  } else if (source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
+    type = KESSHO_PRODUCT_INTERACTION_EVENT_TEXTURE_STARTED;
+    parent = KESSHO_PRODUCT_INTERACTION_PARENT_SOUNDSCAPE;
+  }
+  emitInteractionEvent(
+      type,
+      parent,
+      source_id,
+      origin,
+      KESSHO_PRODUCT_INTERACTION_TAP_POST_SOURCE,
+      sample_frame,
+      midi_note,
+      strength);
+}
+
+void KesshoProductEngine::emitTransportClockInteractionEvents() {
+  if ((interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_EVENTS) == 0u || !transport.running) {
+    interaction_clock_initialized = false;
+    return;
+  }
+  const uint64_t beat = static_cast<uint64_t>(std::max(0.0, std::floor(transport.beatPosition(sample_rate))));
+  const uint64_t bar = transport.barIndex(sample_rate);
+  const uint64_t phrase = transport.phraseIndex(sample_rate);
+  if (!interaction_clock_initialized) {
+    interaction_clock_initialized = true;
+    interaction_last_beat_index = beat;
+    interaction_last_bar_index = bar;
+    interaction_last_phrase_index = phrase;
+    return;
+  }
+  if (beat != interaction_last_beat_index) {
+    emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_BEAT,
+        KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+        KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+        transport.sample_frame, static_cast<float>(beat), 1.0f);
+    interaction_last_beat_index = beat;
+  }
+  if (bar != interaction_last_bar_index) {
+    emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_BAR,
+        KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+        KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+        transport.sample_frame, static_cast<float>(bar), 1.0f);
+    interaction_last_bar_index = bar;
+  }
+  if (phrase != interaction_last_phrase_index) {
+    emitInteractionEvent(KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_PHRASE,
+        KESSHO_PRODUCT_INTERACTION_PARENT_TRANSPORT, KESSHO_PRODUCT_INTERACTION_CHILD_NONE,
+        KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, KESSHO_PRODUCT_INTERACTION_TAP_NONE,
+        transport.sample_frame, static_cast<float>(phrase), 1.0f);
+    interaction_last_phrase_index = phrase;
+  }
+}
+
+void KesshoProductEngine::emitInteractionEvent(
+    uint32_t type,
+    uint32_t parent,
+    uint32_t child,
+    uint32_t origin,
+    uint32_t tap,
+    uint64_t sample_frame,
+    float value,
+    float strength) {
+  if ((interaction_demand_mask & KESSHO_PRODUCT_INTERACTION_DEMAND_EVENTS) == 0u) return;
+  if (interaction_event_count >= KESSHO_PRODUCT_INTERACTION_EVENT_CAPACITY) {
+    if (interaction_event_overflow_count != 0xffffffffu) ++interaction_event_overflow_count;
+    return;
+  }
+  KesshoProductInteractionEvent& event = interaction_event_ring[interaction_event_write_index];
+  event.type = type;
+  event.parent = parent;
+  event.child = child;
+  event.origin = origin;
+  event.tap = tap;
+  event.flags = 0u;
+  event.sample_frame = sample_frame;
+  event.value = std::isfinite(value) ? value : 0.0f;
+  event.strength = std::isfinite(strength) ? strength : 0.0f;
+  interaction_event_write_index =
+      (interaction_event_write_index + 1u) % KESSHO_PRODUCT_INTERACTION_EVENT_CAPACITY;
+  ++interaction_event_count;
+}
+
+uint32_t KesshoProductEngine::drainInteractionEvents(
+    KesshoProductInteractionEvent* out_events,
+    uint32_t max_event_count,
+    uint32_t* out_overflow_count) {
+  if (out_overflow_count != nullptr) *out_overflow_count = interaction_event_overflow_count;
+  if (out_events == nullptr || max_event_count == 0u) return 0u;
+  const uint32_t count = std::min(max_event_count, interaction_event_count);
+  for (uint32_t i = 0u; i < count; ++i) {
+    out_events[i] = interaction_event_ring[interaction_event_read_index];
+    interaction_event_read_index =
+        (interaction_event_read_index + 1u) % KESSHO_PRODUCT_INTERACTION_EVENT_CAPACITY;
+  }
+  interaction_event_count -= count;
+  return count;
+}
+
   void KesshoProductEngine::resetDiffuseRuntime() {
   diffuse_highpass = {};
   diffuse_lowpass = {};
@@ -880,6 +1089,8 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   renderDiffuseBus(out_l, out_r, frames);
   renderFxGraph(out_l, out_r, 0u, frames);
   applyMaster(out_l, out_r, frames);
+  updateInteractionSignals(frames);
+  emitTransportClockInteractionEvents();
   compactControlEvents(frames, control_index);
   advanceJourney(frames);
   product_render_frame += frames;

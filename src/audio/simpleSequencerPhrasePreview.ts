@@ -247,10 +247,12 @@ export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex 
   const phraseSeconds = getPhraseDurationForClockSource(state, phraseClock);
   const source = randomTimingSource(state);
   const enabled = isRandomTimingEnabled(state);
-  const octaveOffset = boundedInteger((state as unknown as Record<string, unknown>).lead1Octave, 1, -1, 2);
+  const octaveOffset = boundedInteger((state as unknown as Record<string, unknown>).lead1Octave, 1, -4, 4);
   const octaveRange = boundedInteger((state as unknown as Record<string, unknown>).lead1OctaveRange, 2, 1, 4);
   const baseLow = 64 + octaveOffset * 12;
   const baseHigh = baseLow + octaveRange * 12;
+  const rangeMinMidi = Math.max(24, baseLow);
+  const rangeMaxMidi = Math.min(127, baseHigh);
   if (!enabled) {
     return {
       kind: 'randomTiming',
@@ -258,11 +260,11 @@ export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex 
       phraseSeconds,
       triggerIntervalSeconds: phraseSeconds,
       notes: [],
-      minMidi: baseLow,
-      maxMidi: baseHigh,
-      rangeMinMidi: baseLow,
-      rangeMaxMidi: baseHigh,
-      key: `randomTiming:off:${phraseSeconds.toFixed(3)}:${baseLow}:${baseHigh}`,
+      minMidi: rangeMinMidi,
+      maxMidi: rangeMaxMidi,
+      rangeMinMidi,
+      rangeMaxMidi,
+      key: `randomTiming:off:${phraseSeconds.toFixed(3)}:${rangeMinMidi}:${rangeMaxMidi}`,
     };
   }
 
@@ -274,7 +276,7 @@ export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex 
   const availableNotes = getScaleNotesInRange(
     harmonyState.scaleFamily,
     Math.max(24, baseLow),
-    Math.min(108, baseHigh),
+    Math.min(127, baseHigh),
     harmonyState.effectiveRoot,
   );
   const density = boundedNumber(record.lead1Density, 0.5, 0.1, 12);
@@ -303,7 +305,7 @@ export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex 
     });
   }
   notes.sort((left, right) => left.triggerSeconds - right.triggerSeconds || left.midi - right.midi);
-  const range = previewRange(notes, baseLow, baseHigh);
+  const range = previewRange(notes, rangeMinMidi, rangeMaxMidi);
   return {
     kind: 'randomTiming',
     enabled,
@@ -311,8 +313,8 @@ export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex 
     triggerIntervalSeconds: phraseSeconds,
     notes,
     ...range,
-    rangeMinMidi: baseLow,
-    rangeMaxMidi: baseHigh,
+    rangeMinMidi,
+    rangeMaxMidi,
     key: `randomTiming:${safePhraseIndex}:${phraseSeconds.toFixed(3)}:${source}:${notes.map((note) => `${note.midi}:${note.triggerSeconds.toFixed(3)}`).join('|')}`,
   };
 }

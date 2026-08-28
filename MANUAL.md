@@ -181,7 +181,7 @@ Controls the musical content: scales, chords, and voicing.
 | **Wave Spread** | 0-30 sec | Stagger time between voice entries (0=all at once) |
 | **Detune** | 0-25 cents | Slight pitch variation between voices (warmth) |
 | **Voice Mask** | Binary | Which of the 6 synth voices are active |
-| **Synth Octave** | -2 to +2 | Octave shift for pad synth |
+| **Synth Octave** | -4 to +4 | Octave shift for pad synth |
 
 #### Synth ADSR Envelope:
 | Control | Range | Description |
@@ -284,7 +284,7 @@ The Lead Synth provides two independent melodic voices (**Lead 1** and **Lead 2*
 | **Sustain** | 0-100% | Sustain level |
 | **Release** | 0.01-8 sec | Note release time |
 | **Density** | 0.1-12 | Notes per phrase (sparseness) |
-| **Octave** | -1 to +2 | Base octave offset |
+| **Octave** | -4 to +4 | Base octave offset |
 | **Octave Range** | 1-4 | Octaves spanned by random notes |
 | **Post LPF Key Track** | 0-100% | Makes each lead's post low-pass filter follow note pitch |
 

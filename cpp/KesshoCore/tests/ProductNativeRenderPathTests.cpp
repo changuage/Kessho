@@ -180,6 +180,10 @@ void runNativeRuntimeAdapterSmoke() {
   require(runtime.valid(), "native runtime adapter failed to create Product Core engine");
   const KesshoProductSnapshotV2 snapshot = makeNativeSmokeSnapshot();
   require(runtime.loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "native runtime adapter failed to load snapshot");
+  require(runtime.setInteractionDemand(
+      KESSHO_PRODUCT_INTERACTION_DEMAND_EVENTS | KESSHO_PRODUCT_INTERACTION_DEMAND_ENVELOPE,
+      KESSHO_PRODUCT_INTERACTION_SOURCE_MASK_ALL) == KESSHO_PRODUCT_OK,
+      "native runtime adapter failed to set interaction demand");
   const std::array<KesshoProductEvent, 2> events{startEvent(), manualPadNote()};
   require(runtime.enqueueEvents(events.data(), static_cast<uint32_t>(events.size())) == KESSHO_PRODUCT_OK, "native runtime adapter failed to enqueue events");
   require(runtime.queuedEventCount() == events.size(), "native runtime adapter queue depth mismatch before render");
@@ -195,6 +199,18 @@ void runNativeRuntimeAdapterSmoke() {
   require(telemetry.sample_rate == 48000.0, "native runtime adapter telemetry sample rate mismatch");
   require(telemetry.block_size == kBlockFrames, "native runtime adapter telemetry block size mismatch");
   require(runtime.droppedEventCount() == 0, "native runtime adapter dropped events unexpectedly");
+  std::array<KesshoProductInteractionEvent, 16> interaction_events{};
+  uint32_t interaction_overflow = 0u;
+  const uint32_t interaction_count = runtime.drainInteractionEvents(
+      interaction_events.data(), static_cast<uint32_t>(interaction_events.size()), &interaction_overflow);
+  require(interaction_count >= 2u && interaction_overflow == 0u,
+      "native runtime adapter did not publish interaction events");
+  require(interaction_events[0].type == KESSHO_PRODUCT_INTERACTION_EVENT_TRANSPORT_STARTED,
+      "native interaction event order changed");
+  KesshoProductInteractionSignalSnapshot interaction_signals{};
+  require(runtime.copyInteractionSignals(interaction_signals) == KESSHO_PRODUCT_OK &&
+          interaction_signals.version == KESSHO_PRODUCT_INTERACTION_VERSION,
+      "native runtime adapter did not publish interaction signals");
   require(runtime.telemetryPublicationCount() <= 4u, "native telemetry published more often than every 16 blocks");
   const uint64_t publications_before_request = runtime.telemetryPublicationCount();
   runtime.requestTelemetryRefresh();

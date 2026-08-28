@@ -48,7 +48,7 @@ row-by-row physical test checklist generated from the same evidence contract.
 | ios-native-app-background | iOS device Capacitor native | app background | Audio continues while app is backgrounded within iOS background audio rules | pending | - | - | - |
 | ios-native-control-center | iOS device Capacitor native | Control Center play/pause | Remote play/pause updates playback; Product Core debug panel shows remote command evidence | pending | - | - | - |
 | ios-native-route-change | iOS device Capacitor native | AirPods route change | Route/interruption counters update in Product Core debug panel and audio recovers | pending | - | - | - |
-| macos-native-hidden | macOS native | app hidden/minimized | Native Product Core audio continues while app is hidden/minimized | pending | - | - | - |
+| macos-native-hidden | macOS native | app hidden/minimized | Native Product Core audio continues while app is hidden/minimized | pass | build=1.0.1-arm64-adhoc; peak=0.0027157611; rms=0.0009992269; hiddenAudio=continues | local macOS physical smoke | 2026-08-24 |
 | macos-native-sleep-wake | macOS native | sleep/wake | Native renderer recovers safely after sleep/wake | pending | - | - | - |
 
 ## Release Rule

@@ -13,6 +13,7 @@ import {
 } from './statePresetOptimization';
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { getSemanticPresetDiffKeys } from './presetDiffSemantics';
+import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 import {
   buildPresetVersionMetadata,
   getPresetVersionSnapshot,
@@ -1034,6 +1035,9 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
     ...baseState,
     hardness: (baseState.hardness ?? 0) + 0.11,
     drumKickFreq: (baseState.drumKickFreq ?? 0) + 7,
+    spectralFreezeEnabled: true,
+    spectralFreezeActive: true,
+    spectralFreezeCaptureSerial: 41,
     chordProgressionEnabled: false,
     chordProgressionPattern: [0, 2, 4],
     harmonyChordSequenceEnabled: true,
@@ -1044,6 +1048,12 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
   assert.equal(optimized.padPresetA, 'harsh_pluck');
   assert.equal(optimized.hardness, overriddenState.hardness);
   assert.equal(optimized.drumKickFreq, overriddenState.drumKickFreq);
+  assert.equal(optimized.spectralFreezeActive, true, 'L4 presets must store an armed freeze capture');
+  assert.equal(
+    'spectralFreezeCaptureSerial' in optimized,
+    false,
+    'L4 presets must not store the runtime capture edge',
+  );
   assert.equal('granularPreset' in optimized, false, 'UI preset shortcuts must not enter the current L4 contract');
   assert.equal('chordProgressionEnabled' in optimized, false, 'retired progression state must remain decode-only');
   assert.equal('chordProgressionPattern' in optimized, false, 'retired progression arrays must remain decode-only');
@@ -1065,6 +1075,8 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
 
   assert.equal(roundTrip.state.hardness, overriddenState.hardness);
   assert.equal(roundTrip.state.drumKickFreq, overriddenState.drumKickFreq);
+  assert.equal(roundTrip.state.spectralFreezeActive, true);
+  assert.equal('spectralFreezeCaptureSerial' in roundTrip.state, false);
   assert.equal(roundTrip.state.warmth, overriddenState.warmth);
   assert.equal(roundTrip.state.drumKickDecay, overriddenState.drumKickDecay);
   assert.equal(roundTrip.state.granularV1Mode, overriddenState.granularV1Mode);
@@ -1130,6 +1142,43 @@ function testPresetDiffUsesCurrentSemanticState(): void {
     ),
     [],
     'optimized and hydrated snapshots must compare as the same preset',
+  );
+
+  const runtimePadDrift = { ...DEFAULT_STATE } as unknown as Record<string, unknown>;
+  for (const key of DERIVED_PAD_KEYS) {
+    const value = runtimePadDrift[key];
+    runtimePadDrift[key] = typeof value === 'number'
+      ? value + 0.123
+      : typeof value === 'boolean'
+        ? !value
+        : `${String(value)}-runtime`;
+  }
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      identity,
+      { data: { ...DEFAULT_STATE } },
+      { data: runtimePadDrift },
+    ),
+    [],
+    'L4 diffs must ignore every Pad 1 and Pad 2 parameter reconstructed from selected L1 endpoints',
+  );
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      identity,
+      { data: { ...DEFAULT_STATE } },
+      { data: { ...DEFAULT_STATE, padPresetA: 'harsh_pluck' } },
+    ),
+    ['padPresetA'],
+    'L4 diffs must still report changes to the authored pad endpoint selection',
+  );
+  assert.deepStrictEqual(
+    getSemanticPresetDiffKeys(
+      identity,
+      { data: { ...DEFAULT_STATE } },
+      { data: { ...DEFAULT_STATE, spectralFreezeActive: true } },
+    ),
+    ['spectralFreezeActive'],
+    'L4 diffs must report an armed spectral-freeze capture',
   );
 
   const rangeKey = 'drumBeepHiBrightness';

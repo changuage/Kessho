@@ -96,10 +96,11 @@ function synthEuclidRange(state: Record<string, unknown>, laneNumber: number): {
 function addRandomTimingTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
   if (!booleanFromState(state, 'leadRandomEnabled', false)) return;
   const sourceId = productSourceIdFromValue(state.leadRandomSource, CORE_PRODUCT_SOURCE_IDS.lead1);
-  const baseOctaveOffset = Math.max(-1, Math.min(2, Math.round(numberFromState(state, 'lead1Octave', 1))));
+  const baseOctaveOffset = Math.max(-4, Math.min(4, Math.round(numberFromState(state, 'lead1Octave', 1))));
   const octaveRange = Math.max(1, Math.min(4, Math.round(numberFromState(state, 'lead1OctaveRange', 2))));
   const baseLow = 64 + baseOctaveOffset * 12;
-  addSampleRange(discovery, sourceId, baseLow, baseLow + octaveRange * 12);
+  const baseHigh = baseLow + octaveRange * 12;
+  addSampleRange(discovery, sourceId, Math.max(24, baseLow), Math.min(127, baseHigh));
 }
 
 function addEuclidTarget(

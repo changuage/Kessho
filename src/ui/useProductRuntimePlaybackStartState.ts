@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 
 import { applyPreset } from './presetUtils';
+import { prepareSpectralFreezeCaptureForPlayback } from './spectralFreezeGesture';
 import type { SavedPreset, SliderMode, SliderState } from './state';
 
 type AutoStartPresetSource = 'cloud' | 'device-local' | 'bundled';
@@ -71,7 +72,12 @@ export function useProductRuntimePlaybackStartState(options: ProductRuntimePlayb
       }
     }
 
-    return stateToStart;
+    const playbackState = prepareSpectralFreezeCaptureForPlayback(stateToStart);
+    if (playbackState !== stateToStart) {
+      stateRef.current = playbackState;
+      setState(playbackState);
+    }
+    return playbackState;
   }, [
     applyDualRangesFromPreset,
     hasLoadedPresetRef,

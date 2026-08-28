@@ -5,6 +5,21 @@ const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 14912;
+const INTERACTION_SIGNAL_SNAPSHOT_BYTES = 192;
+const INTERACTION_SIGNAL_SOURCE_COUNT = 10;
+const INTERACTION_SIGNAL_DEMAND_ALL = 127;
+const INTERACTION_SIGNAL_SOURCE_MASK_ALL = (1 << INTERACTION_SIGNAL_SOURCE_COUNT) - 1;
+const INTERACTION_SIGNAL_REVISION_OFFSET = 4;
+const INTERACTION_SIGNAL_DEMAND_OFFSET = 8;
+const INTERACTION_SIGNAL_SOURCE_MASK_OFFSET = 12;
+const INTERACTION_SIGNAL_VALID_SOURCE_MASK_OFFSET = 16;
+const INTERACTION_SIGNAL_SAMPLE_FRAME_OFFSET = 24;
+const INTERACTION_SIGNAL_ENVELOPE_OFFSET = 32;
+const INTERACTION_SIGNAL_PEAK_OFFSET = 72;
+const INTERACTION_SIGNAL_RMS_OFFSET = 112;
+const INTERACTION_SIGNAL_ONSET_OFFSET = 152;
+const INTERACTION_EVENT_BYTES = 40;
+const INTERACTION_EVENT_CAPACITY = 256;
 const TELEMETRY_FX_ROUTE_EFFECTIVE_AMOUNTS_OFFSET = 14508;
 const FX_ROUTE_COUNT = 100;
 const TELEMETRY_HARMONY_NOTE_POOL_OFFSET = 14428;
@@ -16,7 +31,7 @@ const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_ABI_VERSION = 7;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x06dff237;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0x77320642;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
@@ -154,6 +169,21 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.eventPtr = 0;
     this.snapshotPtr = 0;
     this.telemetryPtr = 0;
+    this.interactionSignalsPtr = 0;
+    this.interactionEventsPtr = 0;
+    this.interactionEventOverflowPtr = 0;
+    this.interactionSignals = {
+      version: 0,
+      revision: 0,
+      demandMask: 0,
+      sourceMask: 0,
+      validSourceMask: 0,
+      sampleFrame: 0,
+      envelope: new Float32Array(INTERACTION_SIGNAL_SOURCE_COUNT),
+      peak: new Float32Array(INTERACTION_SIGNAL_SOURCE_COUNT),
+      rms: new Float32Array(INTERACTION_SIGNAL_SOURCE_COUNT),
+      onsetStrength: new Float32Array(INTERACTION_SIGNAL_SOURCE_COUNT),
+    };
     this.generatedCaptureEventsPtr = 0;
     this.generatedCaptureOverflowPtr = 0;
     this.simpleSequencerVisualEventsPtr = 0;
@@ -186,6 +216,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.coreMeterDemand = null;
     this.hostStemDemand = false;
     this.coreStemsEnabled = null;
+    this.hostInteractionDemandMask = 0;
+    this.hostInteractionSourceMask = 0;
+    this.coreInteractionDemandMask = null;
+    this.coreInteractionSourceMask = null;
     this.hostSimpleSequencerVisualDemandMask = 0;
     this.coreSimpleSequencerVisualDemandMask = null;
     this.graphCaptureAllowed = options.processorOptions?.graphCaptureAllowed === true;
@@ -236,6 +270,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       throw new Error(`Missing Kessho Product Core WASM export: ${name}`);
     }
     return fn;
+  }
+
+  resolveOptional(name) {
+    const direct = this.exports[name];
+    const underscored = this.exports[`_${name}`];
+    const fn = direct || underscored;
+    return typeof fn === 'function' ? fn : null;
   }
 
   formatSchemaHash(schemaHash) {
@@ -303,6 +344,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         getGraphTap: this.resolve('kessho_product_get_graph_tap'),
         setGraphTapsEnabled: this.resolve('kessho_product_set_graph_taps_enabled'),
         setStemsEnabled: this.resolve('kessho_product_set_stems_enabled'),
+        setInteractionDemand: this.resolveOptional('kessho_product_set_interaction_demand'),
+        copyInteractionSignals: this.resolveOptional('kessho_product_copy_interaction_signals'),
+        drainInteractionEvents: this.resolveOptional('kessho_product_drain_interaction_events'),
         loadSnapshot: this.resolve('kessho_product_load_snapshot_v2'),
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
@@ -327,6 +371,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.rightPtr = this.api.malloc(bytesPerFrame);
       this.eventPtr = this.api.malloc(EVENT_BYTES);
       this.telemetryPtr = this.api.malloc(TELEMETRY_BYTES);
+      this.interactionSignalsPtr = this.api.malloc(INTERACTION_SIGNAL_SNAPSHOT_BYTES);
+      this.interactionEventsPtr = this.api.malloc(INTERACTION_EVENT_BYTES * INTERACTION_EVENT_CAPACITY);
+      this.interactionEventOverflowPtr = this.api.malloc(4);
       this.generatedCaptureEventsPtr = this.api.malloc(GENERATED_CAPTURE_EVENT_BYTES * GENERATED_CAPTURE_EVENT_CAPACITY);
       this.generatedCaptureOverflowPtr = this.api.malloc(4);
       this.simpleSequencerVisualEventsPtr = this.api.malloc(
@@ -343,6 +390,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         !this.rightPtr ||
         !this.eventPtr ||
         !this.telemetryPtr ||
+        !this.interactionSignalsPtr ||
+        !this.interactionEventsPtr ||
+        !this.interactionEventOverflowPtr ||
         !this.generatedCaptureEventsPtr ||
         !this.generatedCaptureOverflowPtr ||
         !this.simpleSequencerVisualEventsPtr ||
@@ -358,6 +408,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.assertSchemaHash('WASM telemetry', this.view.getUint32(this.telemetryPtr, true));
       this.setCoreGraphTapsEnabled(false);
       this.setCoreStemsEnabled(false);
+      this.syncInteractionDemand();
       this.ready = true;
       this.port.postMessage({ type: 'ready' });
     } catch (error) {
@@ -379,6 +430,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         this.syncMeterDemand();
         this.syncStemDemand();
         this.syncSimpleSequencerVisualDemand();
+        this.syncInteractionDemand();
       }
       return;
     }
@@ -404,6 +456,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       }
       if (message.type === 'reset') {
         this.api.reset(this.engine);
+        this.coreInteractionDemandMask = null;
+        this.coreInteractionSourceMask = null;
+        this.syncInteractionDemand();
         return;
       }
       if (message.type === 'reset-parity-fx') {
@@ -443,6 +498,20 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (message.type === 'stem-demand') {
         this.hostStemDemand = Boolean(message.enabled);
         this.syncStemDemand();
+        return;
+      }
+      if (message.type === 'interaction-demand') {
+        const rawDemand = message.demandMask ?? message.demand_mask ?? message.mask;
+        const rawSourceMask = message.sourceMask ?? message.source_mask ?? message.sources;
+        const demand = Number(rawDemand);
+        const sourceMask = Number(rawSourceMask);
+        this.hostInteractionDemandMask = Number.isFinite(demand)
+          ? (Math.trunc(demand) >>> 0) & INTERACTION_SIGNAL_DEMAND_ALL
+          : 0;
+        this.hostInteractionSourceMask = Number.isFinite(sourceMask)
+          ? (Math.trunc(sourceMask) >>> 0) & INTERACTION_SIGNAL_SOURCE_MASK_ALL
+          : 0;
+        this.syncInteractionDemand();
         return;
       }
       if (message.type === 'simple-sequencer-visual-demand') {
@@ -577,6 +646,19 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.resetStemPeakWindow();
       this.stemPeakProbeCountdown = 0;
     }
+  }
+
+  syncInteractionDemand() {
+    if (!this.api?.setInteractionDemand || !this.engine) return;
+    const demandMask = this.hostHidden ? 0 : this.hostInteractionDemandMask;
+    const sourceMask = this.hostHidden ? 0 : this.hostInteractionSourceMask;
+    if (this.coreInteractionDemandMask === demandMask && this.coreInteractionSourceMask === sourceMask) return;
+    const result = this.api.setInteractionDemand(this.engine, demandMask, sourceMask);
+    if (result !== 1) {
+      throw new Error(`Kessho Product Core interaction demand update failed: ${result}`);
+    }
+    this.coreInteractionDemandMask = demandMask;
+    this.coreInteractionSourceMask = sourceMask;
   }
 
   syncMeterDemand() {
@@ -1188,6 +1270,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (result !== 1) {
       throw new Error(`Kessho Product Core snapshot load failed: ${result}`);
     }
+    this.coreInteractionDemandMask = null;
+    this.coreInteractionSourceMask = null;
+    this.syncInteractionDemand();
   }
 
   applyPendingSnapshots() {
@@ -2205,6 +2290,62 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return telemetry;
   }
 
+  readInteractionSignals() {
+    if (
+      !this.interactionSignalsPtr ||
+      !this.api?.copyInteractionSignals ||
+      !this.api.copyInteractionSignals(this.engine, this.interactionSignalsPtr)
+    ) {
+      return null;
+    }
+    const ptr = this.interactionSignalsPtr;
+    const signals = this.interactionSignals;
+    signals.version = this.view.getUint32(ptr, true);
+    signals.revision = this.view.getUint32(ptr + INTERACTION_SIGNAL_REVISION_OFFSET, true);
+    signals.demandMask = this.view.getUint32(ptr + INTERACTION_SIGNAL_DEMAND_OFFSET, true);
+    signals.sourceMask = this.view.getUint32(ptr + INTERACTION_SIGNAL_SOURCE_MASK_OFFSET, true);
+    signals.validSourceMask = this.view.getUint32(ptr + INTERACTION_SIGNAL_VALID_SOURCE_MASK_OFFSET, true);
+    signals.sampleFrame = this.readUint64Number(ptr + INTERACTION_SIGNAL_SAMPLE_FRAME_OFFSET);
+    for (let source = 0; source < INTERACTION_SIGNAL_SOURCE_COUNT; source += 1) {
+      signals.envelope[source] = this.view.getFloat32(ptr + INTERACTION_SIGNAL_ENVELOPE_OFFSET + source * 4, true);
+      signals.peak[source] = this.view.getFloat32(ptr + INTERACTION_SIGNAL_PEAK_OFFSET + source * 4, true);
+      signals.rms[source] = this.view.getFloat32(ptr + INTERACTION_SIGNAL_RMS_OFFSET + source * 4, true);
+      signals.onsetStrength[source] = this.view.getFloat32(ptr + INTERACTION_SIGNAL_ONSET_OFFSET + source * 4, true);
+    }
+    return signals;
+  }
+
+  readInteractionEvents() {
+    if (!this.interactionEventsPtr || !this.interactionEventOverflowPtr || !this.api?.drainInteractionEvents) {
+      return null;
+    }
+    this.view.setUint32(this.interactionEventOverflowPtr, 0, true);
+    const count = this.api.drainInteractionEvents(
+      this.engine,
+      this.interactionEventsPtr,
+      INTERACTION_EVENT_CAPACITY,
+      this.interactionEventOverflowPtr,
+    ) >>> 0;
+    const overflowCount = this.view.getUint32(this.interactionEventOverflowPtr, true);
+    if (count === 0 && overflowCount === 0) return null;
+    const events = new Array(count);
+    for (let index = 0; index < count; index += 1) {
+      const ptr = this.interactionEventsPtr + index * INTERACTION_EVENT_BYTES;
+      events[index] = {
+        type: this.view.getUint32(ptr, true),
+        parent: this.view.getUint32(ptr + 4, true),
+        child: this.view.getUint32(ptr + 8, true),
+        origin: this.view.getUint32(ptr + 12, true),
+        tap: this.view.getUint32(ptr + 16, true),
+        flags: this.view.getUint32(ptr + 20, true),
+        sampleFrame: this.readUint64Number(ptr + 24),
+        value: this.view.getFloat32(ptr + 32, true),
+        strength: this.view.getFloat32(ptr + 36, true),
+      };
+    }
+    return { events, overflowCount };
+  }
+
   postTelemetry() {
     if (this.hostHidden) return;
     try {
@@ -2222,6 +2363,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     try {
       const telemetry = this.readVisualTelemetry(includeGranularWaveform);
       if (telemetry) {
+        const interactionSignals = this.readInteractionSignals();
+        if (interactionSignals) telemetry.interactionSignals = interactionSignals;
+        const interactionEvents = this.readInteractionEvents();
+        if (interactionEvents) {
+          telemetry.interactionEvents = interactionEvents.events;
+          telemetry.interactionEventOverflowCount = interactionEvents.overflowCount;
+        }
         const transfer = telemetry.granularBufferWaveform
           ? [telemetry.granularBufferWaveform.buffer]
           : undefined;

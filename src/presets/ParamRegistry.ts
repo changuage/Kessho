@@ -374,6 +374,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   reverbPreCompMakeup:    { level: 1, scope: 'reverbEngine' },
 
   // Spectral Freeze (STFT module)
+  spectralFreezeActive:            { level: 4, scope: 'global' },
   spectralFreezeEnabled:           { level: 2, scope: 'reverbKit' },
   spectralFreezeMode:              { level: 1, scope: 'spectralFreeze' },
   spectralFreezeStretchSpeed:      { level: 1, scope: 'spectralFreeze' },
@@ -1725,7 +1726,7 @@ export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulat
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1352) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1352`);
+  if (count !== 1353) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1353`);
   }
 }

@@ -1136,9 +1136,9 @@
 
 .routing-root .routing-matrix-grid {
   display: grid;
-  grid-template-columns: 132px repeat(8, minmax(92px, 1fr));
+  grid-template-columns: 132px repeat(9, minmax(92px, 1fr));
   gap: 6px;
-  min-width: 940px;
+  min-width: 1040px;
 }
 
 .routing-root .routing-matrix-corner,
@@ -1560,6 +1560,15 @@
   font-weight: var(--k-fw-bold);
   letter-spacing: 0;
   pointer-events: none;
+}
+
+.routing-root .routing-matrix-cell-readout.mode-cycle {
+  top: 0;
+  bottom: 25px;
+  align-items: flex-start;
+  padding-top: 5px;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .routing-root .routing-matrix-cell-value,

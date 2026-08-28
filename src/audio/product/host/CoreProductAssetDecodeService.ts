@@ -22,6 +22,7 @@ type CoreProductAssetDecodeServiceOptions = {
   runtime: CoreProductRuntime;
   cache: SampleDecodedAssetCache;
   mobile: boolean;
+  nativeFileAssets: boolean;
   transferAssets: boolean;
   decodeAsset: AssetDecoder;
   registeredAssetIds: ReadonlySet<number>;
@@ -64,10 +65,22 @@ export class CoreProductAssetDecodeService {
     if (requireCurrent && !this.options.isRequired(descriptor.assetId)) return;
     const context = this.options.runtime.audioContext;
     if (!context) return this.options.setNotReady('runtime-unavailable', SAMPLE_DECODE_RESERVATION_BYTES);
-    if (!await this.options.prepareAdmission(descriptor.assetId, SAMPLE_DECODE_RESERVATION_BYTES)) return;
+    const reservationBytes = this.options.nativeFileAssets ? 0 : SAMPLE_DECODE_RESERVATION_BYTES;
+    if (!await this.options.prepareAdmission(descriptor.assetId, reservationBytes)) return;
     if (!this.options.canStartDecode()) return this.options.setNotReady('document-hidden', SAMPLE_DECODE_RESERVATION_BYTES);
     this.options.pendingRegistrationAssetIds.add(descriptor.assetId);
     try {
+      if (this.options.nativeFileAssets) {
+        if (requireCurrent && !this.options.isRequired(descriptor.assetId)) return;
+        await this.options.registerAsset({
+          assetId: descriptor.assetId,
+          sampleRate: descriptor.encodedSampleRate,
+          channels: [],
+          flags: coreProductSampleFlags(descriptor),
+          sourceUrl: descriptor.url,
+        });
+        return;
+      }
       const asset = await this.options.cache.getOrLoad(descriptor, (candidate) => this.withDecodeReservation(
         SAMPLE_DECODE_RESERVATION_BYTES,
         () => this.options.decodeAsset(context, candidate.assetId, candidate.url, coreProductSampleFlags(candidate)),
@@ -104,22 +117,33 @@ export class CoreProductAssetDecodeService {
     if (pending) return pending;
     const context = this.options.runtime.audioContext;
     if (!context) return this.options.setNotReady('runtime-unavailable', SOUNDSCAPE_DECODE_RESERVATION_BYTES);
-    if (!await this.options.prepareAdmission(assetId, SOUNDSCAPE_DECODE_RESERVATION_BYTES)) return;
+    const reservationBytes = this.options.nativeFileAssets ? 0 : SOUNDSCAPE_DECODE_RESERVATION_BYTES;
+    if (!await this.options.prepareAdmission(assetId, reservationBytes)) return;
     if (!this.options.canStartDecode()) return this.options.setNotReady('document-hidden', SOUNDSCAPE_DECODE_RESERVATION_BYTES);
     this.options.pendingRegistrationAssetIds.add(assetId);
-    const promise = this.withDecodeReservation(SOUNDSCAPE_DECODE_RESERVATION_BYTES, () => this.options.decodeAsset(
-      context,
-      assetId,
-      url,
-      CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape,
-    )).then(async (asset) => {
-      if (!this.options.isRequired(asset.assetId)) return;
-      const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
-      if (await this.options.prepareAdmission(asset.assetId, decodedBytes)) await this.options.registerAsset(asset);
-    }).finally(() => {
-      this.soundscapePromises.delete(assetId);
-      this.options.pendingRegistrationAssetIds.delete(assetId);
-    });
+    const promise = (this.options.nativeFileAssets
+      ? (this.options.isRequired(assetId)
+        ? this.options.registerAsset({
+          assetId,
+          sampleRate: 0,
+          channels: [],
+          flags: CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape,
+          sourceUrl: url,
+        })
+        : Promise.resolve())
+      : this.withDecodeReservation(SOUNDSCAPE_DECODE_RESERVATION_BYTES, () => this.options.decodeAsset(
+        context,
+        assetId,
+        url,
+        CORE_PRODUCT_ASSET_FLAGS.loop | CORE_PRODUCT_ASSET_FLAGS.soundscape,
+      )).then(async (asset) => {
+        if (!this.options.isRequired(asset.assetId)) return;
+        const decodedBytes = getDecodedCoreProductAssetByteLength(asset);
+        if (await this.options.prepareAdmission(asset.assetId, decodedBytes)) await this.options.registerAsset(asset);
+      })).finally(() => {
+        this.soundscapePromises.delete(assetId);
+        this.options.pendingRegistrationAssetIds.delete(assetId);
+      });
     this.soundscapePromises.set(assetId, promise);
     await promise;
   }

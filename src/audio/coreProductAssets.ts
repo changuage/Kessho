@@ -58,6 +58,7 @@ export type DecodedCoreProductAsset = {
   readonly sampleRate: number;
   readonly channels: readonly Float32Array[];
   readonly flags: number;
+  readonly sourceUrl?: string;
   readonly sampleLibraryKey?: string;
   readonly sampleId?: string;
   readonly rootMidi?: number;
@@ -218,5 +219,6 @@ export async function decodeCoreProductAsset(
     sampleRate: audioBuffer.sampleRate,
     channels,
     flags,
+    sourceUrl: url,
   };
 }

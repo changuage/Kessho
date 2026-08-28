@@ -47,6 +47,7 @@ import {
   FX_ROUTING_NODE_IDS,
   buildFxRenderOrder,
   canEnableFxRoute,
+  isFxRoutingNodeActive,
   type FxRoutingConnection,
   type FxRoutingGraphState,
 } from './fxRoutingGraph';
@@ -883,8 +884,8 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const degradeControlsEnabled = rawDynamicsEnabled || degradeEngineActive;
   const driftEnabled = degradeControlsEnabled && (rawDriftEnabled || (degradeReturnActive && driftMix > 0.0001));
   const erosionEnabled = degradeControlsEnabled && (rawErosionEnabled || (degradeReturnActive && erosionMix > 0.0001));
-  const reverbReturnActive = rawReverbEnabled || degradeToReverb > 0.0001;
-  const reverbEnabled = reverbReturnActive || reverbToDegrade > 0.0001;
+  const reverbReturnActive = rawReverbEnabled;
+  const reverbEnabled = rawReverbEnabled;
   const legacyFxEdges: FxRoutingConnection[] = [];
   const addLegacyFxEdge = (from: FxRoutingConnection['from'], to: FxRoutingConnection['to'], amount: number) => {
     if (amount <= 0.0001 || !canEnableFxRoute(legacyFxEdges, from, to)) return;
@@ -914,7 +915,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
     addLegacyFxEdge('freeze', 'reverb', clamp(numberFromState(sliderState, 'spectralFreezeReverbCrossfade', 1), 0, 1));
   }
   const authoredFxGraph = sliderState?.fxRoutingGraph as FxRoutingGraphState | undefined;
-  const fxGraphSnapshot = encodeFxRoutingGraph(authoredFxGraph ?? ({
+  const fxGraph = authoredFxGraph ?? ({
     version: 1,
     edges: legacyFxEdges,
     dynamicsBuses: {
@@ -923,7 +924,14 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       degrade: dynamicsBusFromState(sliderState, 'dynamicsDegradeBus'),
       reverb: dynamicsBusFromState(sliderState, 'dynamicsReverbBus'),
     },
-  } as FxRoutingGraphState));
+  } as FxRoutingGraphState);
+  const fxRoutingActivityState = { ...DEFAULT_STATE, ...(sliderState ?? {}) };
+  const fxGraphSnapshot = encodeFxRoutingGraph({
+    ...fxGraph,
+    edges: fxGraph.edges.filter((edge) =>
+      isFxRoutingNodeActive(fxRoutingActivityState, edge.from) &&
+      isFxRoutingNodeActive(fxRoutingActivityState, edge.to)),
+  });
   const granularMacroModel = computeGranularMacroModel((sliderState ?? {}) as unknown as SliderState, (key, fallback) => numberFromState(sliderState, key as string, fallback));
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);

@@ -2,6 +2,7 @@ import React from 'react';
 import type { SelectRenderer } from '../../app/AppControls';
 import type { SliderRendererProps, SliderRuntimeRendererProps } from '../sliderSystem';
 import type { SliderState } from '../state';
+import { nextSpectralFreezeCaptureSerial } from '../spectralFreezeGesture';
 
 interface SpectralFreezeCardProps {
   state: SliderState;
@@ -10,11 +11,6 @@ interface SpectralFreezeCardProps {
   sliderProps: (paramKey: keyof SliderState) => SliderRuntimeRendererProps<keyof SliderState>;
   SliderComponent: React.ComponentType<SliderRendererProps<keyof SliderState>>;
   SelectComponent: SelectRenderer;
-}
-
-export function nextSpectralFreezeCaptureSerial(current: number): number {
-  const next = (Math.trunc(current) + 1) >>> 0;
-  return next === 0 ? 1 : next;
 }
 
 export default function SpectralFreezeCard({

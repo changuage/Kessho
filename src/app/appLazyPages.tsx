@@ -10,7 +10,7 @@ export const DelayPage = React.lazy(() => import('../ui/fxAlt/FxAltPages').then(
 export const TexturePage = React.lazy(() => import('../ui/texture/TexturePage'));
 export const RoutingPage = React.lazy(() => import('../ui/routing/RoutingPage'));
 export const EarthPage = React.lazy(() => import('../ui/earth/EarthPage'));
-export const ReactiveVisualizerPage = React.lazy(() => import('../ui/visualizer/ReactiveVisualizerPage'));
+export const TransportVisualizerPage = React.lazy(() => import('../ui/visualizer/TransportVisualizerPage'));
 
 export const LAZY_PAGE_FALLBACK = (
   <div style={{ padding: '24px', color: '#9ca3af', textAlign: 'center' }}>Loading...</div>

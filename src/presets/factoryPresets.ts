@@ -96,10 +96,9 @@ function makeFactory(
   opts?: { engine?: string; source?: string; scope?: string; tags?: string[] },
 ): PresetEntry {
   const now = Date.now();
-  const factoryData = 'spectralFreezeActive' in data || 'spectralFreezeCaptureSerial' in data
+  const factoryData = 'spectralFreezeCaptureSerial' in data
     ? { ...data }
     : data;
-  delete factoryData.spectralFreezeActive;
   delete factoryData.spectralFreezeCaptureSerial;
   return {
     type,

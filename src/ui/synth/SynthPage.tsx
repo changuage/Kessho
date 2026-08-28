@@ -280,6 +280,11 @@ const formatEnvelopeSeconds = (value: number): string => {
 
 const formatEnvelopeSustain = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 
+const formatOctaveOffset = (value: number): string => {
+  const rounded = Math.round(value);
+  return rounded > 0 ? `+${rounded}` : String(rounded);
+};
+
 const PAD_WAVE_LABELS: Record<PadWaveSource, string> = {
   sine: 'Sine',
   triangle: 'Triangle',
@@ -1870,6 +1875,7 @@ export interface SynthPageProps {
   setStepPositionCallback: (callback: ((steps: number[], hitCounts: number[], arpSteps?: number[]) => void) | null) => void;
   setOrbitVisualStateCallback?: (callback: ((lanes: Array<ProductSynthOrbitVisualLaneState | null>) => void) | null) => void;
   setAnchorWalkerVisualStateCallback?: (callback: ((lanes: Array<ProductSynthAnchorWalkerVisualLaneState | null>) => void) | null) => void;
+  onVisualTelemetryActiveChange?: (active: boolean) => void;
   setEvolveTriggerCallback: (callback: ((laneIndex: number) => void) | null) => void;
   /** Evolve configs change callback */
   onEvolveConfigsChange?: (configs: EvolveConfig[]) => void;
@@ -1974,6 +1980,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     setStepPositionCallback,
     setOrbitVisualStateCallback,
     setAnchorWalkerVisualStateCallback,
+    onVisualTelemetryActiveChange,
     setEvolveTriggerCallback,
     onEvolveConfigsChange,
     onStepOverridesChange,
@@ -3777,6 +3784,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const activeSequencerMode = activeSequencerSlot?.mode ?? 'euclid';
   const orbitRuntimeVisualsVisible = seq.viewMode === 'detail' && activeSequencerMode === 'orbit';
   const anchorWalkerRuntimeVisualsVisible = seq.viewMode === 'detail' && activeSequencerMode === 'anchorWalker';
+  const synthRuntimeVisualsVisible = orbitRuntimeVisualsVisible || anchorWalkerRuntimeVisualsVisible;
+
+  useEffect(() => {
+    onVisualTelemetryActiveChange?.(synthRuntimeVisualsVisible);
+    return () => {
+      onVisualTelemetryActiveChange?.(false);
+    };
+  }, [onVisualTelemetryActiveChange, synthRuntimeVisualsVisible]);
 
   useEffect(() => {
     if (!orbitRuntimeVisualsVisible) {
@@ -7589,7 +7604,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       );
                     })}
                   </div>
-                  <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
+                  <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" format={formatOctaveOffset} unit=" oct" onChange={onParamChange} {...sliderProps('synthOctave')} />
                 </div>
               </div>
             )}
@@ -8870,7 +8885,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <span>0</span><span>1/16</span><span>⅛</span><span>¼</span><span>½</span><span>1</span>
                     </div>
                     <Slider label="Detune" value={state.detune} paramKey="detune" unit={'\u00A2'} onChange={onParamChange} {...sliderProps('detune')} />
-                    <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" onChange={onParamChange} {...sliderProps('synthOctave')} />
+                    <Slider label="Octave Offset" value={state.synthOctave} paramKey="synthOctave" format={formatOctaveOffset} unit=" oct" onChange={onParamChange} {...sliderProps('synthOctave')} />
+                    <div className="synth-octave-scale" aria-label="Octave offset range from -4 to +4 octaves">
+                      <span>-4</span><span>-2</span><span>0</span><span>+2</span><span>+4</span>
+                    </div>
                   </div>
                   <OptionalVisualizerGate
                     enabled={simpleHarmonyVizToggle.enabled}
@@ -8924,8 +8942,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       </select>
                     </label>
                     <Slider label="Note Density" value={state.lead1Density} paramKey="lead1Density" unit="/phrase" onChange={onParamChange} {...sliderProps('lead1Density')} />
-                    <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" onChange={onParamChange} {...sliderProps('lead1Octave')} />
+                    <Slider label="Octave Offset" value={state.lead1Octave} paramKey="lead1Octave" format={formatOctaveOffset} unit=" oct" onChange={onParamChange} {...sliderProps('lead1Octave')} />
+                    <div className="synth-octave-scale" aria-label="Octave offset range from -4 to +4 octaves">
+                      <span>-4</span><span>-2</span><span>0</span><span>+2</span><span>+4</span>
+                    </div>
                     <Slider label="Octave Range" value={state.lead1OctaveRange} paramKey="lead1OctaveRange" unit=" oct" onChange={onParamChange} {...sliderProps('lead1OctaveRange')} />
+                    <div className="synth-octave-scale synth-octave-scale-span" aria-label="Random note span from 1 to 4 octaves">
+                      <span>1</span><span>2</span><span>3</span><span>4 oct</span>
+                    </div>
                     <details className="synth-random-timing-advanced">
                       <summary>Advanced timing</summary>
                       <div className="synth-random-timing-advanced-grid">
@@ -9862,7 +9886,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           const visibleCells = sequencerGridCellCount(seqModel.trigger.steps);
                           const columnCount = sequencerGridColumnCount(seqModel.trigger.steps);
                           return (
-                            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
+                            <div className="seq-step-grid" style={{ '--seq-grid-base-columns': columnCount } as React.CSSProperties}>
                               {new Array(visibleCells).fill(0).map((_, step) => {
                                 const inRange = step < seqModel.trigger.steps;
                                 const hit = inRange ? (seqModel.trigger.pattern[step] ?? false) : false;
@@ -9887,40 +9911,69 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                     <button
                                       type="button"
                                       className={`seq-step-cell${hit ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}${sequenceSelected ? ' selected' : ''}${stepNoteStatus ? ` harmony-${stepNoteStatus}` : ''}`}
-                                      style={{ touchAction: 'none' } as React.CSSProperties}
+                                      style={{ touchAction: 'pan-y' } as React.CSSProperties}
+                                      aria-label={`Trigger step ${step + 1}`}
+                                      aria-pressed={inRange ? hit : undefined}
+                                      disabled={!inRange}
                                       onPointerDown={inRange ? (e) => {
-                                        e.preventDefault();
+                                        const pointerType = e.pointerType;
+                                        if (pointerType !== 'touch') e.preventDefault();
                                         e.stopPropagation();
                                         const el = e.currentTarget;
-                                        el.setPointerCapture(e.pointerId);
+                                        const pointerId = e.pointerId;
+                                        const startX = e.clientX;
                                         const startY = e.clientY;
+
+                                        const finishTap = () => {
+                                          if (showKeyboard && keyboardInputMode === 'sequence') {
+                                            selectTriggerSequenceStep(row, step);
+                                          } else {
+                                            seq.toggleTriggerStep(row, step);
+                                          }
+                                        };
+                                        el.setPointerCapture(e.pointerId);
                                         const startProb = prob;
                                         let dragged = false;
                                         const onMove = (ev: PointerEvent) => {
-                                          if (Math.abs(ev.clientY - startY) > 5) dragged = true;
+                                          if (ev.pointerId !== pointerId) return;
+                                          const deltaX = ev.clientX - startX;
+                                          const deltaY = ev.clientY - startY;
+                                          if (pointerType === 'touch' && Math.abs(deltaX) <= Math.abs(deltaY)) return;
+                                          const probabilityDelta = pointerType === 'touch' ? deltaX : -deltaY;
+                                          if (Math.abs(probabilityDelta) > 5) dragged = true;
                                           if (!dragged) return;
                                           const pct = Math.max(0, Math.min(1,
-                                            startProb + (startY - ev.clientY) / OV_PROB_DRAG_PX
+                                            startProb + probabilityDelta / OV_PROB_DRAG_PX
                                           ));
                                           const snapped = Math.round(pct * 20) / 20;
                                           seq.setStepProbability(row, step, snapped);
                                           setDragPopup({ x: ev.clientX, y: ev.clientY, text: `${Math.round(snapped * 100)}%` });
                                         };
-                                        const onUp = () => {
+                                        const cleanup = () => {
                                           el.removeEventListener('pointermove', onMove);
                                           el.removeEventListener('pointerup', onUp);
+                                          el.removeEventListener('pointercancel', cleanup);
+                                          if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
                                           setDragPopup(null);
-                                          if (!dragged) {
-                                            if (showKeyboard && keyboardInputMode === 'sequence') {
-                                              selectTriggerSequenceStep(row, step);
-                                            } else {
-                                              seq.toggleTriggerStep(row, step);
-                                            }
-                                          }
                                         };
+                                        const onUp = (ev: PointerEvent) => {
+                                          if (ev.pointerId !== pointerId) return;
+                                          cleanup();
+                                          if (!dragged) finishTap();
+                                        };
+                                        el.addEventListener('pointercancel', cleanup);
                                         el.addEventListener('pointermove', onMove);
                                         el.addEventListener('pointerup', onUp);
                                       } : undefined}
+                                      onClick={(e) => {
+                                        if (e.detail !== 0 || !inRange) return;
+                                        e.stopPropagation();
+                                        if (showKeyboard && keyboardInputMode === 'sequence') {
+                                          selectTriggerSequenceStep(row, step);
+                                        } else {
+                                          seq.toggleTriggerStep(row, step);
+                                        }
+                                      }}
                                       onDoubleClick={inRange ? (e) => {
                                         e.stopPropagation();
                                         seq.resetStepProbability(row, step);

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import './visualizerControls.test';
 import { resolveCanAnimate } from '../hooks/useAnimationVisibility';
 
 import {

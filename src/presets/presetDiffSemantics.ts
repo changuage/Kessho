@@ -8,6 +8,7 @@ import {
 import { isStatePresetDiffKeyActive, normalizeStatePresetDiffData } from './statePresetDiffs';
 import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import type { PresetEntry, PresetLevel, PresetVersionMetadata } from './types';
+import { DERIVED_PAD_KEYS } from '../audio/padPresets';
 import { DEFAULT_STATE } from '../ui/state';
 
 type PresetIdentity = Pick<PresetEntry, 'type' | 'scope' | 'engine' | 'source'>;
@@ -54,6 +55,7 @@ export function getSemanticPresetDiffKeys(
   const result: string[] = [];
 
   for (const key of new Set([...Object.keys(leftData), ...Object.keys(rightData)])) {
+    if (preset.type === 'state' && DERIVED_PAD_KEYS.has(key)) continue;
     const leftActive = preset.type !== 'state' || isStatePresetDiffKeyActive(leftData, key);
     const rightActive = preset.type !== 'state' || isStatePresetDiffKeyActive(rightData, key);
     const leftMode = leftActive ? leftBehavior.sliderModes?.[key] : undefined;

@@ -432,10 +432,12 @@ export class CoreProductArrangementScheduler {
     const phraseMs = phraseSeconds * 1000;
     const density = boundedNumber(this.state, 'lead1Density', 0.5, 0.1, 12);
     const notesThisPhrase = Math.max(1, Math.round(density * 3 + this.rng() * 2));
-    const baseOctaveOffset = boundedInteger(this.state, 'lead1Octave', 1, -1, 2);
+    const baseOctaveOffset = boundedInteger(this.state, 'lead1Octave', 1, -4, 4);
     const octaveRange = boundedInteger(this.state, 'lead1OctaveRange', 2, 1, 4);
     const baseLow = 64 + baseOctaveOffset * 12;
     const baseHigh = baseLow + octaveRange * 12;
+    const rangeMinMidi = Math.max(24, baseLow);
+    const rangeMaxMidi = Math.min(127, baseHigh);
     const leadTension = getEffectiveTension(
       boundedNumber(this.state, 'tension', 0.3, 0, 1),
       this.state.leadTensionMode === 'locked' || this.state.leadTensionMode === 'bypass'
@@ -447,14 +449,14 @@ export class CoreProductArrangementScheduler {
     const availableNotes = getScaleNotesInRange(
       this.harmonyState.scaleFamily,
       Math.max(24, baseLow),
-      Math.min(108, baseHigh),
+      Math.min(127, baseHigh),
       this.harmonyState.effectiveRoot,
     );
     const nowWallSec = Date.now() / 1000;
     const timing = phraseTimingForClockSource(phraseClock, phraseSeconds, this.anchors, nowWallSec);
     const captureRuntimePlan = this.runtimePlanCaptureEnabled.randomTiming;
     if (captureRuntimePlan) {
-      this.ensureRandomTimingPlan(phraseSeconds, timing.phraseIndex, timing.phraseStartWallSec, baseLow, baseHigh);
+      this.ensureRandomTimingPlan(phraseSeconds, timing.phraseIndex, timing.phraseStartWallSec, rangeMinMidi, rangeMaxMidi);
     }
     const runtimeNotes: SimpleSequencerVizNote[] = [];
     const scheduledNotes: CoreProductArrangementScheduledNote[] = [];
@@ -493,7 +495,7 @@ export class CoreProductArrangementScheduler {
       });
     }
     this.scheduleNotes(scheduledNotes);
-    if (captureRuntimePlan) this.setRandomTimingPlanNotes(runtimeNotes, baseLow, baseHigh);
+    if (captureRuntimePlan) this.setRandomTimingPlanNotes(runtimeNotes, rangeMinMidi, rangeMaxMidi);
     const delaySeconds = getTimeUntilNextBoundaryWall(
       phraseClock,
       phraseSeconds,

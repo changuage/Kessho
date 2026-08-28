@@ -17,7 +17,8 @@ import type { SelectRenderer } from '../../app/AppControls';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import ReverbEnvelopeCanvas from './ReverbEnvelopeCanvas';
-import SpectralFreezeCard, { nextSpectralFreezeCaptureSerial } from './SpectralFreezeCard';
+import SpectralFreezeCard from './SpectralFreezeCard';
+import { nextSpectralFreezeCaptureSerial } from '../spectralFreezeGesture';
 import './reverb.css';
 
 // ═══ Reverb Character Presets ═══

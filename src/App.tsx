@@ -209,7 +209,7 @@ import {
   GranularPage,
   JourneyModeView,
   LAZY_PAGE_FALLBACK,
-  ReactiveVisualizerPage,
+  TransportVisualizerPage,
   ReverbPage,
   RoutingPage,
   SynthPage,
@@ -686,9 +686,11 @@ const App: React.FC = () => {
     setSynthPresetPoolRequest(null);
   }, []);
   const [textureVisualTelemetryActive, setTextureVisualTelemetryActive] = useState(false);
+  const [synthVisualTelemetryActive, setSynthVisualTelemetryActive] = useState(false);
   const productVisualTelemetryActive = uiMode === 'advanced' && (
     (activeTab === 'visualizer' && reactiveVisualizerToggle.enabled) ||
-    (activeTab === 'texture' && textureVisualTelemetryActive)
+    (activeTab === 'texture' && textureVisualTelemetryActive) ||
+    (activeTab === 'synth' && synthVisualTelemetryActive)
   );
   useEffect(() => {
     setProductVisualTelemetryActive(productVisualTelemetryActive);
@@ -3049,7 +3051,7 @@ const App: React.FC = () => {
                 onEnable={reactiveVisualizerToggle.show}
                 onHide={reactiveVisualizerToggle.hide}
               >
-                <ReactiveVisualizerPage
+                <TransportVisualizerPage
                   state={state}
                   sliderModes={sliderModes}
                   dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
@@ -3117,6 +3119,7 @@ const App: React.FC = () => {
                 diceLane={productPageRuntimeSurface.synthPageSequencerBridge.diceLane}
                 evolvedOverrides={synthEvolvedOverrides}
                 {...productPageRuntimeSurface.synthPageRuntimeProps}
+                onVisualTelemetryActiveChange={setSynthVisualTelemetryActive}
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}

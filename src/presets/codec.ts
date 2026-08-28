@@ -72,7 +72,6 @@ function migrateLegacySpectralFreezeParams(data: Record<string, unknown>): Recor
   if (!('spectralFreezeDiffusion' in normalized) && typeof normalized.spectralFreezePhaseJitter === 'number') {
     normalized.spectralFreezeDiffusion = normalized.spectralFreezePhaseJitter;
   }
-  normalized.spectralFreezeActive = false;
   delete normalized.spectralFreezeSlushy;
   delete normalized.spectralFreezeSpeed;
   delete normalized.spectralFreezeDecay;
@@ -158,9 +157,7 @@ export function validateRegistry(stateKeys: string[]): {
     // Stored as portable sequencer metadata/content, not duplicated in scalar
     // ParamRegistry extraction.
     'synthPlayConfigs',
-    // Runtime gesture state. Presets own the authored freeze sound, not an
-    // active capture or its edge-trigger serial.
-    'spectralFreezeActive',
+    // Capture serial is an edge trigger, not authored preset state.
     'spectralFreezeCaptureSerial',
   ]);
 

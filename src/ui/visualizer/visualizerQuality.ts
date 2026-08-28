@@ -1,4 +1,4 @@
-import type { VisualizerQualityMode } from './visualizerControls';
+export type VisualizerQualityMode = 'auto' | 'mobileSafe' | 'desktopBeauty';
 
 export interface VisualizerQualitySettings {
   mode: VisualizerQualityMode;

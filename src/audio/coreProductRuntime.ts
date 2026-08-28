@@ -14,10 +14,12 @@ import { CORE_PRODUCT_RUNTIME_ASSET_VERSION } from './generated/coreProductRunti
 import { isIOSLikeDevice, isMobileDevice } from '../platform';
 import { logProductStateDebug } from '../debug/productStateDebug';
 import { ProductBrowserAudioSession } from './product/browser/ProductBrowserAudioSession';
+import { MacNativeProductRuntime } from './product/native/MacNativeProductRuntime';
 import {
   isFileOrOpaqueOrigin,
   selectEmbeddedProductCoreAssetUrl,
 } from './embeddedProductCoreAssets';
+import { PRODUCT_INTERACTION_DEMAND, PRODUCT_INTERACTION_SOURCE_COUNT } from './productInteractionVocabulary';
 export { isFileOrOpaqueOrigin } from './embeddedProductCoreAssets';
 
 export type AssetTransferOwnership = 'retain-host-copy' | 'transfer';
@@ -126,6 +128,7 @@ async function withRuntimeAssetRetries<T>(operation: (attempt: number) => Promis
 }
 
 export class CoreProductRuntime {
+  private readonly nativeRuntime = MacNativeProductRuntime.createIfAvailable();
   private context: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private outputGain: GainNode | null = null;
@@ -154,6 +157,7 @@ export class CoreProductRuntime {
   private granularWaveformTelemetryActive = false;
   private simpleSequencerVisualDemandMask = 0;
   private perfMonitorEnabled = false;
+  private nativeTelemetryInFlight = false;
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
   private dawOutputDeviceId: string | null = null;
   private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
@@ -170,6 +174,7 @@ export class CoreProductRuntime {
     this.syncVisualTelemetryLoop();
     this.syncMeterDemand();
     this.syncStemDemand();
+    this.syncInteractionDemand();
     if (this.isDocumentVisible()) {
       this.requestTelemetryOnce('visibility-resume');
     }
@@ -218,6 +223,17 @@ export class CoreProductRuntime {
   private async initializeRuntime(): Promise<void> {
     const context = createProductAudioContext();
     this.context = context;
+    if (this.nativeRuntime) {
+      // Native AVAudioEngine owns the only realtime render path. Keep Web Audio
+      // suspended; it remains available solely for decodeAudioData.
+      if (context.state === 'running') await context.suspend();
+      await this.nativeRuntime.prepare();
+      this.bindVisibilityTelemetrySync();
+      this.syncTelemetryLoop();
+      this.syncVisualTelemetryLoop();
+      this.syncInteractionDemand();
+      return;
+    }
     this.prepareMediaSessionPlayback(context);
     this.publishParityStartupPhase('context-created');
     if (this.dawOutputDeviceId) {
@@ -290,6 +306,7 @@ export class CoreProductRuntime {
           this.postDawOutputRouting();
           this.syncMeterDemand();
           this.syncStemDemand();
+          this.syncInteractionDemand();
           this.syncSimpleSequencerVisualDemand();
           resolve();
           return;
@@ -383,6 +400,10 @@ export class CoreProductRuntime {
     await this.requestResume();
   }
 
+  expectSnapshotAfterResume(): void {
+    this.nativeRuntime?.expectSnapshot();
+  }
+
   private async resumeAfterInterruption(): Promise<void> {
     if (!this.playbackRequested) return;
     await this.requestResume();
@@ -391,6 +412,12 @@ export class CoreProductRuntime {
   private async requestResume(): Promise<void> {
     const revision = ++this.playbackRevision;
     this.playbackRequested = true;
+    if (this.nativeRuntime) {
+      await this.ensureStarted();
+      await this.nativeRuntime.resume();
+      this.publishParityAudioContextState();
+      return;
+    }
     const ready = this.ensureStarted();
     const resumed = this.context?.resume() ?? Promise.resolve();
     const carrierPlayed = this.connectMediaSessionPlayback();
@@ -427,13 +454,15 @@ export class CoreProductRuntime {
     this.playbackRequested = false;
     this.browserAudioSession.setPlaybackRequested(false);
     this.pauseMediaSessionPlayback();
-    await this.context?.suspend();
+    if (this.nativeRuntime) await this.nativeRuntime.suspend();
+    else await this.context?.suspend();
   }
 
   dispose(): void {
     ++this.playbackRevision;
     this.playbackRequested = false;
     this.browserAudioSession.dispose();
+    void this.nativeRuntime?.suspend();
     if (this.telemetryTimer !== null) {
       window.clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
@@ -496,6 +525,7 @@ export class CoreProductRuntime {
     this.syncVisualTelemetryLoop();
     this.syncMeterDemand();
     this.syncStemDemand();
+    this.syncInteractionDemand();
   }
 
   setGranularWaveformTelemetryActive(active: boolean): void {
@@ -561,11 +591,19 @@ export class CoreProductRuntime {
   }
 
   postEvent(event: CoreProductEvent): void {
+    if (this.nativeRuntime) {
+      this.nativeRuntime.postEvents([event]);
+      return;
+    }
     this.requireNode('postEvent').port.postMessage({ type: 'event', event });
   }
 
   postEvents(events: readonly CoreProductEvent[]): void {
     if (events.length === 0) return;
+    if (this.nativeRuntime) {
+      this.nativeRuntime.postEvents(events);
+      return;
+    }
     this.requireNode('postEvents').port.postMessage({
       type: 'events',
       events,
@@ -573,10 +611,18 @@ export class CoreProductRuntime {
   }
 
   requestTelemetryOnce(_reason: 'visibility-resume' | 'manual' = 'manual'): void {
+    if (this.nativeRuntime) {
+      void this.pollNativeTelemetry(false);
+      return;
+    }
     this.node?.port.postMessage({ type: 'request-telemetry' });
   }
 
   requestVisualTelemetryAfterRender(): void {
+    if (this.nativeRuntime) {
+      void this.pollNativeTelemetry(true);
+      return;
+    }
     this.node?.port.postMessage({ type: 'request-visual-telemetry-after-render' });
   }
 
@@ -584,6 +630,13 @@ export class CoreProductRuntime {
     snapshot: ArrayBuffer,
     metadata?: ProductRuntimeSnapshotMetadata,
   ): Promise<ProductSnapshotAppliedReceipt> {
+    if (this.nativeRuntime) {
+      return this.nativeRuntime.loadSnapshot(snapshot).then(() => ({
+        revision: metadata?.revision ?? 0,
+        applied: true,
+        encodedSnapshotHash: metadata?.encodedSnapshotHash ?? '',
+      }));
+    }
     const node = this.requireNode('loadSnapshot');
     if (!metadata) {
       node.port.postMessage({ type: 'snapshot', snapshot }, [snapshot]);
@@ -615,10 +668,15 @@ export class CoreProductRuntime {
   }
 
   reset(): void {
+    if (this.nativeRuntime) {
+      this.nativeRuntime.reset();
+      return;
+    }
     this.requireNode('reset').port.postMessage({ type: 'reset' });
   }
 
   resetParityFx(): void {
+    if (this.nativeRuntime) return;
     this.requireNode('resetParityFx').port.postMessage({ type: 'reset-parity-fx' });
   }
 
@@ -652,6 +710,9 @@ export class CoreProductRuntime {
     asset: DecodedCoreProductAsset,
     ownership: AssetTransferOwnership = 'retain-host-copy',
   ): Promise<void> {
+    if (this.nativeRuntime) {
+      return this.nativeRuntime.registerAsset(asset).then(() => undefined);
+    }
     const pending = this.pendingAssetRegistrations.get(asset.assetId);
     if (pending) return pending.promise;
     const transferAsset = ownership === 'retain-host-copy'
@@ -683,6 +744,13 @@ export class CoreProductRuntime {
     const normalizedAssetId = Math.trunc(Number(assetId));
     if (!Number.isFinite(normalizedAssetId) || normalizedAssetId <= 0) {
       throw new Error(`Core Product asset id is invalid: ${String(assetId)}`);
+    }
+    if (this.nativeRuntime) {
+      void this.nativeRuntime.unregisterAsset(normalizedAssetId).then(
+        () => this.assetReleaseCallback?.(normalizedAssetId),
+        () => this.assetReleaseFailureCallback?.(normalizedAssetId, -1),
+      );
+      return;
     }
     this.requireNode('requestAssetRelease').port.postMessage({
       type: 'unregister-asset',
@@ -916,6 +984,7 @@ export class CoreProductRuntime {
   }
 
   private visualTelemetryIntervalMs(): number {
+    if (this.nativeRuntime) return CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS;
     return isMobileDevice() || isIOSLikeDevice()
       ? CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS
       : CORE_PRODUCT_VISUAL_TELEMETRY_DESKTOP_INTERVAL_MS;
@@ -930,10 +999,11 @@ export class CoreProductRuntime {
       window.clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
     }
-    if (!this.node || !this.shouldPollTelemetry()) return;
+    if ((!this.node && !this.nativeRuntime) || !this.shouldPollTelemetry()) return;
     const requestTelemetry = () => {
       if (!this.shouldPollTelemetry()) return;
-      this.node?.port.postMessage({ type: 'request-telemetry' });
+      if (this.nativeRuntime) void this.pollNativeTelemetry(false);
+      else this.node?.port.postMessage({ type: 'request-telemetry' });
     };
     requestTelemetry();
     this.telemetryTimer = window.setInterval(requestTelemetry, this.telemetryIntervalMs());
@@ -944,15 +1014,16 @@ export class CoreProductRuntime {
       window.clearInterval(this.visualTelemetryTimer);
       this.visualTelemetryTimer = null;
     }
-    if (!this.visualTelemetryActive || !this.node || !this.isDocumentVisible()) {
+    if (!this.visualTelemetryActive || (!this.node && !this.nativeRuntime) || !this.isDocumentVisible()) {
       return;
     }
     const requestVisualTelemetry = () => {
       if (!this.isDocumentVisible()) return;
-      this.node?.port.postMessage({
-        type: 'request-visual-telemetry',
-        includeGranularWaveform: this.granularWaveformTelemetryActive,
-      });
+      if (this.nativeRuntime) void this.pollNativeTelemetry(true);
+      else this.node?.port.postMessage({
+          type: 'request-visual-telemetry',
+          includeGranularWaveform: this.granularWaveformTelemetryActive,
+        });
     };
     requestVisualTelemetry();
     this.visualTelemetryTimer = window.setInterval(requestVisualTelemetry, this.visualTelemetryIntervalMs());
@@ -972,11 +1043,39 @@ export class CoreProductRuntime {
     this.node.port.postMessage({ type: 'stem-demand', enabled });
   }
 
+  private syncInteractionDemand(): void {
+    const enabled = this.isDocumentVisible() && this.visualTelemetryActive;
+    const demandMask = enabled
+      ? PRODUCT_INTERACTION_DEMAND.envelope |
+        PRODUCT_INTERACTION_DEMAND.events |
+        PRODUCT_INTERACTION_DEMAND.peak |
+        PRODUCT_INTERACTION_DEMAND.rms |
+        PRODUCT_INTERACTION_DEMAND.onset
+      : 0;
+    const sourceMask = enabled ? (1 << PRODUCT_INTERACTION_SOURCE_COUNT) - 1 : 0;
+    if (this.nativeRuntime) this.nativeRuntime.setInteractionDemand(demandMask, sourceMask);
+    else this.node?.port.postMessage({ type: 'interaction-demand', demandMask, sourceMask });
+  }
+
   private syncSimpleSequencerVisualDemand(): void {
     this.node?.port.postMessage({
       type: 'simple-sequencer-visual-demand',
       mask: this.simpleSequencerVisualDemandMask,
     });
+  }
+
+  private async pollNativeTelemetry(visual: boolean): Promise<void> {
+    if (!this.nativeRuntime || this.nativeTelemetryInFlight || !this.isDocumentVisible()) return;
+    this.nativeTelemetryInFlight = true;
+    try {
+      const telemetry = await this.nativeRuntime.telemetry();
+      if (visual) this.visualTelemetryCallback?.(telemetry);
+      else this.telemetryCallback?.(telemetry);
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.nativeTelemetryInFlight = false;
+    }
   }
 
   private assertGraphCaptureAllowed(): void {

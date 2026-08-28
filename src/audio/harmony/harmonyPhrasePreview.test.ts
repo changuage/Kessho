@@ -108,3 +108,11 @@ test('shows the Harmony-driven generator as off without inventing preview notes'
   assert.equal(preview.enabled, false);
   assert.deepEqual(preview.notes, []);
 });
+
+test('supports a four-octave chord-generator offset', () => {
+  const preview = createHarmonyPhrasePreview(
+    { ...DEFAULT_STATE, synthChordGeneratorEnabled: true, synthOctave: 4 },
+    projection([60], []),
+  );
+  assert.equal(preview.notes[0]?.midi, 108);
+});

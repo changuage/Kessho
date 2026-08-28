@@ -2378,7 +2378,7 @@ void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& even
       if (event.morph >= 0.0f) source.morph = clampFloat(event.morph, 0.0f, 1.0f);
       if (event.distance >= 0.0f) source.distance = clampFloat(event.distance, 0.0f, 1.0f);
     }
-    triggerVoice(
+    const uint32_t triggered_voice = triggerVoice(
         event.source_id,
         event.midi_note,
         event.velocity,
@@ -2393,6 +2393,10 @@ void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& even
         1.0e10f,
         1.0e10f,
         padVoiceIndexFromSequencerEventFlags(event.flags));
+    if (triggered_voice != kProductInvalidVoiceIndex) {
+      emitVoiceInteractionEvent(event.source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_ARRANGEMENT,
+          transport.sample_frame, event.midi_note, event.velocity);
+    }
     return;
   }
   const uint32_t seed = hashU32(
@@ -2407,7 +2411,7 @@ void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& even
     // simply extend the fixed-capacity deadline.
     extendSourceTransientAudition(event.source_id, event.hold_seconds);
   }
-  triggerVoice(
+  const uint32_t triggered_voice = triggerVoice(
       event.source_id,
       event.midi_note,
       event.velocity,
@@ -2425,4 +2429,8 @@ void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& even
       event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 1.0f : event.send_delay_a,
       (event.flags & kSequencerEventHarmonyResolvedFlag) != 0u,
       transient_audition);
+  if (triggered_voice != kProductInvalidVoiceIndex) {
+    emitVoiceInteractionEvent(event.source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_SEQUENCER,
+        transport.sample_frame, event.midi_note, event.velocity);
+  }
 }

@@ -90,6 +90,57 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
 }
 
 {
+  const previous = createCoreProductSnapshot({
+    granularEnabled: true,
+    reverbEnabled: true,
+    fxRoutingGraph: { version: 1, edges: [{ from: 'granular', to: 'reverb', amount: 0.5 }] },
+  });
+  const next = createCoreProductSnapshot({
+    granularEnabled: true,
+    reverbEnabled: true,
+    fxRoutingGraph: { version: 1, edges: [{ from: 'granular', to: 'reverb', amount: 0.6 }] },
+  });
+  const edge = 2 * 10 + 5;
+  assert.equal(next.routing.fxRouteAmount[edge], 1.2, 'Granular route amount must include its engine trim');
+  const diff = buildCoreProductSnapshotDiff(previous, next);
+  assert.equal(diff.applied, true);
+  assert.equal(
+    diff.applied
+      ? diff.events.find((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount)?.value
+      : undefined,
+    1.2,
+    'live graph edits must match the trimmed snapshot route amount',
+  );
+}
+
+{
+  const graph = {
+    version: 1 as const,
+    edges: [
+      { from: 'eq1' as const, to: 'reverb' as const, amount: 1 },
+      { from: 'reverb' as const, to: 'eq2' as const, amount: 1 },
+    ],
+  };
+  const disabled = createCoreProductSnapshot({
+    dynamicsEq1Enabled: true,
+    dynamicsEq2Enabled: true,
+    reverbEnabled: false,
+    fxRoutingGraph: graph,
+  });
+  assert.equal(disabled.routing.fxEdgeMask.every((mask) => mask === 0), true, 'disabled FX nodes must not reach Product Core');
+
+  const enabled = createCoreProductSnapshot({
+    dynamicsEq1Enabled: true,
+    dynamicsEq2Enabled: true,
+    reverbEnabled: true,
+    reverbLevel: 0,
+    fxRoutingGraph: graph,
+  });
+  assert.notEqual(enabled.routing.fxEdgeMask[6]! & (1 << 5), 0, 'enabled Reverb must accept graph input at zero return level');
+  assert.notEqual(enabled.routing.fxEdgeMask[5]! & (1 << 7), 0, 'enabled Reverb must feed downstream at zero return level');
+}
+
+{
   const generator = createCoreProductSnapshot({
     synthChordGeneratorEnabled: true,
     synthChordGeneratorSource: 'sample2',

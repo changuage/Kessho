@@ -90,7 +90,7 @@ export function createCoreProductFxRouteEvents(
       eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
       targetId,
       paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteAmount,
-      value: Math.max(0, Math.min(1, amount)),
+      value: Math.max(0, Math.min(4, amount)),
     },
     {
       eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,

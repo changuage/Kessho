@@ -1,30 +1,30 @@
 import assert from 'node:assert/strict';
-import { normalizeVisualizerPresetData } from './visualizerPresetStore';
+import { normalizeTransportVisualizerPresetData } from './visualizerPresetStore';
 
-const legacy = normalizeVisualizerPresetData({
+const v3 = normalizeTransportVisualizerPresetData({
   format: 'kessho-visualizer-preset',
-  formatVersion: 1,
-  mode: 'auto',
-  controls: { motion: 0.2 },
-  reactiveRanges: {
-    motion: { min: 0.8, max: -0.4 },
-    stale: { min: 0, max: 1 },
-    bad: { min: Number.NaN, max: 0 },
-  },
-  reaction: { reactionAmount: 0.5, morphAroundPreset: 0.5, afterglow: 0.5, mode: 'auto' },
-  seed: 0.25,
+  formatVersion: 3,
+  renderer: 'transport',
+  controls: { motion: 99, sunTaps: 3.6 },
+  assignments: [
+    { id: 'drums-motion', source: 'drums', signal: 'transient', target: 'motion', amount: 4 },
+    { id: 'invalid', source: 'missing', signal: 'level', target: 'motion', amount: 1 },
+  ],
+  qualityMode: 'invalid',
+  seed: Number.NaN,
 });
-
-assert.ok(legacy);
-assert.equal(legacy?.formatVersion, 2);
-assert.deepEqual(legacy?.reactiveRanges, { motion: { min: -0.4, max: 0.8 } });
-assert.deepEqual(legacy?.vizSliderModes, {});
-
-const v2 = normalizeVisualizerPresetData({
-  ...legacy,
+assert.ok(v3);
+assert.equal(v3?.controls.motion, 1.5);
+assert.equal(v3?.controls.sunTaps, 4);
+assert.equal(v3?.assignments.length, 1);
+assert.equal(v3?.assignments[0]?.amount, 1);
+assert.equal(v3?.assignments[0]?.enabled, true);
+assert.equal(v3?.qualityMode, 'auto');
+assert.equal(v3?.seed, 0);
+assert.equal(normalizeTransportVisualizerPresetData({
+  format: 'kessho-visualizer-preset',
   formatVersion: 2,
-  vizSliderModes: { motion: 'sampleHold', stale: 'walk', frameRate: 'single' },
-});
-assert.deepEqual(v2?.vizSliderModes, { motion: 'sampleHold' });
+  controls: {},
+}), null);
 
 console.log('visualizer preset store regression passed');

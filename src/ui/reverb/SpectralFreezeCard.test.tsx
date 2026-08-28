@@ -3,7 +3,8 @@ import test from 'node:test';
 import React, { type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DEFAULT_STATE, type SliderState } from '../state';
-import SpectralFreezeCard, { nextSpectralFreezeCaptureSerial } from './SpectralFreezeCard';
+import { nextSpectralFreezeCaptureSerial } from '../spectralFreezeGesture';
+import SpectralFreezeCard from './SpectralFreezeCard';
 
 const Slider = ({ label }: { label: string }) => <span>{label}</span>;
 const Select = ({ label }: { label: string }) => <span>{label}</span>;
@@ -49,7 +50,7 @@ function findButton(node: ReactNode, label: string): ReactElement<{ onClick: () 
 
 test('spectral freeze card exposes controls only for their owning modes', () => {
   const solid = visibleTextForMode('solid');
-  assert.match(solid, />Mix</);
+  assert.match(solid, />Level</);
   assert.match(solid, />Sustain</);
   assert.doesNotMatch(solid, />Position</);
   assert.doesNotMatch(solid, />Refresh</);
