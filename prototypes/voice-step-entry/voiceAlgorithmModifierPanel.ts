@@ -18,7 +18,22 @@ function cloneState(): any {
   return JSON.parse(JSON.stringify(getVoiceAlgorithmModifierState()));
 }
 
-function updatePath(path: string, value: number | boolean): void {
+function presetLabel(state: VoiceAlgorithmModifierState): string {
+  return state.preset === 'neutral' ? 'Neutral'
+    : state.preset === 'sung-held' ? 'Sung / Held'
+      : state.preset === 'vocal-percussive' ? 'Bum / Dung / Deng'
+        : 'Custom';
+}
+
+function updateSummary(): void {
+  const state = getVoiceAlgorithmModifierState();
+  const summary = document.getElementById('voiceModifierSummary');
+  if (summary) summary.textContent = `${presetLabel(state)} · ${state.minHz}–${state.maxHz} Hz · ≥${state.minNoteMs} ms · bridge ${state.gapBridgeMs} ms · auto reprocess`;
+  const presetSelect = document.getElementById('voicePreset') as HTMLSelectElement | null;
+  if (presetSelect) presetSelect.value = state.preset;
+}
+
+function updatePath(path: string, value: number | boolean, syncAfter = false): void {
   const next = cloneState();
   next.preset = 'custom';
   const parts = path.split('.');
@@ -26,20 +41,20 @@ function updatePath(path: string, value: number | boolean): void {
   for (let index = 0; index < parts.length - 1; index += 1) cursor = cursor[parts[index]!] ??= {};
   cursor[parts[parts.length - 1]!] = value;
   setVoiceAlgorithmModifierState(next as VoiceAlgorithmModifierState);
-  syncControls();
+  if (syncAfter) syncControls(); else updateSummary();
   markStaleAndSchedule();
 }
 
 function markStaleAndSchedule(): void {
   document.querySelectorAll<HTMLElement>('[data-state]').forEach((state) => {
     const text = state.textContent ?? '';
-    if (text !== 'not analyzed' && !text.startsWith('failed')) state.textContent = 'modifier changed · re-analyze';
+    if (text !== 'not analyzed' && !text.startsWith('failed')) state.textContent = 'tuning changed · reprocessing current take…';
   });
   window.clearTimeout(reanalyzeTimer);
   reanalyzeTimer = window.setTimeout(() => {
     const button = document.getElementById('analyzeAlgorithms') as HTMLButtonElement | null;
     if (button && !button.disabled) button.click();
-  }, 520);
+  }, 300);
 }
 
 function setValue(id: string, value: number | string | boolean): void {
@@ -83,25 +98,26 @@ function syncControls(): void {
   setValue('pitchyClarity', state.pitchy.clarityThreshold);
   setValue('pitchyFrame', state.pitchy.frameSize);
   setValue('pitchyHop', state.pitchy.hopSize);
-
-  const summary = document.getElementById('voiceModifierSummary');
-  if (summary) {
-    const label = state.preset === 'neutral' ? 'Neutral'
-      : state.preset === 'sung-held' ? 'Sung / Held'
-        : state.preset === 'vocal-percussive' ? 'Bum / Dung / Deng'
-          : 'Custom';
-    summary.textContent = `${label} · ${state.minHz}–${state.maxHz} Hz · ≥${state.minNoteMs} ms · bridge ${state.gapBridgeMs} ms`;
-  }
+  updateSummary();
 }
 
 function bindNumber(id: string, path: string, transform: (value: number) => number = (value) => value): void {
   const element = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
-  element?.addEventListener('change', () => updatePath(path, transform(numericValue(element))));
+  if (!element) return;
+  if (element instanceof HTMLInputElement) {
+    element.addEventListener('input', () => {
+      if (element.value === '' || element.value === '-' || element.value === '.') return;
+      updatePath(path, transform(numericValue(element)), false);
+    });
+    element.addEventListener('change', () => updatePath(path, transform(numericValue(element)), true));
+  } else {
+    element.addEventListener('change', () => updatePath(path, transform(numericValue(element)), true));
+  }
 }
 
 function bindCheckbox(id: string, path: string): void {
   const element = document.getElementById(id) as HTMLInputElement | null;
-  element?.addEventListener('change', () => updatePath(path, element.checked));
+  element?.addEventListener('change', () => updatePath(path, element.checked, true));
 }
 
 function inject(): void {
@@ -151,7 +167,7 @@ function inject(): void {
       <label class="voice-field">CENTER TRIM %<input id="voiceCenterTrim" type="number" min="0" max="42" step="1"/></label>
     </div>
     <details class="voice-advanced">
-      <summary>Advanced · algorithm-specific modifiers</summary>
+      <summary>Advanced · algorithm-specific modifiers · edits reprocess current take</summary>
       <div class="voice-algo-settings">
         <div class="voice-algo-group">
           <h4>Basic Pitch</h4>
@@ -246,7 +262,7 @@ function tryInject(attempt = 0): void {
   if (attempt < 12) window.setTimeout(() => tryInject(attempt + 1), 25);
 }
 
-// Keep the module standalone: the main comparison controller owns recording and
-// Product Core; this panel owns only transcription tuning state.
+// Recording stays immutable while tuning. The panel only changes transcription
+// parameters and asks the existing algorithm session to reprocess that PCM.
 void VOICE_ALGORITHM_PRESETS;
 tryInject();
