@@ -1,6 +1,5 @@
 // Stable Vite entrypoint for the mobile voice-step prototype.
-// The audition patch transposes Product Core synth audition +12 semitones only;
-// detected/visualized/committed sequencer pitch remains unchanged.
-import './auditionOctavePatch';
-
-void import('./main-v3');
+// v5 records one PCM take and compares five transcription algorithms against
+// the same source. Audition transposition is handled inside the bench so the
+// detected/visualized/committed pitch remains independent from test playback.
+import './main-v5';
