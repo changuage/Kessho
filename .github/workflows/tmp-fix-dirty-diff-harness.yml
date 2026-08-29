@@ -1,0 +1,50 @@
+name: Temporary dirty-diff harness fix
+
+on:
+  push:
+    branches:
+      - fix/dirty-diff-harness-soundscape
+    paths:
+      - .github/workflows/tmp-fix-dirty-diff-harness.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Patch runtime adapter VM harness
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/lib/kesshoProductBehaviorHarness.mjs')
+          source = path.read_text()
+
+          setup_needle = """  vm.runInNewContext(`${generatedParamsJs}\nglobalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsContext, { filename: generatedParamsPath });\n\n  const context = {\n"""
+          setup_replacement = """  vm.runInNewContext(`${generatedParamsJs}\nglobalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsContext, { filename: generatedParamsPath });\n\n  const numericExport = (path, name) => {\n    const source = readProjectFile(path);\n    const match = new RegExp(`export const ${name}\\\\s*=\\\\s*(0x[0-9a-fA-F]+|[0-9]+)`).exec(source);\n    assert(match, `missing numeric export ${name} in ${path}`);\n    return Number(match[1]);\n  };\n  const generatedSchemaPath = 'src/audio/generated/kesshoProductSchema.ts';\n  const coreProductEventsPath = 'src/audio/coreProductEvents.ts';\n\n  const context = {\n"""
+          if source.count(setup_needle) != 1:
+              raise SystemExit(f'expected one runtime-adapter setup insertion point, found {source.count(setup_needle)}')
+          source = source.replace(setup_needle, setup_replacement, 1)
+
+          context_needle = """    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 112,\n\t    KESSHO_PRODUCT_PAD_PARAM_COUNT: 58,\n    KESSHO_PRODUCT_PARAM_IDS: createParamIds(),\n"""
+          context_replacement = """    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 112,\n\t    KESSHO_PRODUCT_PAD_PARAM_COUNT: 58,\n    SOUNDSCAPE_TEXTURE_PARAM_START: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START'),\n    SOUNDSCAPE_TEXTURE_PARAM_STRIDE: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE'),\n    SOUNDSCAPE_TEXTURE_SLOT_COUNT: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT'),\n    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET'),\n    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET'),\n    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE'),\n    CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE'),\n    KESSHO_PRODUCT_PARAM_IDS: createParamIds(),\n"""
+          if source.count(context_needle) != 1:
+              raise SystemExit(f'expected one runtime-adapter context insertion point, found {source.count(context_needle)}')
+          source = source.replace(context_needle, context_replacement, 1)
+          path.write_text(source)
+          PY
+      - name: Remove temporary workflow and commit fix
+        shell: bash
+        run: |
+          git rm .github/workflows/tmp-fix-dirty-diff-harness.yml
+          git config user.name 'Kessho CI Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scripts/lib/kesshoProductBehaviorHarness.mjs
+          git commit -m 'Fix runtime adapter harness soundscape globals'
+          git push origin HEAD:fix/dirty-diff-harness-soundscape
