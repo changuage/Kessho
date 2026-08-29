@@ -1,28 +1,5 @@
 #include "../KesshoProductEngineInternal.h"
 
-void KesshoProductEngine::beginFxConfigurationBatch() {
-  ++fx_configuration_batch_depth;
-}
-
-void KesshoProductEngine::endFxConfigurationBatch() {
-  if (fx_configuration_batch_depth == 0u) return;
-  --fx_configuration_batch_depth;
-  if (fx_configuration_batch_depth != 0u) return;
-  const bool configure_all = fx_configuration_pending;
-  const bool configure_reverb = reverb_configuration_pending;
-  const bool configure_spectral_freeze = spectral_freeze_configuration_pending;
-  fx_configuration_pending = false;
-  reverb_configuration_pending = false;
-  spectral_freeze_configuration_pending = false;
-  if (configure_all) {
-    configureFxModules();
-  } else {
-    if (configure_reverb) configureReverbModule();
-    if (configure_spectral_freeze) configureSpectralFreezeModule();
-  }
-  if (soundscapes_module_params_dirty) configureSoundscapesModuleFromSource();
-}
-
 void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
   configureSpectralFreezeModule();
   if (!std::isfinite(previous_bpm) || !std::isfinite(transport.bpm) ||
