@@ -1,6 +1,5 @@
 #include "KesshoProductEngineInternal.h"
 extern "C" {
-
 int32_t kessho_product_debug_render_events(
     KesshoProductEngine* engine,
     KesshoSequencerEvent* out_events,
