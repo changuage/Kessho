@@ -388,6 +388,36 @@ uint32_t KesshoProductEngine::drainInteractionEvents(
   const uint32_t harmony_fade_total_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate * 0.02)));
   const float harmony_morph_handover = clampFloat(harmony.morph_scale_handover_at, 0.05f, 0.95f);
   const bool harmony_morph_target_side = harmony.morph_plan_phase >= harmony_morph_handover;
+  float texture_level_start[kSoundscapeTextureSlotCount]{};
+  float texture_level_delta[kSoundscapeTextureSlotCount]{};
+  uint32_t texture_level_ramp_frames[kSoundscapeTextureSlotCount]{};
+  const uint32_t texture_control_fade_frames = std::max<uint32_t>(
+      1u,
+      static_cast<uint32_t>(std::ceil(
+          static_cast<double>(kSoundscapeTextureControlFadeSeconds) * sample_rate)));
+  for (uint32_t slot = 0u; slot < kSoundscapeTextureSlotCount; ++slot) {
+    SoundscapeTextureRuntime& runtime = soundscape_texture_runtimes[slot];
+    const float target = soundscapeTextureSlotEnabled(soundscape_source, slot)
+        ? clampFloat(soundscapeTextureParam(
+            soundscape_source, slot, kSoundscapeTextureParamLevel, 0.5f), 0.0f, 1.0f)
+        : 0.0f;
+    if (std::fabs(target - runtime.output_level_target) > 0.000001f) {
+      runtime.output_level_target = target;
+      runtime.output_level_ramp_remaining = texture_control_fade_frames;
+      runtime.output_level_delta =
+          (target - runtime.output_level) / static_cast<float>(texture_control_fade_frames);
+    }
+    texture_level_start[slot] = runtime.output_level;
+    texture_level_delta[slot] = runtime.output_level_delta;
+    texture_level_ramp_frames[slot] = runtime.output_level_ramp_remaining;
+    const uint32_t advance = std::min(frames, runtime.output_level_ramp_remaining);
+    runtime.output_level += runtime.output_level_delta * static_cast<float>(advance);
+    runtime.output_level_ramp_remaining -= advance;
+    if (runtime.output_level_ramp_remaining == 0u) {
+      runtime.output_level = runtime.output_level_target;
+      runtime.output_level_delta = 0.0f;
+    }
+  }
   for (uint32_t i = 0; i < frames; ++i) {
     const uint32_t frame = start + i;
     float source_gates[kSourceCount]{};
@@ -527,12 +557,25 @@ uint32_t KesshoProductEngine::drainInteractionEvents(
         soundscape_layer = voice.soundscape_layer < kSoundscapeLayerCount
             ? voice.soundscape_layer
             : soundscapeLayerIndexForAsset(assets[voice.asset_slot].asset_id);
-        soundscape_asset_level = voice.soundscape_releasing
-            ? voice.soundscape_asset_level
-            : (voice.soundscape_texture_voice && voice.soundscape_texture_slot < kSoundscapeTextureSlotCount &&
-                soundscapeTextureParam(source, voice.soundscape_texture_slot, kSoundscapeTextureParamAssetId, 0.0f) > 0.0f
-                ? clampFloat(soundscapeTextureParam(source, voice.soundscape_texture_slot, kSoundscapeTextureParamLevel, 0.5f), 0.0f, 1.0f)
-                : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id));
+        const bool canonical_texture_voice =
+            voice.soundscape_texture_voice &&
+            voice.soundscape_texture_slot < kSoundscapeTextureSlotCount &&
+            soundscapeTextureParam(
+                source,
+                voice.soundscape_texture_slot,
+                kSoundscapeTextureParamAssetId,
+                0.0f) > 0.0f;
+        if (canonical_texture_voice) {
+          const uint32_t slot = voice.soundscape_texture_slot;
+          const uint32_t ramp_frame = std::min(i + 1u, texture_level_ramp_frames[slot]);
+          soundscape_asset_level = texture_level_ramp_frames[slot] > 0u
+              ? texture_level_start[slot] + texture_level_delta[slot] * static_cast<float>(ramp_frame)
+              : soundscape_texture_runtimes[slot].output_level;
+        } else {
+          soundscape_asset_level = voice.soundscape_releasing
+              ? voice.soundscape_asset_level
+              : soundscapeAssetRefLevel(source, assets[voice.asset_slot].asset_id);
+        }
         voice.soundscape_asset_level = soundscape_asset_level;
         soundscape_earth_level = soundscape_cache.earth_level;
         graph_dry_left = dry_left * soundscape_asset_level;
@@ -935,10 +978,12 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   clearOutput(out_l, out_r, frames);
 
   uint32_t control_index = 0;
+  beginFxConfigurationBatch();
   while (control_index < control_event_count && control_events[control_index].event.sample_offset == 0u) {
     applyControlEvent(control_events[control_index].event);
     ++control_index;
   }
+  endFxConfigurationBatch();
   applyPendingTransportTransition();
   applyPendingSequencerAudibilityTransitions();
   applySequencerChainTransitions();
@@ -957,10 +1002,12 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   uint32_t sequencer_event_total = 0u;
   uint32_t cursor = 0;
   while (cursor < frames) {
+    beginFxConfigurationBatch();
     while (control_index < control_event_count && control_events[control_index].event.sample_offset == cursor) {
       applyControlEvent(control_events[control_index].event);
       ++control_index;
     }
+    endFxConfigurationBatch();
     applyPendingTransportTransition();
     applyPendingSequencerAudibilityTransitions();
     applySequencerChainTransitions();

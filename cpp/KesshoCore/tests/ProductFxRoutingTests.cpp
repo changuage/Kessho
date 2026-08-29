@@ -1945,6 +1945,58 @@ void requireNeutralEqUnity() {
   }
 }
 
+void requireEqPassFiltersRejectOutOfBandSignal() {
+  constexpr uint32_t kFrames = 128u;
+  constexpr float kSampleRate = 48000.0f;
+  const auto measure = [=](uint32_t low_type, uint32_t high_type, float low_freq, float high_freq, float tone_hz) {
+    auto engine = std::make_unique<KesshoProductEngine>(kSampleRate, kFrames, 0);
+    engine->routing.clearFxGraph();
+    engine->fx.dynamics_eq1_enabled = true;
+    engine->fx.dynamics_eq1_mix = 1.0f;
+    engine->fx.dynamics_eq1_low_type = low_type;
+    engine->fx.dynamics_eq1_low_freq = low_freq;
+    engine->fx.dynamics_eq1_low_gain_db = 0.0f;
+    engine->fx.dynamics_eq1_low_q = 0.70710678f;
+    engine->fx.dynamics_eq1_mid_gain_db = 0.0f;
+    engine->fx.dynamics_eq1_high_type = high_type;
+    engine->fx.dynamics_eq1_high_freq = high_freq;
+    engine->fx.dynamics_eq1_high_gain_db = 0.0f;
+    engine->fx.dynamics_eq1_high_q = 0.70710678f;
+    float out_l[kFrames]{};
+    float out_r[kFrames]{};
+    double sum = 0.0;
+    uint32_t count = 0u;
+    uint64_t sample = 0u;
+    for (uint32_t block = 0u; block < 80u; ++block) {
+      for (uint32_t i = 0u; i < kFrames; ++i, ++sample) {
+        const float value = std::sin(
+            static_cast<float>(kTwoPi) * tone_hz * static_cast<float>(sample) / kSampleRate) * 0.25f;
+        engine->dynamics_eq1_bus_l[i] = value;
+        engine->dynamics_eq1_bus_r[i] = value;
+      }
+      clearFxBus(out_l, out_r, kFrames);
+      clearFxBus(engine->fx_node_output_l[kFxNodeEq1], engine->fx_node_output_r[kFxNodeEq1], kFrames);
+      engine->renderFxGraph(out_l, out_r, 0u, kFrames);
+      if (block < 16u) continue;
+      for (float value : out_l) {
+        sum += static_cast<double>(value) * static_cast<double>(value);
+        ++count;
+      }
+    }
+    return static_cast<float>(std::sqrt(sum / static_cast<double>(count)));
+  };
+
+  const float low_pass_band = measure(kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass, 120.0f, 200.0f, 100.0f);
+  const float low_pass_reject = measure(kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass, 120.0f, 200.0f, 4000.0f);
+  require(low_pass_band > 0.1f, "EQ low-pass removed its pass band");
+  require(low_pass_reject < low_pass_band * 0.01f, "EQ low-pass leaked high-frequency signal");
+
+  const float high_pass_reject = measure(kDynamicsEqEdgeHighPass, kDynamicsEqEdgeShelf, 1000.0f, 8000.0f, 100.0f);
+  const float high_pass_band = measure(kDynamicsEqEdgeHighPass, kDynamicsEqEdgeShelf, 1000.0f, 8000.0f, 4000.0f);
+  require(high_pass_band > 0.1f, "EQ high-pass removed its pass band");
+  require(high_pass_reject < high_pass_band * 0.02f, "EQ high-pass leaked low-frequency signal");
+}
+
 void requireDisabledDelayDoesNotLeakSpecializedTap() {
   constexpr uint32_t kFrames = 128u;
   auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
@@ -2158,6 +2210,7 @@ int main() {
   requireDirectFxCoverage();
   requireReverbTrimAppliedOnce();
   requireNeutralEqUnity();
+  requireEqPassFiltersRejectOutOfBandSignal();
   requireDisabledDelayDoesNotLeakSpecializedTap();
   requireDelayFeedbackStaysPreLevel();
   requireReverbCanFeedFreezeAtZeroLevel();

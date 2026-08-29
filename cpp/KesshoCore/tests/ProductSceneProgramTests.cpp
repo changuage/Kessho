@@ -109,6 +109,9 @@ void setPosition(KesshoProductEngine* engine, float position) {
 void requireInterpolationAndBoundaryCommands() {
   KesshoProductEngine* engine = createEngine();
   uploadFixture(engine);
+  setPosition(engine, 0.128f);
+  requireNear(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level, 0.2768f,
+      "sub-percent interpolation was quantized");
   setPosition(engine, 0.25f);
   requireNear(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level, 0.35f, "quarter-position interpolation mismatch");
   requireNear(engine->harmony.root_midi, 48.0f, "scene commit did not establish the A-side command");
@@ -200,6 +203,36 @@ void requireSoundscapeTargetsAndTelemetry() {
   const KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
   require(telemetry.scene_program_revision == 91u, "scene telemetry revision mismatch");
   requireNear(telemetry.scene_position, 0.5f, "scene telemetry position mismatch");
+  kessho_product_destroy(engine);
+}
+
+void requireSoundscapeSceneParamsCommitOnceAtBatchEnd() {
+  KesshoProductEngine* engine = createEngine();
+  KesshoProductEvent active{};
+  active.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.target_id = kSoundscapeModuleParamTargetBase + kSoundscapeModuleWaterActiveParam;
+  active.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+  active.value = 1.0f;
+  KesshoProductEvent shape = active;
+  shape.target_id = kSoundscapeModuleParamTargetBase + 2u;
+  shape.value = 0.37f;
+  KesshoProductEvent water_master = active;
+  water_master.target_id = kSoundscapeModuleParamTargetBase + kSoundscapeModuleWaterMasterEnabledParam;
+  KesshoProductEvent nature_master = active;
+  nature_master.target_id = kSoundscapeModuleParamTargetBase + kSoundscapeModuleNatureMasterEnabledParam;
+
+  engine->beginFxConfigurationBatch();
+  engine->applyControlEvent(active);
+  engine->applyControlEvent(shape);
+  engine->applyControlEvent(water_master);
+  engine->applyControlEvent(nature_master);
+  require(engine->soundscapes_module_params_dirty,
+      "soundscape scene params were committed before the control batch ended");
+  engine->endFxConfigurationBatch();
+  require(!engine->soundscapes_module_params_dirty,
+      "soundscape scene params remained dirty after the control batch ended");
+  requireNear(engine->soundscapes_module_param_cache[2], 0.37f,
+      "soundscape control batch did not commit its final value");
   kessho_product_destroy(engine);
 }
 
@@ -311,6 +344,7 @@ int main() {
   requireCommitIsAtomic();
   requireNonFiniteSceneValuesAreRejected();
   requireSoundscapeTargetsAndTelemetry();
+  requireSoundscapeSceneParamsCommitOnceAtBatchEnd();
   requireMalformedCommitDoesNotSwap();
   requireCommitEstablishesCurrentBoundarySide();
   requireAudibleBidirectionalPcmParity();

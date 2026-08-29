@@ -53,6 +53,20 @@ assert.equal(isTransportClockStateKey('synthLevel'), false);
 assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
 
 {
+  const passFilters = createCoreProductSnapshot({
+    dynamicsEq1LowType: 'highpass',
+    dynamicsEq1HighType: 'lowpass',
+  });
+  assert.equal(passFilters.fx.dynamicsEq1LowType, 2, 'EQ high-pass type did not reach the snapshot');
+  assert.equal(passFilters.fx.dynamicsEq1HighType, 3, 'EQ low-pass type did not reach the snapshot');
+
+  const highPassTarget = resolveCoreProductRangeTargets('dynamicsEq1LowType')[0];
+  const lowPassTarget = resolveCoreProductRangeTargets('dynamicsEq1HighType')[0];
+  assert.equal(highPassTarget?.mapValue?.(0, { state: { dynamicsEq1LowType: 'highpass' } }), 2);
+  assert.equal(lowPassTarget?.mapValue?.(0, { state: { dynamicsEq1HighType: 'lowpass' } }), 3);
+}
+
+{
   const liveFreeze = createCoreProductSnapshot({
     spectralFreezeEnabled: true,
     spectralFreezeActive: true,

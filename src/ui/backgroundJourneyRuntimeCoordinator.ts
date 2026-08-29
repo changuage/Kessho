@@ -1,5 +1,6 @@
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
 import type { JourneyConfig } from '../audio/journeyTypes';
+import type { SavedPreset } from './state';
 import {
   resolveBackgroundJourneyRuntimePhase,
   type BackgroundJourneyRuntimePhase,
@@ -19,6 +20,13 @@ export type BackgroundJourneyRuntimeVisibility = {
   runtimeProjectionActive: boolean;
 };
 
+export type BackgroundJourneyMorphProjection = {
+  presetA: SavedPreset;
+  presetB: SavedPreset;
+  position: number;
+  direction: 'toA' | 'toB';
+};
+
 type ScheduleTelemetryRead = (callback: () => void) => () => void;
 
 export function requestAndReadBackgroundJourneyTelemetry(
@@ -27,11 +35,18 @@ export function requestAndReadBackgroundJourneyTelemetry(
   scheduleRead: ScheduleTelemetryRead,
   onFreshTelemetry: (telemetry: CoreProductTelemetrySnapshot) => void,
   maxReads = 8,
+  onSettled: () => void = () => undefined,
 ): () => void {
   const previousTelemetry = readTelemetry();
   let cancelled = false;
+  let settled = false;
   let reads = 0;
   let cancelScheduledRead: (() => void) | null = null;
+  const settle = (): void => {
+    if (settled) return;
+    settled = true;
+    onSettled();
+  };
 
   const readFreshTelemetry = (): void => {
     if (cancelled) return;
@@ -39,11 +54,13 @@ export function requestAndReadBackgroundJourneyTelemetry(
     if (latestTelemetry && latestTelemetry !== previousTelemetry) {
       cancelScheduledRead = null;
       onFreshTelemetry(latestTelemetry);
+      settle();
       return;
     }
     reads += 1;
     if (reads >= Math.max(1, maxReads)) {
       cancelScheduledRead = null;
+      settle();
       return;
     }
     cancelScheduledRead = scheduleRead(readFreshTelemetry);
@@ -52,9 +69,11 @@ export function requestAndReadBackgroundJourneyTelemetry(
   requestTelemetry();
   cancelScheduledRead = scheduleRead(readFreshTelemetry);
   return () => {
+    if (cancelled) return;
     cancelled = true;
     cancelScheduledRead?.();
     cancelScheduledRead = null;
+    settle();
   };
 }
 
@@ -72,6 +91,25 @@ export function projectBackgroundJourneyTelemetry(
     phraseProgress: telemetry.journeyHoldProgress ?? 0,
     morphProgress: telemetry.journeyMorphProgress ?? 0,
   };
+}
+
+export function projectBackgroundJourneyMorph(
+  telemetry: Pick<CoreProductTelemetrySnapshot, 'journeyCurrentNodeIndex' | 'journeyNextNodeIndex' | 'journeyMorphProgress' | 'journeyTransitionCount'>,
+  playableNodes: JourneyConfig['nodes'],
+  presets: ReadonlyMap<string, SavedPreset>,
+): BackgroundJourneyMorphProjection | null {
+  const currentNode = playableNodes[telemetry.journeyCurrentNodeIndex ?? 0];
+  const nextNode = playableNodes[telemetry.journeyNextNodeIndex ?? 0];
+  const currentPreset = currentNode ? presets.get(currentNode.id) : null;
+  const nextPreset = nextNode ? presets.get(nextNode.id) : null;
+  if (!currentPreset || !nextPreset) return null;
+
+  const progress = Math.max(0, Math.min(1, telemetry.journeyMorphProgress ?? 0));
+  const transitionCount = Math.max(0, Math.trunc(telemetry.journeyTransitionCount ?? 0));
+  if (transitionCount % 2 === 0) {
+    return { presetA: currentPreset, presetB: nextPreset, position: progress * 100, direction: 'toB' };
+  }
+  return { presetA: nextPreset, presetB: currentPreset, position: (1 - progress) * 100, direction: 'toA' };
 }
 
 export function shouldRefreshBackgroundJourneyTelemetry(

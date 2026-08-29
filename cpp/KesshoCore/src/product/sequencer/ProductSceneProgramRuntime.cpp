@@ -80,6 +80,7 @@ void applySceneProgram(
     float previous,
     float position,
     bool program_changed) {
+  engine.beginFxConfigurationBatch();
   if (!applySourceLevelEntriesAsBatch(engine, active, position)) {
     for (uint32_t index = 0u; index < active.entry_count; ++index) {
       ProductSceneEntry& entry = active.entries[index];
@@ -111,6 +112,7 @@ void applySceneProgram(
       engine.applyControlEvent(command.event);
     }
   }
+  engine.endFxConfigurationBatch();
 }
 
 } // namespace
@@ -194,9 +196,7 @@ void KesshoProductEngine::commitSceneProgram() {
 }
 
 void KesshoProductEngine::setSceneProgramPosition(float position) {
-  constexpr float kScenePositionSteps = 100.0f;
-  const float next = std::round(std::clamp(position, 0.0f, 1.0f) * kScenePositionSteps) /
-      kScenePositionSteps;
+  const float next = std::clamp(position, 0.0f, 1.0f);
   if (next == scene_program_runtime.position && !scene_program_runtime.position_dirty) return;
   scene_program_runtime.previous_position = scene_program_runtime.position;
   scene_program_runtime.position = next;

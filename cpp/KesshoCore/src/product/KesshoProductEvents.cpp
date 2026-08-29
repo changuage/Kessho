@@ -1796,7 +1796,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq1_mix = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_TYPE_ID:
-      fx.dynamics_eq1_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      fx.dynamics_eq1_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_LOW_FREQ_ID:
       fx.dynamics_eq1_low_freq = clampFloat(event.value, 20.0f, 20000.0f);
@@ -1820,7 +1820,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq1_mid_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_TYPE_ID:
-      fx.dynamics_eq1_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      fx.dynamics_eq1_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ1_HIGH_FREQ_ID:
       fx.dynamics_eq1_high_freq = clampFloat(event.value, 20.0f, 20000.0f);
@@ -1847,7 +1847,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq2_mix = clampFloat(event.value, 0.0f, 1.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_TYPE_ID:
-      fx.dynamics_eq2_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      fx.dynamics_eq2_low_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_LOW_FREQ_ID:
       fx.dynamics_eq2_low_freq = clampFloat(event.value, 20.0f, 20000.0f);
@@ -1871,7 +1871,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       fx.dynamics_eq2_mid_q = clampFloat(event.value, 0.1f, 18.0f);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_TYPE_ID:
-      fx.dynamics_eq2_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+      fx.dynamics_eq2_high_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EQ2_HIGH_FREQ_ID:
       fx.dynamics_eq2_high_freq = clampFloat(event.value, 20.0f, 20000.0f);

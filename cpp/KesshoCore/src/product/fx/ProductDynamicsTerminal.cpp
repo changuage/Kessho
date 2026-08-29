@@ -3,6 +3,7 @@
 namespace {
 
 constexpr float kTerminalBusEpsilon = 1.0e-8f;
+constexpr uint32_t kEqCoeffHighShelf = 4u;
 
 float safeEqFrequency(float sample_rate, float freq) {
   const float nyquist_guard = std::max(20.0f, sample_rate * 0.45f);
@@ -107,13 +108,13 @@ void configureHighShelf(ProductEqBiquadState& state, float sample_rate, float fr
   const float safe_freq = safeEqFrequency(sample_rate, freq);
   const float safe_gain = clampFloat(gain_db, -24.0f, 24.0f);
   const float safe_slope = clampFloat(slope, 0.25f, 1.0f);
-  if (state.coeff_type == kDynamicsEqEdgeShelf + 2u &&
+  if (state.coeff_type == kEqCoeffHighShelf &&
       state.coeff_freq == safe_freq &&
       state.coeff_gain_db == safe_gain &&
       state.coeff_slope == safe_slope) {
     return;
   }
-  state.coeff_type = kDynamicsEqEdgeShelf + 2u;
+  state.coeff_type = kEqCoeffHighShelf;
   state.coeff_freq = safe_freq;
   state.coeff_gain_db = safe_gain;
   state.coeff_q = 0.0f;
@@ -136,6 +137,27 @@ void configureHighShelf(ProductEqBiquadState& state, float sample_rate, float fr
       (a + 1.0f) - (a - 1.0f) * cos_w + beta,
       2.0f * ((a - 1.0f) - (a + 1.0f) * cos_w),
       (a + 1.0f) - (a - 1.0f) * cos_w - beta);
+}
+
+void configurePass(ProductEqBiquadState& state, float sample_rate, float freq, float q, uint32_t type) {
+  const float safe_freq = safeEqFrequency(sample_rate, freq);
+  const float safe_q = clampFloat(q, 0.1f, 18.0f);
+  if (state.coeff_type == type && state.coeff_freq == safe_freq && state.coeff_q == safe_q) {
+    return;
+  }
+  state.coeff_type = type;
+  state.coeff_freq = safe_freq;
+  state.coeff_gain_db = 0.0f;
+  state.coeff_q = safe_q;
+  state.coeff_slope = 0.0f;
+  const float omega = static_cast<float>(kTwoPi) * safe_freq / std::max(1.0f, sample_rate);
+  const float sin_w = std::sin(omega);
+  const float cos_w = std::cos(omega);
+  const float alpha = sin_w / (2.0f * safe_q);
+  const bool high_pass = type == kDynamicsEqEdgeHighPass;
+  const float b0 = (1.0f + (high_pass ? cos_w : -cos_w)) * 0.5f;
+  const float b1 = high_pass ? -(1.0f + cos_w) : 1.0f - cos_w;
+  setCoefficients(state, b0, b1, b0, 1.0f + alpha, -2.0f * cos_w, 1.0f - alpha);
 }
 
 float processEqBiquad(ProductEqBiquadState& filter, BiquadState& state, float input) {
@@ -194,17 +216,15 @@ void renderEqBus(
     }
     return;
   }
-  if (low_type == kDynamicsEqEdgeBell) {
-    configurePeaking(state.low, sample_rate, low_freq, low_gain_db, low_q);
-  } else {
-    configureLowShelf(state.low, sample_rate, low_freq, low_gain_db, low_slope);
-  }
+  if (low_type == kDynamicsEqEdgeBell) configurePeaking(state.low, sample_rate, low_freq, low_gain_db, low_q);
+  else if (low_type == kDynamicsEqEdgeHighPass || low_type == kDynamicsEqEdgeLowPass) {
+    configurePass(state.low, sample_rate, low_freq, low_q, low_type);
+  } else configureLowShelf(state.low, sample_rate, low_freq, low_gain_db, low_slope);
   configurePeaking(state.mid, sample_rate, mid_freq, mid_gain_db, mid_q);
-  if (high_type == kDynamicsEqEdgeBell) {
-    configurePeaking(state.high, sample_rate, high_freq, high_gain_db, high_q);
-  } else {
-    configureHighShelf(state.high, sample_rate, high_freq, high_gain_db, high_slope);
-  }
+  if (high_type == kDynamicsEqEdgeBell) configurePeaking(state.high, sample_rate, high_freq, high_gain_db, high_q);
+  else if (high_type == kDynamicsEqEdgeHighPass || high_type == kDynamicsEqEdgeLowPass) {
+    configurePass(state.high, sample_rate, high_freq, high_q, high_type);
+  } else configureHighShelf(state.high, sample_rate, high_freq, high_gain_db, high_slope);
   const float input_gain = dbToGain(clampFloat(input_gain_db, -24.0f, 24.0f));
   const float output_gain = dbToGain(clampFloat(output_gain_db, -24.0f, 24.0f));
   const float wet = clampFloat(mix, 0.0f, 1.0f);

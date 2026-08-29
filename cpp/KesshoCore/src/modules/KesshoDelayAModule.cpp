@@ -197,6 +197,7 @@ class DelayAModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
+    delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int feedback_latency_frames = max_block_size_;
     feedback_delay_l_0_.prepare(feedback_latency_frames);
@@ -239,6 +240,8 @@ public:
     output_latency_r_.reset();
     envelope_ = 0.0f;
     mod_phase_ = 0.0f;
+    current_time_l_ = state_.time_l;
+    current_time_r_ = state_.time_r;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -435,8 +438,10 @@ private:
       if (mod_phase_ >= 2.0f * kPi) mod_phase_ -= 2.0f * kPi;
     }
 
-    const float delay_samples_l = (state_.time_l + mod * state_.mod_depth_l) * sample_rate_;
-    const float delay_samples_r = (state_.time_r - mod * state_.mod_depth_r) * sample_rate_;
+    current_time_l_ += (state_.time_l - current_time_l_) * delay_time_slew_;
+    current_time_r_ += (state_.time_r - current_time_r_) * delay_time_slew_;
+    const float delay_samples_l = (current_time_l_ + mod * state_.mod_depth_l) * sample_rate_;
+    const float delay_samples_r = (current_time_r_ - mod * state_.mod_depth_r) * sample_rate_;
     const float delayed_l_0 = delay_l_0_.read(delay_samples_l);
     const float delayed_l_1 = delay_l_1_.read(delay_samples_l);
     const float delayed_r_0 = delay_r_0_.read(delay_samples_r);
@@ -501,6 +506,9 @@ private:
   BlockDelay output_latency_r_;
   float envelope_ = 0.0f;
   float mod_phase_ = 0.0f;
+  float current_time_l_ = 0.25f;
+  float current_time_r_ = 0.375f;
+  float delay_time_slew_ = 1.0f;
 };
 
 } // namespace

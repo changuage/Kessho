@@ -33,6 +33,8 @@ enum DynamicsRouteIndex : uint32_t {
 enum DynamicsEqEdgeType : uint32_t {
   kDynamicsEqEdgeShelf = 0,
   kDynamicsEqEdgeBell = 1,
+  kDynamicsEqEdgeHighPass = 2,
+  kDynamicsEqEdgeLowPass = 3,
 };
 
 enum SidechainTargetIndex : uint32_t {

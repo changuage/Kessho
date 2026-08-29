@@ -22,6 +22,7 @@ export const ADVANCED_TAB_COLORS: Record<AdvancedTab, string> = {
 
 export const ADVANCED_EDITOR_TABS = [
   { id: 'routing', helpKey: 'tabRouting', symbol: APP_TAB_SYMBOLS.routing, label: 'Patch' },
+  { id: 'global', helpKey: 'tabGlobal', symbol: APP_TAB_SYMBOLS.global, label: 'Global' },
   { id: 'synth', helpKey: 'tabSynth', symbol: APP_TAB_SYMBOLS.synth, label: 'Synth' },
   { id: 'drums', helpKey: 'tabDrums', symbol: APP_TAB_SYMBOLS.drums, label: 'Drums' },
   { id: 'earth', helpKey: 'tabEarth', symbol: APP_TAB_SYMBOLS.earth, label: 'Earth' },
@@ -29,7 +30,6 @@ export const ADVANCED_EDITOR_TABS = [
   { id: 'delay', helpKey: 'tabDelay', symbol: APP_TAB_SYMBOLS.delay, label: 'Delay' },
   { id: 'reverb', helpKey: 'tabReverb', symbol: APP_TAB_SYMBOLS.reverb, label: 'Reverb' },
   { id: 'texture', helpKey: 'tabDynamics', symbol: APP_TAB_SYMBOLS.dynamics, label: 'Texture' },
-  { id: 'global', helpKey: 'tabGlobal', symbol: APP_TAB_SYMBOLS.global, label: 'Global' },
 ] as const satisfies readonly {
   id: AdvancedEditorTab;
   helpKey: string;
@@ -46,14 +46,14 @@ export const getAdvancedTabActiveStyle = (accent: string): CSSProperties => ({
 
 export const ADVANCED_TAB_SHORTCUTS: Record<string, AdvancedTab> = {
   '1': 'routing',
-  '2': 'synth',
-  '3': 'drums',
-  '4': 'earth',
-  '5': 'granular',
-  '6': 'delay',
-  '7': 'reverb',
-  '8': 'texture',
-  '9': 'global',
+  '2': 'global',
+  '3': 'synth',
+  '4': 'drums',
+  '5': 'earth',
+  '6': 'granular',
+  '7': 'delay',
+  '8': 'reverb',
+  '9': 'texture',
 };
 
 export const TOP_LEVEL_SHORTCUTS: Record<string, TopLevelShortcutTarget | AdvancedTab> = {

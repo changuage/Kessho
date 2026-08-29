@@ -177,6 +177,32 @@ void requireScheduleExecutesAndLoops() {
   kessho_product_destroy(engine);
 }
 
+void requireJourneyUsesSampleFramePosition() {
+  KesshoProductEngine* engine = createEngine();
+  KesshoProductEvent begin{};
+  begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_SCHEDULE;
+  begin.value = 1.0f;
+  begin.value2 = 1.0f;
+  enqueue(engine, begin);
+  uploadEntry(engine, 0u, 0u, 1u, 0u, 128u, 1000u);
+  uploadProgram(engine, 0u, 0.2f, 0.8f);
+  KesshoProductEvent commit{};
+  commit.event_kind = KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_SCHEDULE;
+  enqueue(engine, commit);
+  KesshoProductEvent start{};
+  start.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED;
+  start.value = 1.0f;
+  enqueue(engine, start);
+  render(engine);
+  render(engine);
+  render(engine);
+  requireNear(engine->journey_schedule_runtime.scene_position, 0.128f,
+      "Journey morph position was quantized instead of using sample frames");
+  requireNear(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level, 0.2768f,
+      "Journey sub-percent scene value mismatch");
+  kessho_product_destroy(engine);
+}
+
 void requireSelfLoopSkipsMorph() {
   KesshoProductEngine* engine = createEngine();
   KesshoProductEvent begin{};
@@ -353,6 +379,7 @@ void requireJourneyScheduleSuspendedHostFixture() {
 
 int main() {
   requireScheduleExecutesAndLoops();
+  requireJourneyUsesSampleFramePosition();
   requireSelfLoopSkipsMorph();
   requireFiniteJourneyCompletesWithoutStoppingAudio();
   requireMalformedCommitIsAtomic();

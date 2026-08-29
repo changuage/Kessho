@@ -384,8 +384,8 @@ const CORE_PRODUCT_SOUNDSCAPE_INSECTS2_ACTIVE_MODULE_PARAM_INDEX = 78;
 const CORE_PRODUCT_SOUNDSCAPE_WATER_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 5;
 const CORE_PRODUCT_SOUNDSCAPE_INSECTS_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 6;
 const CORE_PRODUCT_SOUNDSCAPE_NATURE_MASTER_MODULE_PARAM_INDEX = KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 7;
-const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET = 6;
-const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET = 5;
+export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET = 6;
+export const CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET = 5;
 const ROUTING_MUTE_LEGACY_NATURE_ALIAS_PAIRS = [
   ['oceanSampleEnabled', 'nature1Enabled'],
   ['birdsEnabled', 'nature2Enabled'],
@@ -1220,8 +1220,11 @@ function binaryParamValue(value: number): number {
   return value >= 0.5 ? 1 : 0;
 }
 
-function dynamicsEqEdgeTypeValue(value: number): number {
-  return value >= 0.5 ? 1 : 0;
+function dynamicsEqEdgeTypeId(value: unknown): number {
+  if (value === 'bell') return 1;
+  if (value === 'highpass') return 2;
+  if (value === 'lowpass') return 3;
+  return 0;
 }
 
 function integerEnumParamValue(max: number): (value: number) => number {
@@ -2209,7 +2212,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq1InputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1InputGain, key)],
   dynamicsEq1OutputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1OutputGain, key)],
   dynamicsEq1Mix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1Mix, key)],
-  dynamicsEq1LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowType, key, dynamicsEqEdgeTypeValue)],
+  dynamicsEq1LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowType, key, stateBackedEnumParamValue(key, dynamicsEqEdgeTypeId, 3))],
   dynamicsEq1LowFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowFreq, key)],
   dynamicsEq1LowGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowGain, key)],
   dynamicsEq1LowQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1LowQ, key)],
@@ -2217,7 +2220,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq1MidFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1MidFreq, key)],
   dynamicsEq1MidGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1MidGain, key)],
   dynamicsEq1MidQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1MidQ, key)],
-  dynamicsEq1HighType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1HighType, key, dynamicsEqEdgeTypeValue)],
+  dynamicsEq1HighType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1HighType, key, stateBackedEnumParamValue(key, dynamicsEqEdgeTypeId, 3))],
   dynamicsEq1HighFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1HighFreq, key)],
   dynamicsEq1HighGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1HighGain, key)],
   dynamicsEq1HighQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq1HighQ, key)],
@@ -2226,7 +2229,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq2InputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2InputGain, key)],
   dynamicsEq2OutputGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2OutputGain, key)],
   dynamicsEq2Mix: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2Mix, key)],
-  dynamicsEq2LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowType, key, dynamicsEqEdgeTypeValue)],
+  dynamicsEq2LowType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowType, key, stateBackedEnumParamValue(key, dynamicsEqEdgeTypeId, 3))],
   dynamicsEq2LowFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowFreq, key)],
   dynamicsEq2LowGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowGain, key)],
   dynamicsEq2LowQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2LowQ, key)],
@@ -2234,7 +2237,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
   dynamicsEq2MidFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2MidFreq, key)],
   dynamicsEq2MidGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2MidGain, key)],
   dynamicsEq2MidQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2MidQ, key)],
-  dynamicsEq2HighType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighType, key, dynamicsEqEdgeTypeValue)],
+  dynamicsEq2HighType: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighType, key, stateBackedEnumParamValue(key, dynamicsEqEdgeTypeId, 3))],
   dynamicsEq2HighFreq: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighFreq, key)],
   dynamicsEq2HighGain: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighGain, key)],
   dynamicsEq2HighQ: (key) => [productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxDynamicsEq2HighQ, key)],

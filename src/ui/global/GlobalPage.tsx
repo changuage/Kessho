@@ -1484,12 +1484,12 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                   <div className="morph-position-track">
                     <span className="morph-endpoint a">A</span>
                     <input
-                      type="range" min="0" max="100" step="1"
+                      type="range" min="0" max="100" step="0.1"
                       value={morphPosition}
-                      onChange={(e) => onMorphPositionChange(parseInt(e.target.value))}
-                      onPointerUp={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
-                      onPointerCancel={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
-                      onKeyUp={(e) => onMorphPositionChange(parseInt(e.currentTarget.value), { flush: true })}
+                      onChange={(e) => onMorphPositionChange(Number(e.target.value))}
+                      onPointerUp={(e) => onMorphPositionChange(Number(e.currentTarget.value), { flush: true })}
+                      onPointerCancel={(e) => onMorphPositionChange(Number(e.currentTarget.value), { flush: true })}
+                      onKeyUp={(e) => onMorphPositionChange(Number(e.currentTarget.value), { flush: true })}
                       disabled={!morphPresetA && !morphPresetB}
                     />
                     <span className="morph-endpoint b">B</span>

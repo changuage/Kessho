@@ -104,6 +104,7 @@ constexpr double kSampleAttackSeconds = 0.004;
 constexpr double kSampleReleaseSeconds = 0.02;
 constexpr float kSourceToggleFadeSeconds = 0.05f;
 constexpr float kSoundscapeSourceToggleFadeSeconds = 5.0f;
+constexpr float kSoundscapeTextureControlFadeSeconds = 0.05f;
 constexpr float kPianoEnvelopePostReleaseTailSeconds = 0.25f;
 constexpr float kSampleEnvelopePostReleaseTailSeconds = kPianoEnvelopePostReleaseTailSeconds;
 constexpr float kPianoSampleParityTrim = 0.66f;

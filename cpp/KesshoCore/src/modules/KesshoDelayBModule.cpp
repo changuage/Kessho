@@ -319,6 +319,7 @@ class DelayBModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
+    delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int output_latency_frames = std::max(
         1,
@@ -347,6 +348,7 @@ public:
       warp_l_[static_cast<size_t>(i)].reset();
       warp_r_[static_cast<size_t>(i)].reset();
       vibrato_phase_[static_cast<size_t>(i)] = 0.0f;
+      current_tap_time_samples_[static_cast<size_t>(i)] = tap_time_samples_[static_cast<size_t>(i)];
     }
     high_cut_l_.reset();
     high_cut_r_.reset();
@@ -644,7 +646,9 @@ private:
       vibrato_phase_[index] += vibrato_phase_increment_[index];
       if (vibrato_phase_[index] >= 2.0f * kPi) vibrato_phase_[index] -= 2.0f * kPi;
 
-      const float delay_samples = std::max(1.0f, tap_time_samples_[index] + vibrato * sample_rate_);
+      current_tap_time_samples_[index] +=
+          (tap_time_samples_[index] - current_tap_time_samples_[index]) * delay_time_slew_;
+      const float delay_samples = std::max(1.0f, current_tap_time_samples_[index] + vibrato * sample_rate_);
       const float delayed_l = tap_l_[index].read(delay_samples) * gain;
       const float delayed_r = tap_r_[index].read(delay_samples) * gain;
       tap_l_[index].write(input_feed_l);
@@ -701,6 +705,7 @@ private:
   BlockDelay output_latency_r_;
   std::array<float, kTapCount> tap_gain_{};
   std::array<float, kTapCount> tap_time_samples_{};
+  std::array<float, kTapCount> current_tap_time_samples_{};
   std::array<float, kTapCount> tap_left_from_left_{};
   std::array<float, kTapCount> tap_left_from_right_{};
   std::array<float, kTapCount> tap_right_from_left_{};
@@ -713,6 +718,7 @@ private:
   float normalized_feedback_ = 0.0f;
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;
+  float delay_time_slew_ = 1.0f;
 };
 
 } // namespace

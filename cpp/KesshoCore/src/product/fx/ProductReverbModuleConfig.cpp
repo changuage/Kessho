@@ -1,6 +1,10 @@
 #include "../KesshoProductEngineInternal.h"
 
 void KesshoProductEngine::configureReverbModule() {
+  if (fx_configuration_batch_depth > 0u) {
+    reverb_configuration_pending = true;
+    return;
+  }
   if (!reverb_module) {
     return;
   }

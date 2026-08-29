@@ -196,11 +196,17 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   bool journey_running = false;
   float journey_phase = 0.0f;
   float journey_rate_bars = 8.0f;
+  uint32_t fx_configuration_batch_depth = 0u;
+  bool fx_configuration_pending = false;
+  bool reverb_configuration_pending = false;
+  bool spectral_freeze_configuration_pending = false;
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();
   void configureFxModules();
   void configureSpectralFreezeModule();
+  void beginFxConfigurationBatch();
+  void endFxConfigurationBatch();
   void retimeTempoSyncedFx(float previous_bpm);
   void configureReverbModule();
   void resetReverbHarmonyCoupling();

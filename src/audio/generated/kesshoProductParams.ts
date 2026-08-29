@@ -4762,7 +4762,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1164,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq1LowFreq",
@@ -4826,7 +4826,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1172,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq1HighFreq",
@@ -4888,7 +4888,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1180,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq2LowFreq",
@@ -4952,7 +4952,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1188,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq2HighFreq",

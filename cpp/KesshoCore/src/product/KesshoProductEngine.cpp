@@ -209,6 +209,10 @@
   audio_render_sample_frame = 0u;
   snapshot_loaded_once = false;
   control_event_count = 0;
+  fx_configuration_batch_depth = 0u;
+  fx_configuration_pending = false;
+  reverb_configuration_pending = false;
+  spectral_freeze_configuration_pending = false;
   pending_phrase_timing_event_count = 0u;
   pending_phrase_timing_apply_frame = 0u;
   sequencer_events.clear();

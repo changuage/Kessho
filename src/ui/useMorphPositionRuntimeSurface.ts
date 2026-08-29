@@ -86,6 +86,25 @@ type MorphPositionRuntimeSurface = {
   handleMorphPositionChange: (newPosition: number, options?: { flush?: boolean }) => void;
 };
 
+export function preserveRunningSimpleSequencers(next: SliderState, current: SliderState): SliderState {
+  let preserved = next;
+  if (current.synthChordGeneratorEnabled) {
+    preserved = {
+      ...preserved,
+      synthChordGeneratorEnabled: true,
+      synthChordGeneratorSource: current.synthChordGeneratorSource,
+    };
+  }
+  if (current.leadRandomEnabled) {
+    preserved = {
+      ...preserved,
+      leadRandomEnabled: true,
+      leadRandomSource: current.leadRandomSource,
+    };
+  }
+  return preserved;
+}
+
 export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePreset>({
   morphPresetA,
   morphPresetB,
@@ -182,17 +201,14 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     const direction = morphDirectionRef.current || 'toB';
     const morphResult = lerpPresets(effectiveA, effectiveB, morphPosition, currentCofStep, morphCapturedStartRootRef.current ?? undefined, direction);
 
-    const stateWithPrefs = { ...morphResult.state };
+    let stateWithPrefs = { ...morphResult.state };
     for (const key of USER_PREFERENCE_KEYS) {
       (stateWithPrefs as Record<string, unknown>)[key] = state[key];
     }
+    stateWithPrefs = preserveRunningSimpleSequencers(stateWithPrefs, stateRef.current);
 
     setState((prev) => ({ ...prev, ...stateWithPrefs }));
-    scheduleProductRuntimeParamUpdate(stateWithPrefs, {
-      immediate: true,
-      reason: 'morph-control-change',
-      triggerCritical: true,
-    });
+    scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
     mergeMorphDualRuntime(morphResult);
   }, [
     buildFallbackPreset,
@@ -254,7 +270,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       const morphResult = lerpPresets(effectiveA, effectiveB, nextMorphPosition, currentCofStep, morphCapturedStartRootRef.current ?? undefined, direction);
 
       const overrides = morphManualOverridesRef.current;
-      const finalState = { ...morphResult.state };
+      let finalState = { ...morphResult.state };
 
       for (const key of USER_PREFERENCE_KEYS) {
         (finalState as unknown as Record<string, unknown>)[key] = state[key];
@@ -287,12 +303,10 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
         }
       }
 
+      finalState = preserveRunningSimpleSequencers(finalState, stateRef.current);
+
       setState(finalState);
-      scheduleProductRuntimeParamUpdate(finalState, {
-        immediate: true,
-        reason: 'morph-control-change',
-        triggerCritical: true,
-      });
+      scheduleProductRuntimeParamUpdate(finalState, { reason: 'morph-control-change' });
 
       const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
       setMorphCoFViz(atEndpoint ? null : morphResult.morphCoFInfo || null);

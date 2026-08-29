@@ -74,6 +74,7 @@ import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { useBackgroundJourneyRuntimeSurface } from './ui/useBackgroundJourneyRuntimeSurface';
+import { JourneyStatusPill } from './ui/JourneyStatusPill';
 import { TEXT_SYMBOLS } from './designSystem/textSymbols';
 import {
   DRUM_VOICE_PARAM_ROUTES,
@@ -951,6 +952,21 @@ const App: React.FC = () => {
     startProductPlayback,
     setIsJourneyPlaying,
   });
+  const projectedMorphPresetA = backgroundJourney.morphProjection?.presetA ?? morphPresetA;
+  const projectedMorphPresetB = backgroundJourney.morphProjection?.presetB ?? morphPresetB;
+  const projectedMorphPosition = backgroundJourney.morphProjection?.position ?? morphPosition;
+  const stopJourneyForEdit = useCallback(() => {
+    if (!isJourneyPlaying) return;
+    const projection = backgroundJourney.morphProjection;
+    if (projection) {
+      setMorphPresetA(projection.presetA);
+      setMorphPresetB(projection.presetB);
+      setMorphSlotAName(projection.presetA.name);
+      setMorphSlotBName(projection.presetB.name);
+      setMorphPosition(projection.position);
+    }
+    backgroundJourney.stop();
+  }, [backgroundJourney.morphProjection, backgroundJourney.stop, isJourneyPlaying]);
   const handleJourneyPlay = useCallback(() => {
     if (backgroundJourney.uiState.status === 'ready') {
       void backgroundJourney.startPrepared();
@@ -1047,10 +1063,7 @@ const App: React.FC = () => {
       const { domain, key, sliderValue: value, stateValue } = command;
       hasUserInteractedRef.current = true;
 
-      if (isJourneyPlaying) {
-        console.log('[Journey] Slider change blocked - journey is playing');
-        return;
-      }
+      stopJourneyForEdit();
 
       const isStateNumericValue = typeof stateValue === 'number';
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
@@ -1299,7 +1312,7 @@ const App: React.FC = () => {
       }
     },
     [
-      isJourneyPlaying,
+      stopJourneyForEdit,
       morphPosition,
       morphPresetA,
       morphPresetB,
@@ -1451,6 +1464,7 @@ const App: React.FC = () => {
   const handleSelectChange = useCallback(
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
       hasUserInteractedRef.current = true;
+      stopJourneyForEdit();
       const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
         let newState: SliderState = { ...prev, [key]: value } as SliderState;
@@ -1634,7 +1648,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch],
+    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch, stopJourneyForEdit],
   );
 
   useEffect(() => {
@@ -2313,8 +2327,8 @@ const App: React.FC = () => {
   });
 
   const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
-    morphPresetA,
-    morphPresetB,
+    morphPresetA: projectedMorphPresetA,
+    morphPresetB: projectedMorphPresetB,
     morphMode,
     morphPosition,
     currentCofStep: engineState.cofCurrentStep,
@@ -2346,17 +2360,29 @@ const App: React.FC = () => {
     productRuntimeActive: productRuntimeCore, productAutoCycleRuntime,
   });
 
+  const handleUserMorphPositionChange = useCallback((position: number, options?: { flush?: boolean }) => {
+    const projection = backgroundJourney.morphProjection;
+    if (projection) {
+      morphDirectionRef.current = projection.direction;
+      lastMorphEndpointRef.current = projection.direction === 'toA' ? 100 : 0;
+    }
+    stopJourneyForEdit();
+    handleMorphPositionChange(position, options);
+  }, [backgroundJourney.morphProjection, handleMorphPositionChange, stopJourneyForEdit]);
+
   const handleMorphSlotAClear = useCallback(() => {
+    stopJourneyForEdit();
     setMorphPresetA(null);
     setMorphSlotAName('');
     setMorphPosition(0);
-  }, []);
+  }, [stopJourneyForEdit]);
 
   const handleMorphSlotBClear = useCallback(() => {
+    stopJourneyForEdit();
     setMorphPresetB(null);
     setMorphSlotBName('');
     setMorphPosition(0);
-  }, []);
+  }, [stopJourneyForEdit]);
 
   const { handleLoadMorphA, handleLoadMorphB } = useMorphSlotLoadRuntimeSurface<SavedPreset>({
     morphPresetA,
@@ -2534,6 +2560,7 @@ const App: React.FC = () => {
   const handleRoutingSourceToggle = useCallback(
     (sourceId: string, enabled: boolean) => {
       hasUserInteractedRef.current = true;
+      stopJourneyForEdit();
       setState((prev) => {
         const natureChild = /^nature([1-4])$/.exec(sourceId);
         if (natureChild) {
@@ -2623,7 +2650,7 @@ const App: React.FC = () => {
         return finalState;
       });
     },
-    [applyMorphEndpointStatePatch],
+    [applyMorphEndpointStatePatch, stopJourneyForEdit],
   );
 
   const routingMuteGroupsController = useRoutingMuteGroupSystem({
@@ -2642,6 +2669,9 @@ const App: React.FC = () => {
       {children}
     </PresetPoolProvider>
   );
+  const journeyStatusPill = isJourneyPlaying && journey.state && journey.config
+    ? <JourneyStatusPill state={journey.state} config={journey.config} />
+    : null;
 
   if (POINT_CLOUDS_ENGINE_MODE) return <div aria-hidden="true" style={{ width: 1, height: 1, overflow: 'hidden' }} />;
 
@@ -2844,6 +2874,7 @@ const App: React.FC = () => {
           ...m?.container,
         }}
       >
+        {journeyStatusPill}
         {DevCpuOverlay && (
           <React.Suspense fallback={null}>
             <DevCpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
@@ -3012,20 +3043,26 @@ const App: React.FC = () => {
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
                 morphCoFViz={morphCoFViz}
-                morphPresetA={morphPresetA}
-                morphPresetB={morphPresetB}
-                morphPosition={morphPosition}
+                morphPresetA={projectedMorphPresetA}
+                morphPresetB={projectedMorphPresetB}
+                morphPosition={projectedMorphPosition}
                 morphMode={morphMode}
                 morphPlayPhrases={morphPlayPhrases}
                 morphTransitionPhrases={morphTransitionPhrases}
                 morphCountdown={morphCountdown}
-                onLoadMorphA={handleLoadMorphA}
-                morphSlotAName={morphSlotAName}
+                onLoadMorphA={(entry, data) => {
+                  stopJourneyForEdit();
+                  return handleLoadMorphA(entry, data);
+                }}
+                morphSlotAName={backgroundJourney.morphProjection?.presetA.name ?? morphSlotAName}
                 onClearMorphA={handleMorphSlotAClear}
-                onLoadMorphB={handleLoadMorphB}
-                morphSlotBName={morphSlotBName}
+                onLoadMorphB={(entry, data) => {
+                  stopJourneyForEdit();
+                  return handleLoadMorphB(entry, data);
+                }}
+                morphSlotBName={backgroundJourney.morphProjection?.presetB.name ?? morphSlotBName}
                 onClearMorphB={handleMorphSlotBClear}
-                onMorphPositionChange={handleMorphPositionChange}
+                onMorphPositionChange={handleUserMorphPositionChange}
                 onMorphModeChange={setMorphMode}
                 onMorphPlayPhrasesChange={setMorphPlayPhrases}
                 onMorphTransitionPhrasesChange={setMorphTransitionPhrases}

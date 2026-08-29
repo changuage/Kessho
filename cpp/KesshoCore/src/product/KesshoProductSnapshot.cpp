@@ -1034,7 +1034,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq1_input_gain_db = clampFloat(snapshot.fx.dynamics_eq1_input_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_output_gain_db = clampFloat(snapshot.fx.dynamics_eq1_output_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_mix = clampFloat(snapshot.fx.dynamics_eq1_mix, 0.0f, 1.0f);
-  fx.dynamics_eq1_low_type = clampU32(snapshot.fx.dynamics_eq1_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+  fx.dynamics_eq1_low_type = clampU32(snapshot.fx.dynamics_eq1_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
   fx.dynamics_eq1_low_freq = clampFloat(snapshot.fx.dynamics_eq1_low_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_low_gain_db = clampFloat(snapshot.fx.dynamics_eq1_low_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_low_q = clampFloat(snapshot.fx.dynamics_eq1_low_q, 0.1f, 18.0f);
@@ -1042,7 +1042,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq1_mid_freq = clampFloat(snapshot.fx.dynamics_eq1_mid_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_mid_gain_db = clampFloat(snapshot.fx.dynamics_eq1_mid_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_mid_q = clampFloat(snapshot.fx.dynamics_eq1_mid_q, 0.1f, 18.0f);
-  fx.dynamics_eq1_high_type = clampU32(snapshot.fx.dynamics_eq1_high_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+  fx.dynamics_eq1_high_type = clampU32(snapshot.fx.dynamics_eq1_high_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
   fx.dynamics_eq1_high_freq = clampFloat(snapshot.fx.dynamics_eq1_high_freq, 20.0f, 20000.0f);
   fx.dynamics_eq1_high_gain_db = clampFloat(snapshot.fx.dynamics_eq1_high_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq1_high_q = clampFloat(snapshot.fx.dynamics_eq1_high_q, 0.1f, 18.0f);
@@ -1051,7 +1051,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq2_input_gain_db = clampFloat(snapshot.fx.dynamics_eq2_input_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_output_gain_db = clampFloat(snapshot.fx.dynamics_eq2_output_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_mix = clampFloat(snapshot.fx.dynamics_eq2_mix, 0.0f, 1.0f);
-  fx.dynamics_eq2_low_type = clampU32(snapshot.fx.dynamics_eq2_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+  fx.dynamics_eq2_low_type = clampU32(snapshot.fx.dynamics_eq2_low_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
   fx.dynamics_eq2_low_freq = clampFloat(snapshot.fx.dynamics_eq2_low_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_low_gain_db = clampFloat(snapshot.fx.dynamics_eq2_low_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_low_q = clampFloat(snapshot.fx.dynamics_eq2_low_q, 0.1f, 18.0f);
@@ -1059,7 +1059,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   fx.dynamics_eq2_mid_freq = clampFloat(snapshot.fx.dynamics_eq2_mid_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_mid_gain_db = clampFloat(snapshot.fx.dynamics_eq2_mid_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_mid_q = clampFloat(snapshot.fx.dynamics_eq2_mid_q, 0.1f, 18.0f);
-  fx.dynamics_eq2_high_type = clampU32(snapshot.fx.dynamics_eq2_high_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeBell);
+  fx.dynamics_eq2_high_type = clampU32(snapshot.fx.dynamics_eq2_high_type, kDynamicsEqEdgeShelf, kDynamicsEqEdgeLowPass);
   fx.dynamics_eq2_high_freq = clampFloat(snapshot.fx.dynamics_eq2_high_freq, 20.0f, 20000.0f);
   fx.dynamics_eq2_high_gain_db = clampFloat(snapshot.fx.dynamics_eq2_high_gain_db, -24.0f, 24.0f);
   fx.dynamics_eq2_high_q = clampFloat(snapshot.fx.dynamics_eq2_high_q, 0.1f, 18.0f);

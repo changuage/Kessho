@@ -235,6 +235,7 @@ export const DYNAMICS_BUS_PRESET_KEYS: readonly (keyof SliderState)[] = [
 const EQ1_FLAT_PARAMS: Record<string, unknown> = {
   dynamicsEq1InputGain: 0,
   dynamicsEq1OutputGain: 0,
+  dynamicsEq1Mix: 1,
   dynamicsEq1LowType: 'shelf',
   dynamicsEq1LowFreq: 120,
   dynamicsEq1LowGain: 0,
@@ -253,6 +254,7 @@ const EQ1_FLAT_PARAMS: Record<string, unknown> = {
 const EQ2_FLAT_PARAMS: Record<string, unknown> = {
   dynamicsEq2InputGain: 0,
   dynamicsEq2OutputGain: 0,
+  dynamicsEq2Mix: 1,
   dynamicsEq2LowType: 'shelf',
   dynamicsEq2LowFreq: 90,
   dynamicsEq2LowGain: 0,

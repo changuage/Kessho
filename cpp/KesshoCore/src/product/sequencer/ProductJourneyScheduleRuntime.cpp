@@ -32,17 +32,6 @@ bool addFrames(uint64_t& total, uint64_t value) {
   return true;
 }
 
-uint64_t sceneStepFrame(uint64_t phase_start, uint64_t duration, uint32_t step) {
-  if (step == 0u || step > 100u) return std::numeric_limits<uint64_t>::max();
-  const uint64_t numerator = static_cast<uint64_t>(step * 2u - 1u);
-  const uint64_t quotient = duration / 200u;
-  const uint64_t remainder = duration % 200u;
-  const uint64_t offset = quotient * numerator + (remainder * numerator + 199u) / 200u;
-  return offset > std::numeric_limits<uint64_t>::max() - phase_start
-      ? std::numeric_limits<uint64_t>::max()
-      : phase_start + offset;
-}
-
 } // namespace
 
 void KesshoProductEngine::beginJourneySchedule(const KesshoProductEvent& event) {
@@ -225,7 +214,6 @@ void KesshoProductEngine::setJourneyScheduleEnabled(bool enabled) {
   runtime.schedule_index = 0u;
   runtime.active_program_index = kProductJourneyNoIndex;
   runtime.transition_count = 0u;
-  runtime.scene_position_step = 0u;
   runtime.phase = ProductJourneyPhase::Hold;
   runtime.phase_start_frame = transport.sample_frame;
   runtime.phase_end_frame = transport.sample_frame + active.entries[0].hold_frames;
@@ -233,7 +221,6 @@ void KesshoProductEngine::setJourneyScheduleEnabled(bool enabled) {
   runtime.previous_scene_position = 0.0f;
   runtime.scene_apply_pending = false;
   runtime.program_changed = false;
-  runtime.next_scene_apply_frame = 0u;
   runtime.running = true;
   auto_cycle_runtime.enabled = false;
   auto_cycle_runtime.phase = ProductAutoCyclePhase::Off;
@@ -262,17 +249,17 @@ void KesshoProductEngine::scheduleJourneyRuntime() {
   if (runtime.schedule_index >= active.entry_count) return;
 
   if (runtime.phase == ProductJourneyPhase::Morph && runtime.phase_end_frame > runtime.phase_start_frame) {
-    if (transport.sample_frame >= runtime.next_scene_apply_frame) {
-      const uint64_t duration = runtime.phase_end_frame - runtime.phase_start_frame;
-      uint32_t next_step = runtime.scene_position_step;
-      while (next_step < 100u && transport.sample_frame >= sceneStepFrame(runtime.phase_start_frame, duration, next_step + 1u)) {
-        ++next_step;
-      }
+    const uint64_t duration = runtime.phase_end_frame - runtime.phase_start_frame;
+    const uint64_t elapsed = transport.sample_frame > runtime.phase_start_frame
+        ? std::min(transport.sample_frame - runtime.phase_start_frame, duration)
+        : 0u;
+    const float next_position = static_cast<float>(
+        static_cast<double>(elapsed) / static_cast<double>(duration));
+    if (next_position != runtime.scene_position) {
       runtime.previous_scene_position = runtime.scene_position;
-      runtime.scene_position_step = next_step;
-      runtime.scene_position = static_cast<float>(next_step) * 0.01f;
-      runtime.scene_apply_pending = true;
-      runtime.next_scene_apply_frame = sceneStepFrame(runtime.phase_start_frame, duration, next_step + 1u);
+      runtime.scene_position = next_position;
+      runtime.scene_apply_pending = runtime.active_program_index != kProductJourneyNoIndex &&
+          runtime.active_program_index != kProductJourneyNoProgram;
     }
     journey_phase = runtime.scene_position;
   }
@@ -288,8 +275,6 @@ void KesshoProductEngine::scheduleJourneyRuntime() {
         runtime.active_program_index = entry.transition_program_index;
         runtime.previous_scene_position = 0.0f;
         runtime.scene_position = 0.0f;
-        runtime.scene_position_step = 0u;
-        runtime.next_scene_apply_frame = sceneStepFrame(runtime.phase_start_frame, entry.morph_frames, 1u);
         runtime.scene_apply_pending = entry.transition_program_index != kProductJourneyNoProgram;
         runtime.program_changed = runtime.scene_apply_pending;
         journey_phase = 0.0f;
@@ -298,8 +283,6 @@ void KesshoProductEngine::scheduleJourneyRuntime() {
     } else if (runtime.phase == ProductJourneyPhase::Morph) {
       runtime.previous_scene_position = runtime.scene_position;
       runtime.scene_position = 1.0f;
-      runtime.scene_position_step = 100u;
-      runtime.next_scene_apply_frame = std::numeric_limits<uint64_t>::max();
       runtime.scene_apply_pending = runtime.active_program_index != kProductJourneyNoIndex &&
           runtime.active_program_index != kProductJourneyNoProgram;
       journey_phase = 1.0f;

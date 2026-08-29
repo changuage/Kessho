@@ -154,7 +154,12 @@ function positiveU32(value: number, fallback: number): number {
   return normalized === 0 ? 1 : normalized;
 }
 
-function dynamicsEqEdgeTypeId(value: unknown): number { return value === 'bell' ? 1 : 0; }
+function dynamicsEqEdgeTypeId(value: unknown): number {
+  if (value === 'bell') return 1;
+  if (value === 'highpass') return 2;
+  if (value === 'lowpass') return 3;
+  return 0;
+}
 
 function dynamicsBusFromState(state: Record<string, unknown> | undefined, key: keyof SliderState): number { return clamp(Math.round(numberFromState(state, key, 0)), 0, 3) >>> 0; }
 

@@ -20,6 +20,7 @@ import type { SavedPreset, SliderState } from './state';
 import type { UseJourneyResult } from './journeyState';
 import {
   projectBackgroundJourneyTelemetry,
+  projectBackgroundJourneyMorph,
   requestAndReadBackgroundJourneyTelemetry,
   shouldRefreshBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
@@ -135,6 +136,11 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   const terminalStateRef = useRef({ terminalRevision: null as number | null, observedRunning: false });
   const previousVisibilityRef = useRef({ documentVisible, runtimeProjectionActive: false });
   const pendingTelemetryRefreshRef = useRef<(() => void) | null>(null);
+  const morphProjection = useMemo(() => {
+    const prepared = preparedRef.current;
+    if (!runtimeProjectionActive || !telemetry || !prepared) return null;
+    return projectBackgroundJourneyMorph(telemetry, prepared.playableNodes, prepared.presets);
+  }, [runtimeProjectionActive, telemetry]);
 
   const cancelPendingTelemetryRefresh = useCallback(() => {
     pendingTelemetryRefreshRef.current?.();
@@ -142,8 +148,10 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   }, []);
 
   const requestFreshTelemetry = useCallback(() => {
-    cancelPendingTelemetryRefresh();
-    pendingTelemetryRefreshRef.current = requestAndReadBackgroundJourneyTelemetry(
+    if (pendingTelemetryRefreshRef.current) return;
+    let cancelRequest: () => void = () => undefined;
+    let requestSettled = false;
+    cancelRequest = requestAndReadBackgroundJourneyTelemetry(
       () => productEngine.requestTelemetryOnce(),
       () => productEngine.getTelemetry(),
       (callback) => {
@@ -155,11 +163,18 @@ export function useBackgroundJourneyRuntimeSurface(options: {
         return () => window.cancelAnimationFrame(frame);
       },
       (freshTelemetry) => {
-        pendingTelemetryRefreshRef.current = null;
         setTelemetry(freshTelemetry);
       },
+      8,
+      () => {
+        requestSettled = true;
+        if (pendingTelemetryRefreshRef.current === cancelRequest) {
+          pendingTelemetryRefreshRef.current = null;
+        }
+      },
     );
-  }, [cancelPendingTelemetryRefresh]);
+    if (!requestSettled) pendingTelemetryRefreshRef.current = cancelRequest;
+  }, []);
 
   useEffect(() => {
     if (appliedConfigFingerprintRef.current === configFingerprint) return;
@@ -449,5 +464,5 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     setUiState({ status: 'idle' });
   }, [journey.stop, setIsJourneyPlaying]);
 
-  return { uiState, prepare, findOptimization, confirmOptimization, startPrepared, foregroundOnly, stop, cancel };
+  return { uiState, prepare, findOptimization, confirmOptimization, startPrepared, foregroundOnly, stop, cancel, morphProjection };
 }

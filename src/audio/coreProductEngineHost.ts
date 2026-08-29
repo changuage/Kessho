@@ -354,7 +354,7 @@ class CoreProductEngineHost {
       const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', sequencerClockRejoinMask, {
         ...options,
         triggerCritical: true,
-        forceFullSnapshot: true,
+        forceFullSnapshot: samplePlaybackCritical,
       });
       if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
       if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);

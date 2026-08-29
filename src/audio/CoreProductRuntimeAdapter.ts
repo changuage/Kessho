@@ -1,5 +1,5 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent, createCoreProductTransportTransitionEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent, createCoreProductTransportTransitionEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
   appendCoreProductSourcePresetEndpointDiffs,
@@ -14,6 +14,7 @@ import { HARMONY_QUALITY_IDS, type HarmonyChordQuality } from './CoreProductHarm
 import { appendSequencerModeConfigDiffs } from './CoreProductRuntimeAdapterSequencerFaces';
 import type { CoreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import { coreProductSequencerAudibilityFlags } from './sequencerResumeQuantization';
+import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE, SOUNDSCAPE_TEXTURE_SLOT_COUNT } from './coreProductSoundscapesSnapshot';
 
 export const MAX_SNAPSHOT_DIFF_EVENTS = 1024;
 
@@ -89,6 +90,7 @@ class CoreProductRuntimeAdapter {
       previous.arrangement?.leadInitialDelaySeconds ?? 0, next.arrangement?.leadInitialDelaySeconds ?? 0);
     this.appendJourneyDiffs(events, previous, next);
     this.appendSourceParamDiffs(events, previous.sources, next.sources);
+    this.appendSoundscapeParamDiffs(events, previous, next);
     appendCoreProductSourcePresetEndpointDiffs(events, previous.sources, next.sources); this.appendSourceOverrideDiffs(events, previous.sources, next.sources);
     this.appendSequencerLaneDiffs(events, 'synth', previous.synthLanes, next.synthLanes, options.sequencerClockRejoinMask?.synth ?? 0);
     this.appendSequencerLaneDiffs(events, 'drum', previous.drumLanes, next.drumLanes, options.sequencerClockRejoinMask?.drum ?? 0);
@@ -105,9 +107,10 @@ class CoreProductRuntimeAdapter {
 
   private classifySnapshotReloadReason(previous: CoreProductSnapshot, next: CoreProductSnapshot): SnapshotReloadReason {
     const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
-    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
-    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
-    if (!soundscapeFadeCanCoverAssetRemoval && this.soundscapeSnapshotChanged(previous, next)) return 'soundscape-param-change';
+    const canonicalSoundscapePatch = this.canonicalSoundscapePatch(previous, next);
+    if (!soundscapeFadeCanCoverAssetRemoval && !canonicalSoundscapePatch && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change';
+    if (!soundscapeFadeCanCoverAssetRemoval && !canonicalSoundscapePatch && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return 'asset-reference-level-change';
+    if (!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
@@ -116,7 +119,7 @@ class CoreProductRuntimeAdapter {
       const nextSource = next.sources[index];
       if (!previousSource || !nextSource) return 'source-structure-change';
       if (previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change';
-      if (previousSource.assetId !== nextSource.assetId) return 'source-structure-change';
+      if (previousSource.assetId !== nextSource.assetId && !(canonicalSoundscapePatch && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape)) return 'source-structure-change';
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change';
       if (this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return 'source-structure-change';
       if (
@@ -138,9 +141,10 @@ class CoreProductRuntimeAdapter {
 
   private canApplySnapshotDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
     const soundscapeFadeCanCoverAssetRemoval = this.soundscapeFadeCanCoverAssetRemoval(previous, next);
-    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
-    if (!soundscapeFadeCanCoverAssetRemoval && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
-    if (!soundscapeFadeCanCoverAssetRemoval && this.soundscapeSnapshotChanged(previous, next)) return false;
+    const canonicalSoundscapePatch = this.canonicalSoundscapePatch(previous, next);
+    if (!soundscapeFadeCanCoverAssetRemoval && !canonicalSoundscapePatch && this.assetRefsChanged(previous.assetRefs, next.assetRefs)) return false;
+    if (!soundscapeFadeCanCoverAssetRemoval && !canonicalSoundscapePatch && this.assetRefLevelsChanged(previous.assetRefLevels, next.assetRefLevels)) return false;
+    if (!this.canApplySoundscapeParamDiff(previous, next)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
     // Harmony authority fields are consumed by the native cache as one atomic
@@ -153,7 +157,7 @@ class CoreProductRuntimeAdapter {
       const nextSource = next.sources[index];
       if (!previousSource || !nextSource) return false;
       if (previousSource.sourceId !== nextSource.sourceId) return false;
-      if (previousSource.assetId !== nextSource.assetId) return false;
+      if (previousSource.assetId !== nextSource.assetId && !(canonicalSoundscapePatch && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape)) return false;
       if (this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return false;
       if (this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return false;
       if (
@@ -737,30 +741,61 @@ class CoreProductRuntimeAdapter {
     return false;
   }
 
-  private soundscapeSnapshotChanged(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
+  private canApplySoundscapeParamDiff(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
     const previousSoundscape = previous.soundscape;
     const nextSoundscape = next.soundscape;
-    if (!previousSoundscape && !nextSoundscape) return false;
-    if (!previousSoundscape || !nextSoundscape) return true;
-    return this.paramBlockChanged(
-      previousSoundscape.textureParamCount,
-      nextSoundscape.textureParamCount,
-      previousSoundscape.textureParams,
-      nextSoundscape.textureParams,
-    ) || this.paramBlockChanged(
-      previousSoundscape.moduleParamCount,
-      nextSoundscape.moduleParamCount,
-      previousSoundscape.moduleParams,
-      nextSoundscape.moduleParams,
-    );
+    if (!previousSoundscape && !nextSoundscape) return true;
+    if (!previousSoundscape || !nextSoundscape) return false;
+    return previousSoundscape.textureParamCount === nextSoundscape.textureParamCount &&
+      previousSoundscape.moduleParamCount === nextSoundscape.moduleParamCount &&
+      previousSoundscape.textureParams.length >= nextSoundscape.textureParamCount &&
+      nextSoundscape.textureParams.length >= nextSoundscape.textureParamCount &&
+      previousSoundscape.moduleParams.length >= nextSoundscape.moduleParamCount &&
+      nextSoundscape.moduleParams.length >= nextSoundscape.moduleParamCount;
   }
 
-  private paramBlockChanged(previousCount: number, nextCount: number, previousParams: readonly number[], nextParams: readonly number[]): boolean {
-    if (previousCount !== nextCount) return true;
-    for (let index = 0; index < nextCount; index += 1) {
-      if (this.valuesDiffer(previousParams[index] ?? 0, nextParams[index] ?? 0)) return true;
+  private canonicalSoundscapePatch(previous: CoreProductSnapshot, next: CoreProductSnapshot): boolean {
+    const canonicalAssetIds = new Set<number>();
+    for (const snapshot of [previous, next]) {
+      const params = snapshot.soundscape?.textureParams;
+      if (!params) continue;
+      for (let slot = 0; slot < SOUNDSCAPE_TEXTURE_SLOT_COUNT; slot += 1) {
+        const offset = SOUNDSCAPE_TEXTURE_PARAM_START + slot * SOUNDSCAPE_TEXTURE_PARAM_STRIDE;
+        if ((params[offset + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET] ?? 0) < 0.5) continue;
+        const assetId = Math.round(params[offset + CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET] ?? 0);
+        if (assetId > 0) canonicalAssetIds.add(assetId);
+      }
     }
-    return false;
+    const refs = [...previous.assetRefs, ...next.assetRefs].filter((assetId) => assetId > 0);
+    return refs.length > 0 && refs.every((assetId) => canonicalAssetIds.has(assetId));
+  }
+
+  private appendSoundscapeParamDiffs(
+    events: CoreProductEvent[],
+    previous: CoreProductSnapshot,
+    next: CoreProductSnapshot,
+  ): void {
+    const previousSoundscape = previous.soundscape;
+    const nextSoundscape = next.soundscape;
+    if (!previousSoundscape || !nextSoundscape) return;
+    for (let index = 0; index < nextSoundscape.textureParamCount; index += 1) {
+      this.appendParamDiff(
+        events,
+        KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+        previousSoundscape.textureParams[index] ?? 0,
+        nextSoundscape.textureParams[index] ?? 0,
+        CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE + index,
+      );
+    }
+    for (let index = 0; index < nextSoundscape.moduleParamCount; index += 1) {
+      this.appendParamDiff(
+        events,
+        KESSHO_PRODUCT_PARAM_IDS.SourceLevel,
+        previousSoundscape.moduleParams[index] ?? 0,
+        nextSoundscape.moduleParams[index] ?? 0,
+        CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + index,
+      );
+    }
   }
 
   private valuesDiffer(previous: SnapshotScalar, next: SnapshotScalar): boolean {

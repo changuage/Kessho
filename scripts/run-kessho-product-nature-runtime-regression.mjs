@@ -18,6 +18,7 @@ try {
     logLevel: 'silent',
   });
 
+  globalThis.window = { location: { origin: 'http://localhost' } };
   await import(pathToFileURL(outfile).href);
 } finally {
   await rm(tempDir, { recursive: true, force: true });

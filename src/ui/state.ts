@@ -96,7 +96,7 @@ export type GranularPitchMode = 'fixed' | 'octaves' | 'fifths' | 'chord' | 'scal
 export type GranularCloudStyle = 'classic' | 'mosaic' | 'bloom' | 'tide' | 'orbit' | 'stars';
 export type GranularAnchorPattern = 'forward' | 'reverse' | 'pendulum' | 'random';
 export type IndexedDelayDivisionKey = 'drumDelayNoteL' | 'drumDelayNoteR' | 'granularDelayTime';
-export type DynamicsEqEdgeBandType = 'shelf' | 'bell';
+export type DynamicsEqEdgeBandType = 'shelf' | 'bell' | 'highpass' | 'lowpass';
 export type DynamicsBusRouteDestination = 0 | 1 | 2 | 3;
 
 export const DELAY_A_NOTE_DIVISION_OPTIONS = [
