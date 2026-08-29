@@ -324,7 +324,7 @@ await runCheckWithReport({
     const classifyBody = methodBody(runtimeAdapter, 'classifySnapshotReloadReason');
     for (const token of [
       "assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change'",
-      "soundscapeSnapshotChanged(previous, next)) return 'soundscape-param-change'",
+      "!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change'",
       "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
       "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
