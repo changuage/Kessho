@@ -327,7 +327,7 @@ await runCheckWithReport({
       "!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change'",
       "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
-      "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
+      "previousSource.assetId !== nextSource.assetId && !(canonicalSoundscapePatch && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape)) return 'source-structure-change'",
       "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
       "this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return 'source-structure-change'",
       "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
