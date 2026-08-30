@@ -1,0 +1,41 @@
+name: Temporary cadence pattern patch generator
+on:
+  push:
+    branches:
+      - automation/tmp-cadence-pattern-fix
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Temporary cadence pattern patch generator'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: automation/tmp-cadence-pattern-fix
+      - name: Patch cadence proof setup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/check-kessho-product-sequencer-ui-parity.mjs')
+          text = path.read_text()
+          anchor = '''async function readTriggerControlNumber(page, controlIndex) {\n'''
+          helper = '''async function setTimingProofTriggerPattern(page, engineMode, tab) {\n  const desiredActive = new Set([0, 4, 8, 12]);\n  await ensureTriggerKeyboardLane(page, engineMode, tab);\n  for (let stepIndex = 0; stepIndex < 16; stepIndex += 1) {\n    await setSelectedTriggerStep(page, stepIndex, engineMode, tab);\n    const active = await triggerStepActive(page, stepIndex);\n    if (active !== desiredActive.has(stepIndex)) {\n      await page.keyboard.press('KeyX');\n      await page.waitForTimeout(150);\n    }\n    assert(\n      (await triggerStepActive(page, stepIndex)) === desiredActive.has(stepIndex),\n      `${engineMode}/${tab}: timing proof trigger step ${stepIndex} did not reach expected state`,\n    );\n  }\n}\n\n'''
+          if helper not in text:
+              if anchor not in text:
+                  raise SystemExit('helper anchor missing')
+              text = text.replace(anchor, helper + anchor, 1)
+          old = '''async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {\n  await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');\n  await ensureActiveTriggerLaneEnabled(page, engineMode, tab);\n  await setTriggerControlViaDrag(page, 1, 4, engineMode, tab, 'timing proof trigger hits');\n'''
+          new = '''async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {\n  await setTriggerStepsViaKeyboard(page, 16, engineMode, tab);\n  await ensureActiveTriggerLaneEnabled(page, engineMode, tab);\n  await setTimingProofTriggerPattern(page, engineMode, tab);\n'''
+          if old not in text:
+              raise SystemExit('clock proof anchor missing')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+      - name: Commit generated patch
+        run: |
+          git config user.name 'kessho-ci-fix'
+          git config user.email 'kessho-ci-fix@users.noreply.github.com'
+          git add scripts/check-kessho-product-sequencer-ui-parity.mjs
+          git commit -m 'Make cadence trigger setup discrete and deterministic'
+          git push origin HEAD:automation/tmp-cadence-pattern-fix
