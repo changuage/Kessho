@@ -2010,8 +2010,6 @@ void requireDisabledDelayDoesNotLeakSpecializedTap() {
   engine->fx.delay_a_time_right_ms = 10.0f;
   engine->fx.delay_a_mix = 1.0f;
   engine->configureFxModules();
-  require(engine->delay_a_module != nullptr, "Delay A module was not prepared");
-  engine->delay_a_module->reset();
 
   float out_l[kFrames]{};
   float out_r[kFrames]{};
@@ -2082,11 +2080,6 @@ void requireDelayFeedbackStaysPreLevel() {
   engine->fx.delay_a_time_right_ms = 10.0f;
   engine->fx.delay_b_base_time_ms = 10.0f;
   engine->configureFxModules();
-  require(
-      engine->delay_a_module != nullptr && engine->delay_b_module != nullptr,
-      "Delay feedback modules were not prepared");
-  engine->delay_a_module->reset();
-  engine->delay_b_module->reset();
 
   float out_l[kFrames]{};
   float out_r[kFrames]{};

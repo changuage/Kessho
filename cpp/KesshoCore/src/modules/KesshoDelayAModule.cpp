@@ -242,6 +242,7 @@ public:
     mod_phase_ = 0.0f;
     current_time_l_ = state_.time_l;
     current_time_r_ = state_.time_r;
+    has_processed_since_reset_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -363,6 +364,10 @@ public:
     state_.granular_send = enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
     state_.degrade_send = enabled ? clamp(params_[kParamDriftSend], 0.0f, 1.0f) : 0.0f;
     configureFilters();
+    if (!has_processed_since_reset_) {
+      current_time_l_ = state_.time_l;
+      current_time_r_ = state_.time_r;
+    }
   }
 
   int outputTapCount() const override {
@@ -421,6 +426,7 @@ private:
   }
 
   void processSample(float input_l, float input_r, float* taps_l, float* taps_r) {
+    has_processed_since_reset_ = true;
     if (!state_.enabled) {
       output_latency_l_.process(0.0f);
       output_latency_r_.process(0.0f);
@@ -509,6 +515,7 @@ private:
   float current_time_l_ = 0.25f;
   float current_time_r_ = 0.375f;
   float delay_time_slew_ = 1.0f;
+  bool has_processed_since_reset_ = false;
 };
 
 } // namespace

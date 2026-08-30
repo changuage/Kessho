@@ -358,6 +358,7 @@ public:
     output_latency_r_.reset();
     feedback_l_ = 0.0f;
     feedback_r_ = 0.0f;
+    has_processed_since_reset_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -465,6 +466,9 @@ public:
     }
     configureFilters();
     configureTapRuntime();
+    if (!has_processed_since_reset_) {
+      current_tap_time_samples_ = tap_time_samples_;
+    }
   }
 
   int outputTapCount() const override {
@@ -629,6 +633,7 @@ private:
   }
 
   void processSample(float input_l, float input_r, float* taps_l, float* taps_r) {
+    has_processed_since_reset_ = true;
     for (int bus = 0; bus < kOutputTapCount; ++bus) {
       taps_l[bus] = 0.0f;
       taps_r[bus] = 0.0f;
@@ -719,6 +724,7 @@ private:
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;
   float delay_time_slew_ = 1.0f;
+  bool has_processed_since_reset_ = false;
 };
 
 } // namespace
