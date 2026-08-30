@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   normalize-verify-commit:
-    if: github.event.head_commit.message == 'Retry reverb include normalization with newline-safe match'
+    if: github.event.head_commit.message == 'Verify normalized reverb diff against main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +44,8 @@ jobs:
           replacement = match.group(1) + match.group(2) + b'#include <cstdint>' + match.group(2)
           path.write_bytes(data[:match.start()] + replacement + data[match.end():])
           PY
-          numstat="$(git diff --numstat -- wasm/reverb/kessho_reverb.cpp)"
-          printf 'reverb numstat: %s\n' "$numstat"
+          numstat="$(git diff origin/main --numstat -- wasm/reverb/kessho_reverb.cpp)"
+          printf 'reverb vs main numstat: %s\n' "$numstat"
           test "$numstat" = $'1\t0\twasm/reverb/kessho_reverb.cpp'
 
       - name: Verify Product FX suite
