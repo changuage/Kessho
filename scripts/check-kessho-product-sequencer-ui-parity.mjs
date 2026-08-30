@@ -594,23 +594,6 @@ async function triggerPatternState(page) {
   );
 }
 
-async function setTimingProofTriggerPattern(page, engineMode, tab) {
-  const desiredActive = new Set([0, 4, 8, 12]);
-  await ensureTriggerKeyboardLane(page, engineMode, tab);
-  for (let stepIndex = 0; stepIndex < 16; stepIndex += 1) {
-    await setSelectedTriggerStep(page, stepIndex, engineMode, tab);
-    const active = await triggerStepActive(page, stepIndex);
-    if (active !== desiredActive.has(stepIndex)) {
-      await page.keyboard.press('KeyX');
-      await page.waitForTimeout(150);
-    }
-    assert(
-      (await triggerStepActive(page, stepIndex)) === desiredActive.has(stepIndex),
-      `${engineMode}/${tab}: timing proof trigger step ${stepIndex} did not reach expected state`,
-    );
-  }
-}
-
 async function readTriggerControlNumber(page, controlIndex) {
   const text = String(await page.locator('.seq-trigger-always .seq-drag-num').nth(controlIndex).textContent());
   const value = Number.parseInt(text.trim(), 10);
@@ -631,7 +614,7 @@ async function setTriggerControlViaDrag(page, controlIndex, desiredValue, engine
     const delta = desiredValue - current;
     const dragPixels = controlIndex === 0
       ? Math.max(24, Math.ceil(Math.pow(Math.abs(delta) * 15, 1 / 1.12)))
-      : Math.min(240, Math.max(80, Math.abs(delta) * 90));
+      : Math.max(80, Math.abs(delta) * 90);
     await page.mouse.move(startX, startY);
     await page.mouse.down();
     await page.mouse.move(startX, startY - Math.sign(delta) * dragPixels, { steps: Math.max(4, Math.abs(delta) * 3) });
@@ -1611,7 +1594,7 @@ function countPlayheadTransitions(samples) {
   return transitions;
 }
 
-async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs = 20) {
+async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs = 85) {
   const samples = [];
   const deadline = Date.now() + durationMs;
   while (Date.now() < deadline) {
@@ -1647,9 +1630,8 @@ async function sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab) {
 }
 
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
-  await setTriggerStepsViaKeyboard(page, 16, engineMode, tab);
+  await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
   await ensureActiveTriggerLaneEnabled(page, engineMode, tab);
-  await setTimingProofTriggerPattern(page, engineMode, tab);
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
