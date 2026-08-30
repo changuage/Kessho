@@ -1611,7 +1611,7 @@ function countPlayheadTransitions(samples) {
   return transitions;
 }
 
-async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs = 85) {
+async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs = 20) {
   const samples = [];
   const deadline = Date.now() + durationMs;
   while (Date.now() < deadline) {
