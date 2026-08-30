@@ -2,7 +2,6 @@
 #include "ProductBuffers.h"
 #include "ProductGraphState.h"
 #include "ProductFxState.h"
-#include "ProductFxConfigurationRuntimeState.h"
 #include "ProductInteractionRuntimeState.h"
 #include "ProductMidiRuntimeState.h"
 #include "ProductModulationState.h"
@@ -22,7 +21,7 @@
 #include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "kessho_drum.h"
 using namespace kessho::product::internal;
-struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, ProductInteractionRuntimeState, ProductFxConfigurationRuntimeState {
+struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, ProductInteractionRuntimeState {
   explicit KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags);
   double sample_rate = 48000.0;
   uint32_t max_block_size = 128;
@@ -197,6 +196,9 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   bool journey_running = false;
   float journey_phase = 0.0f;
   float journey_rate_bars = 8.0f;
+  uint32_t fx_configuration_batch_depth = 0u;
+  bool fx_configuration_pending = false, reverb_configuration_pending = false,
+       spectral_freeze_configuration_pending = false;
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();

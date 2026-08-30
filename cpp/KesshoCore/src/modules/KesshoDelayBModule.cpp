@@ -37,7 +37,6 @@ constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
 constexpr float kWebAudioCompressorMakeupGain = 1.0f;
-constexpr float kDelayTimeSlewSeconds = 0.02f;
 constexpr std::array<float, kTapCount> kDiffuseTapFactors{
     0.78f, 1.07f, 1.41f, 1.86f, 2.34f, 2.93f, 3.58f, 4.26f};
 constexpr std::array<float, kTapCount> kDiffuseTapWeights{
@@ -320,7 +319,7 @@ class DelayBModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
-    delay_time_slew_ = 1.0f - std::exp(-1.0f / (kDelayTimeSlewSeconds * sample_rate_));
+    delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int output_latency_frames = std::max(
         1,
@@ -359,7 +358,6 @@ public:
     output_latency_r_.reset();
     feedback_l_ = 0.0f;
     feedback_r_ = 0.0f;
-    has_processed_since_reset_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -467,12 +465,6 @@ public:
     }
     configureFilters();
     configureTapRuntime();
-    const bool cold_short_delay =
-        !has_processed_since_reset_ && state_.enabled &&
-        state_.base_time_sec <= kDelayTimeSlewSeconds;
-    if (cold_short_delay) {
-      current_tap_time_samples_ = tap_time_samples_;
-    }
   }
 
   int outputTapCount() const override {
@@ -637,7 +629,6 @@ private:
   }
 
   void processSample(float input_l, float input_r, float* taps_l, float* taps_r) {
-    has_processed_since_reset_ = true;
     for (int bus = 0; bus < kOutputTapCount; ++bus) {
       taps_l[bus] = 0.0f;
       taps_r[bus] = 0.0f;
@@ -728,7 +719,6 @@ private:
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;
   float delay_time_slew_ = 1.0f;
-  bool has_processed_since_reset_ = false;
 };
 
 } // namespace

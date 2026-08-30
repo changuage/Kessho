@@ -208,10 +208,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     stateWithPrefs = preserveRunningSimpleSequencers(stateWithPrefs, stateRef.current);
 
     setState((prev) => ({ ...prev, ...stateWithPrefs }));
-    scheduleProductRuntimeParamUpdate(stateWithPrefs, {
-      reason: 'morph-control-change',
-      triggerCritical: true,
-    });
+    scheduleProductRuntimeParamUpdate(stateWithPrefs, { reason: 'morph-control-change' });
     mergeMorphDualRuntime(morphResult);
   }, [
     buildFallbackPreset,
@@ -309,10 +306,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       finalState = preserveRunningSimpleSequencers(finalState, stateRef.current);
 
       setState(finalState);
-      scheduleProductRuntimeParamUpdate(finalState, {
-        reason: 'morph-control-change',
-        triggerCritical: true,
-      });
+      scheduleProductRuntimeParamUpdate(finalState, { reason: 'morph-control-change' });
 
       const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
       setMorphCoFViz(atEndpoint ? null : morphResult.morphCoFInfo || null);

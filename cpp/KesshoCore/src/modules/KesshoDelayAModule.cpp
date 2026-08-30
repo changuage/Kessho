@@ -32,7 +32,6 @@ constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kMergerDownmixGain = 0.75f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
-constexpr float kDelayTimeSlewSeconds = 0.02f;
 
 float clamp(float value, float min_value, float max_value) {
   return std::max(min_value, std::min(max_value, value));
@@ -198,7 +197,7 @@ class DelayAModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
-    delay_time_slew_ = 1.0f - std::exp(-1.0f / (kDelayTimeSlewSeconds * sample_rate_));
+    delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int feedback_latency_frames = max_block_size_;
     feedback_delay_l_0_.prepare(feedback_latency_frames);
@@ -243,7 +242,6 @@ public:
     mod_phase_ = 0.0f;
     current_time_l_ = state_.time_l;
     current_time_r_ = state_.time_r;
-    has_processed_since_reset_ = false;
   }
 
   void processInterleaved(const float* input_interleaved, float* output_interleaved, int frames) override {
@@ -365,13 +363,6 @@ public:
     state_.granular_send = enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
     state_.degrade_send = enabled ? clamp(params_[kParamDriftSend], 0.0f, 1.0f) : 0.0f;
     configureFilters();
-    const bool cold_short_delay =
-        !has_processed_since_reset_ && state_.enabled &&
-        state_.time_l <= kDelayTimeSlewSeconds && state_.time_r <= kDelayTimeSlewSeconds;
-    if (cold_short_delay) {
-      current_time_l_ = state_.time_l;
-      current_time_r_ = state_.time_r;
-    }
   }
 
   int outputTapCount() const override {
@@ -430,7 +421,6 @@ private:
   }
 
   void processSample(float input_l, float input_r, float* taps_l, float* taps_r) {
-    has_processed_since_reset_ = true;
     if (!state_.enabled) {
       output_latency_l_.process(0.0f);
       output_latency_r_.process(0.0f);
@@ -519,7 +509,6 @@ private:
   float current_time_l_ = 0.25f;
   float current_time_r_ = 0.375f;
   float delay_time_slew_ = 1.0f;
-  bool has_processed_since_reset_ = false;
 };
 
 } // namespace

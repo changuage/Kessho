@@ -2014,7 +2014,7 @@ void requireDisabledDelayDoesNotLeakSpecializedTap() {
   float out_l[kFrames]{};
   float out_r[kFrames]{};
   float routed_peak = 0.0f;
-  for (uint32_t block = 0u; block < 16u; ++block) {
+  for (uint32_t block = 0u; block < 64u; ++block) {
     std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
     std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
     clearFxBus(engine->reverb_bus_l, engine->reverb_bus_r, kFrames);
@@ -2085,7 +2085,7 @@ void requireDelayFeedbackStaysPreLevel() {
   float out_r[kFrames]{};
   const auto render_cross_peak = [&](const float* cross_l, const float* cross_r) {
     float result = 0.0f;
-    for (uint32_t block = 0u; block < 16u; ++block) {
+    for (uint32_t block = 0u; block < 64u; ++block) {
       std::fill(engine->delay_a_bus_l, engine->delay_a_bus_l + kFrames, 0.2f);
       std::fill(engine->delay_a_bus_r, engine->delay_a_bus_r + kFrames, 0.2f);
       std::fill(engine->delay_b_bus_l, engine->delay_b_bus_l + kFrames, 0.2f);
