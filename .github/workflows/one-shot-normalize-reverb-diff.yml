@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   normalize-verify-commit:
-    if: github.event.head_commit.message == 'Verify normalized reverb diff against main'
+    if: github.event.head_commit.message == 'Finalize main-relative FX fix audit'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,11 +36,10 @@ jobs:
           path = Path('wasm/reverb/kessho_reverb.cpp')
           data = path.read_bytes()
           pattern = br'(#include "kessho_reverb\.h")(\r?\n)'
-          match = re.search(pattern, data)
-          if match is None:
-              raise SystemExit('reverb include insertion point not found')
-          if len(re.findall(pattern, data)) != 1:
+          matches = re.findall(pattern, data)
+          if len(matches) != 1:
               raise SystemExit('expected exactly one reverb include insertion point')
+          match = re.search(pattern, data)
           replacement = match.group(1) + match.group(2) + b'#include <cstdint>' + match.group(2)
           path.write_bytes(data[:match.start()] + replacement + data[match.end():])
           PY
@@ -57,6 +56,11 @@ jobs:
           git config user.email "kessho-ci-fix@users.noreply.github.com"
           git rm .github/workflows/one-shot-normalize-reverb-diff.yml
           git add wasm/reverb/kessho_reverb.cpp
-          git diff --cached --check
+          staged_reverb="$(git diff origin/main --cached --numstat -- wasm/reverb/kessho_reverb.cpp)"
+          printf 'staged reverb vs main numstat: %s\n' "$staged_reverb"
+          test "$staged_reverb" = $'1\t0\twasm/reverb/kessho_reverb.cpp'
+          fixture_numstat="$(git diff origin/main --numstat -- cpp/KesshoCore/tests/ProductFxRoutingTests.cpp)"
+          printf 'fixture vs main numstat: %s\n' "$fixture_numstat"
+          test "$fixture_numstat" = $'7\t0\tcpp/KesshoCore/tests/ProductFxRoutingTests.cpp'
           git commit -m "Keep reverb include fix line-ending neutral"
           git push origin HEAD:automation/fix-fx-routing-fixture
