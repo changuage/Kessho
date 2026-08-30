@@ -1631,8 +1631,8 @@ async function sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab) {
 
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
   await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
-  await setTriggerControlViaDrag(page, 1, 4, engineMode, tab, 'timing proof trigger hits');
   await ensureActiveTriggerLaneEnabled(page, engineMode, tab);
+  await setTriggerControlViaDrag(page, 1, 4, engineMode, tab, 'timing proof trigger hits');
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
