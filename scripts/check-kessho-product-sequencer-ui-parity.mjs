@@ -594,6 +594,23 @@ async function triggerPatternState(page) {
   );
 }
 
+async function setTimingProofTriggerPattern(page, engineMode, tab) {
+  const desiredActive = new Set([0, 4, 8, 12]);
+  await ensureTriggerKeyboardLane(page, engineMode, tab);
+  for (let stepIndex = 0; stepIndex < 16; stepIndex += 1) {
+    await setSelectedTriggerStep(page, stepIndex, engineMode, tab);
+    const active = await triggerStepActive(page, stepIndex);
+    if (active !== desiredActive.has(stepIndex)) {
+      await page.keyboard.press('KeyX');
+      await page.waitForTimeout(150);
+    }
+    assert(
+      (await triggerStepActive(page, stepIndex)) === desiredActive.has(stepIndex),
+      `${engineMode}/${tab}: timing proof trigger step ${stepIndex} did not reach expected state`,
+    );
+  }
+}
+
 async function readTriggerControlNumber(page, controlIndex) {
   const text = String(await page.locator('.seq-trigger-always .seq-drag-num').nth(controlIndex).textContent());
   const value = Number.parseInt(text.trim(), 10);
@@ -1630,9 +1647,9 @@ async function sampleTriggerPlayheadCadenceWithRecovery(page, engineMode, tab) {
 }
 
 async function proofClockDivisionAffectsTriggerCadence(page, engineMode, tab) {
-  await setTriggerControlViaDrag(page, 0, 16, engineMode, tab, 'timing proof trigger steps');
+  await setTriggerStepsViaKeyboard(page, 16, engineMode, tab);
   await ensureActiveTriggerLaneEnabled(page, engineMode, tab);
-  await setTriggerControlViaDrag(page, 1, 4, engineMode, tab, 'timing proof trigger hits');
+  await setTimingProofTriggerPattern(page, engineMode, tab);
 
   await setLaneTimingEditorState(page, { clockDiv: '1/4', swing: 0 });
   await page.waitForTimeout(650);
