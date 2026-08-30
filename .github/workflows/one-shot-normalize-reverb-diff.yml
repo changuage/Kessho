@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   normalize-verify-commit:
-    if: github.event.head_commit.message == 'Normalize standalone reverb include diff'
+    if: github.event.head_commit.message == 'Retry reverb diff normalization from raw blob'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,19 +26,23 @@ jobs:
 
       - run: npm ci
 
-      - name: Restore reverb line endings and add only cstdint
+      - name: Restore exact reverb blob and add only cstdint
         run: |
-          git checkout origin/main -- wasm/reverb/kessho_reverb.cpp
+          git show origin/main:wasm/reverb/kessho_reverb.cpp > /tmp/kessho_reverb.cpp
+          cp /tmp/kessho_reverb.cpp wasm/reverb/kessho_reverb.cpp
           python - <<'PY'
           from pathlib import Path
           path = Path('wasm/reverb/kessho_reverb.cpp')
           data = path.read_bytes()
-          old = b'#include "kessho_reverb.h"\r\n'
-          new = b'#include "kessho_reverb.h"\r\n#include <cstdint>\r\n'
+          newline = b'\r\n' if b'\r\n' in data else b'\n'
+          old = b'#include "kessho_reverb.h"' + newline
+          new = old + b'#include <cstdint>' + newline
           if data.count(old) != 1:
-              raise SystemExit('expected exactly one CRLF reverb include insertion point')
+              raise SystemExit('expected exactly one reverb include insertion point')
           path.write_bytes(data.replace(old, new, 1))
           PY
+          numstat="$(git diff --numstat -- wasm/reverb/kessho_reverb.cpp)"
+          test "$numstat" = $'1\t0\twasm/reverb/kessho_reverb.cpp'
 
       - name: Verify Product FX suite
         run: npm run core:product:fx
