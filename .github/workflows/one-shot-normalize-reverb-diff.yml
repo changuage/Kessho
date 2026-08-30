@@ -1,0 +1,54 @@
+name: Normalize standalone reverb include diff
+
+on:
+  push:
+    branches:
+      - automation/fix-fx-routing-fixture
+    paths:
+      - .github/workflows/one-shot-normalize-reverb-diff.yml
+
+permissions:
+  contents: write
+
+jobs:
+  normalize-verify-commit:
+    if: github.event.head_commit.message == 'Normalize standalone reverb include diff'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore reverb line endings and add only cstdint
+        run: |
+          git checkout origin/main -- wasm/reverb/kessho_reverb.cpp
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('wasm/reverb/kessho_reverb.cpp')
+          data = path.read_bytes()
+          old = b'#include "kessho_reverb.h"\r\n'
+          new = b'#include "kessho_reverb.h"\r\n#include <cstdint>\r\n'
+          if data.count(old) != 1:
+              raise SystemExit('expected exactly one CRLF reverb include insertion point')
+          path.write_bytes(data.replace(old, new, 1))
+          PY
+
+      - name: Verify Product FX suite
+        run: npm run core:product:fx
+
+      - name: Commit normalized verified diff
+        run: |
+          git config user.name "kessho-ci-fix"
+          git config user.email "kessho-ci-fix@users.noreply.github.com"
+          git rm .github/workflows/one-shot-normalize-reverb-diff.yml
+          git add wasm/reverb/kessho_reverb.cpp
+          git diff --cached --check
+          git commit -m "Keep reverb include fix line-ending neutral"
+          git push origin HEAD:automation/fix-fx-routing-fixture
