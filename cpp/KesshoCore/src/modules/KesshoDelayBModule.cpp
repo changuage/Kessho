@@ -37,6 +37,7 @@ constexpr int kOutputTapCount = 5;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kWebAudioCompressorLookaheadSeconds = 0.006f;
 constexpr float kWebAudioCompressorMakeupGain = 1.0f;
+constexpr float kDelayTimeSlewSeconds = 0.02f;
 constexpr std::array<float, kTapCount> kDiffuseTapFactors{
     0.78f, 1.07f, 1.41f, 1.86f, 2.34f, 2.93f, 3.58f, 4.26f};
 constexpr std::array<float, kTapCount> kDiffuseTapWeights{
@@ -319,7 +320,7 @@ class DelayBModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
-    delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
+    delay_time_slew_ = 1.0f - std::exp(-1.0f / (kDelayTimeSlewSeconds * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int output_latency_frames = std::max(
         1,
@@ -466,7 +467,10 @@ public:
     }
     configureFilters();
     configureTapRuntime();
-    if (!has_processed_since_reset_) {
+    const bool cold_short_delay =
+        !has_processed_since_reset_ && state_.enabled &&
+        state_.base_time_sec <= kDelayTimeSlewSeconds;
+    if (cold_short_delay) {
       current_tap_time_samples_ = tap_time_samples_;
     }
   }
