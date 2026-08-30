@@ -1,0 +1,63 @@
+name: One-shot FX routing fixture fix
+
+on:
+  push:
+    branches:
+      - automation/fix-fx-routing-fixture
+    paths:
+      - .github/workflows/one-shot-fx-routing-fixture-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-verify-commit:
+    if: github.event.head_commit.message == 'Install one-shot FX routing fixture fixer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Patch deterministic delay fixture initialization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('cpp/KesshoCore/tests/ProductFxRoutingTests.cpp')
+          source = path.read_text()
+
+          delay_a_before = '''  engine->fx.delay_a_mix = 1.0f;\n  engine->configureFxModules();\n\n  float out_l[kFrames]{};'''
+          delay_a_after = '''  engine->fx.delay_a_mix = 1.0f;\n  engine->configureFxModules();\n  require(engine->delay_a_module != nullptr, "Delay A module was not prepared");\n  engine->delay_a_module->reset();\n\n  float out_l[kFrames]{};'''
+          if source.count(delay_a_before) != 1:
+              raise SystemExit('expected exactly one Delay A deterministic fixture initialization site')
+          source = source.replace(delay_a_before, delay_a_after, 1)
+
+          feedback_before = '''  engine->fx.delay_b_base_time_ms = 10.0f;\n  engine->configureFxModules();\n\n  float out_l[kFrames]{};'''
+          feedback_after = '''  engine->fx.delay_b_base_time_ms = 10.0f;\n  engine->configureFxModules();\n  require(\n      engine->delay_a_module != nullptr && engine->delay_b_module != nullptr,\n      "Delay feedback modules were not prepared");\n  engine->delay_a_module->reset();\n  engine->delay_b_module->reset();\n\n  float out_l[kFrames]{};'''
+          if source.count(feedback_before) != 1:
+              raise SystemExit('expected exactly one delay-feedback fixture initialization site')
+          source = source.replace(feedback_before, feedback_after, 1)
+
+          path.write_text(source)
+          PY
+
+      - name: Verify Product FX suite
+        run: npm run core:product:fx
+
+      - name: Commit verified fixture fix
+        run: |
+          git config user.name "kessho-ci-fix"
+          git config user.email "kessho-ci-fix@users.noreply.github.com"
+          git rm .github/workflows/one-shot-fx-routing-fixture-fix.yml
+          git add cpp/KesshoCore/tests/ProductFxRoutingTests.cpp
+          git diff --cached --check
+          git commit -m "Initialize delay routing fixtures from authored state"
+          git push origin HEAD:automation/fix-fx-routing-fixture
