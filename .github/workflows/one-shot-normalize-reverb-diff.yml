@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   normalize-verify-commit:
-    if: github.event.head_commit.message == 'Retry reverb diff normalization from raw blob'
+    if: github.event.head_commit.message == 'Retry reverb include normalization with newline-safe match'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,17 +31,21 @@ jobs:
           git show origin/main:wasm/reverb/kessho_reverb.cpp > /tmp/kessho_reverb.cpp
           cp /tmp/kessho_reverb.cpp wasm/reverb/kessho_reverb.cpp
           python - <<'PY'
+          import re
           from pathlib import Path
           path = Path('wasm/reverb/kessho_reverb.cpp')
           data = path.read_bytes()
-          newline = b'\r\n' if b'\r\n' in data else b'\n'
-          old = b'#include "kessho_reverb.h"' + newline
-          new = old + b'#include <cstdint>' + newline
-          if data.count(old) != 1:
+          pattern = br'(#include "kessho_reverb\.h")(\r?\n)'
+          match = re.search(pattern, data)
+          if match is None:
+              raise SystemExit('reverb include insertion point not found')
+          if len(re.findall(pattern, data)) != 1:
               raise SystemExit('expected exactly one reverb include insertion point')
-          path.write_bytes(data.replace(old, new, 1))
+          replacement = match.group(1) + match.group(2) + b'#include <cstdint>' + match.group(2)
+          path.write_bytes(data[:match.start()] + replacement + data[match.end():])
           PY
           numstat="$(git diff --numstat -- wasm/reverb/kessho_reverb.cpp)"
+          printf 'reverb numstat: %s\n' "$numstat"
           test "$numstat" = $'1\t0\twasm/reverb/kessho_reverb.cpp'
 
       - name: Verify Product FX suite
