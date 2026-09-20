@@ -1,0 +1,92 @@
+.midi-controller-panel {
+  gap: 12px;
+}
+
+.midi-controller-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.midi-controller-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.midi-controller-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.midi-controller-card header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.midi-controller-card small,
+.midi-controller-card p,
+.midi-controller-ready-note,
+.midi-controller-architecture-note span {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.midi-controller-card strong,
+.midi-controller-architecture-note strong {
+  color: var(--text-primary);
+}
+
+.midi-controller-card header > span {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--k-fs-3);
+}
+
+.midi-controller-card header > span.connected {
+  border-color: color-mix(in srgb, var(--accent-primary) 32%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  color: var(--accent-primary);
+}
+
+.midi-controller-card p {
+  margin: 0;
+}
+
+.midi-controller-device {
+  min-height: 34px;
+}
+
+.midi-controller-feature-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.midi-controller-feature-row span {
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: var(--k-fs-3);
+}
+
+.midi-controller-ready-note,
+.midi-controller-architecture-note {
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.midi-controller-architecture-note {
+  display: grid;
+  gap: 4px;
+}
