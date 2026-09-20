@@ -2439,37 +2439,52 @@ const App: React.FC = () => {
     onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
   });
 
-  const backgroundMorphControlsLocked = backgroundJourney.runtimeProjectionActive;
   const handleMorphPositionChangeForUi = useCallback(
     (...args: Parameters<typeof handleMorphPositionChange>) => {
-      if (backgroundMorphControlsLocked) return;
+      const projection = backgroundJourney.morphProjection;
+      if (projection) {
+        morphDirectionRef.current = projection.direction;
+        lastMorphEndpointRef.current = projection.direction === 'toA' ? 100 : 0;
+      }
+      stopJourneyForEdit();
       handleMorphPositionChange(...args);
     },
-    [backgroundMorphControlsLocked, handleMorphPositionChange],
+    [backgroundJourney.morphProjection, handleMorphPositionChange, stopJourneyForEdit],
   );
   const handleLoadMorphAForUi = useCallback(
-    (...args: Parameters<typeof handleLoadMorphA>) => backgroundMorphControlsLocked ? false : handleLoadMorphA(...args),
-    [backgroundMorphControlsLocked, handleLoadMorphA],
+    (...args: Parameters<typeof handleLoadMorphA>) => {
+      stopJourneyForEdit();
+      return handleLoadMorphA(...args);
+    },
+    [handleLoadMorphA, stopJourneyForEdit],
   );
   const handleLoadMorphBForUi = useCallback(
-    (...args: Parameters<typeof handleLoadMorphB>) => backgroundMorphControlsLocked ? false : handleLoadMorphB(...args),
-    [backgroundMorphControlsLocked, handleLoadMorphB],
+    (...args: Parameters<typeof handleLoadMorphB>) => {
+      stopJourneyForEdit();
+      return handleLoadMorphB(...args);
+    },
+    [handleLoadMorphB, stopJourneyForEdit],
   );
   const handleMorphSlotAClearForUi = useCallback(() => {
-    if (!backgroundMorphControlsLocked) handleMorphSlotAClear();
-  }, [backgroundMorphControlsLocked, handleMorphSlotAClear]);
+    stopJourneyForEdit();
+    handleMorphSlotAClear();
+  }, [handleMorphSlotAClear, stopJourneyForEdit]);
   const handleMorphSlotBClearForUi = useCallback(() => {
-    if (!backgroundMorphControlsLocked) handleMorphSlotBClear();
-  }, [backgroundMorphControlsLocked, handleMorphSlotBClear]);
+    stopJourneyForEdit();
+    handleMorphSlotBClear();
+  }, [handleMorphSlotBClear, stopJourneyForEdit]);
   const handleMorphModeChangeForUi = useCallback((mode: 'manual' | 'auto') => {
-    if (!backgroundMorphControlsLocked) setMorphMode(mode);
-  }, [backgroundMorphControlsLocked]);
+    stopJourneyForEdit();
+    setMorphMode(mode);
+  }, [setMorphMode, stopJourneyForEdit]);
   const handleMorphPlayPhrasesChangeForUi = useCallback((value: number) => {
-    if (!backgroundMorphControlsLocked) setMorphPlayPhrases(value);
-  }, [backgroundMorphControlsLocked]);
+    stopJourneyForEdit();
+    setMorphPlayPhrases(value);
+  }, [setMorphPlayPhrases, stopJourneyForEdit]);
   const handleMorphTransitionPhrasesChangeForUi = useCallback((value: number) => {
-    if (!backgroundMorphControlsLocked) setMorphTransitionPhrases(value);
-  }, [backgroundMorphControlsLocked]);
+    stopJourneyForEdit();
+    setMorphTransitionPhrases(value);
+  }, [setMorphTransitionPhrases, stopJourneyForEdit]);
 
   // ========================================================================
   // JOURNEY MODE CALLBACKS
