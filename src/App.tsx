@@ -2465,14 +2465,6 @@ const App: React.FC = () => {
     },
     [handleLoadMorphB, stopJourneyForEdit],
   );
-  const handleMorphSlotAClearForUi = useCallback(() => {
-    stopJourneyForEdit();
-    handleMorphSlotAClear();
-  }, [handleMorphSlotAClear, stopJourneyForEdit]);
-  const handleMorphSlotBClearForUi = useCallback(() => {
-    stopJourneyForEdit();
-    handleMorphSlotBClear();
-  }, [handleMorphSlotBClear, stopJourneyForEdit]);
   const handleMorphModeChangeForUi = useCallback((mode: 'manual' | 'auto') => {
     stopJourneyForEdit();
     setMorphMode(mode);
@@ -3095,10 +3087,10 @@ const App: React.FC = () => {
                 morphCountdown={morphCountdown}
                 onLoadMorphA={handleLoadMorphAForUi}
                 morphSlotAName={displayedMorphSlotAName}
-                onClearMorphA={handleMorphSlotAClearForUi}
+                onClearMorphA={handleMorphSlotAClear}
                 onLoadMorphB={handleLoadMorphBForUi}
                 morphSlotBName={displayedMorphSlotBName}
-                onClearMorphB={handleMorphSlotBClearForUi}
+                onClearMorphB={handleMorphSlotBClear}
                 onMorphPositionChange={handleMorphPositionChangeForUi}
                 onMorphModeChange={handleMorphModeChangeForUi}
                 onMorphPlayPhrasesChange={handleMorphPlayPhrasesChangeForUi}
