@@ -20,6 +20,14 @@ void requireCheck(bool condition, const char* message) {
   std::abort();
 }
 
+void requireCpuBudget(bool condition, const char* caseName, int voices, double p99Ratio, double limit) {
+  if (condition) return;
+  std::fprintf(stderr,
+               "pad_dsp_safety: CPU p99 deadline ratio exceeded case=%s voices=%d ratio=%.4f limit=%.4f\n",
+               caseName, voices, p99Ratio, limit);
+  std::abort();
+}
+
 void configure(KesshoPadInstance* pad, int voices, float sampleRate) {
   (void)sampleRate;
   for (int p = 0; p < PAD_NUM_PADS; ++p) {
@@ -591,7 +599,7 @@ void benchmark(float sampleRate, int voices, const char* name) {
   assert(pad);
   configure(pad, voices, sampleRate);
   applyBenchmarkCase(pad, name);
-  constexpr int blocks = 256;
+  constexpr int blocks = 1024;
   constexpr int frames = 128;
   for (int i = 0; i < 32; ++i) pad_instance_process_block(pad, frames);
   std::vector<double> elapsed;
@@ -611,14 +619,14 @@ void benchmark(float sampleRate, int voices, const char* name) {
   for (double value : elapsed) mean += value;
   mean /= static_cast<double>(elapsed.size());
   const double p99Ratio = percentile(0.99) / deadline;
-  // Hosted runners can preempt an individual block; gate sustained load via p99.
-  if (p99Ratio >= 1.0) std::abort();
+  // Hosted runners can preempt a handful of blocks; the larger p99 window
+  // still rejects sustained CPU load while reducing sensitivity to scheduler spikes.
+  requireCpuBudget(p99Ratio < 1.0, name, voices, p99Ratio, 1.0);
   const int voiceSlot = voices == 1 ? 0 : (voices == 8 ? 1 : 2);
   const double cleanBasicRatio = std::string_view(name) == "CLEAN_BASIC"
       ? (g_clean_basic_p99_ms[voiceSlot] = percentile(0.99), 1.0)
       : (g_clean_basic_p99_ms[voiceSlot] > 0.0 ? percentile(0.99) / g_clean_basic_p99_ms[voiceSlot] : 0.0);
-  if (voices == 16 && p99Ratio >= 0.50) std::abort();
-  if (std::string_view(name) == "WORST_NORMAL_USE" && voices == 16 && p99Ratio >= 0.75) std::abort();
+  if (voices == 16) requireCpuBudget(p99Ratio < 0.50, name, voices, p99Ratio, 0.50);
   std::printf("pad_cpu case=%s sr=%.0f voices=%d mean_ms=%.5f p50_ms=%.5f p95_ms=%.5f p99_ms=%.5f max_ms=%.5f deadline_ratio_p99=%.4f deadline_ratio_max=%.4f clean_basic_ratio=%.4f underruns=%d\n",
       name, sampleRate, voices, mean, percentile(0.50), percentile(0.95), percentile(0.99), elapsed.back(),
       p99Ratio, elapsed.back() / deadline, cleanBasicRatio, underruns);

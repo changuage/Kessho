@@ -40,6 +40,35 @@ const decoded = decodeCurrentPresetEntry(entry);
 assert.equal(decoded, entry, 'current decoding must preserve the canonical object without repair');
 assert.equal(decoded.versions[0]?.data.masterVolume, 0.5);
 
+const transportVisualizer = decodeCurrentPresetEntry({
+  ...entry,
+  type: 'source',
+  scope: 'visualizer',
+  engine: undefined,
+  source: 'visualizer',
+  versions: [{
+    ...entry.versions[0],
+    data: {
+      format: 'kessho-visualizer-preset',
+      formatVersion: 3,
+      renderer: 'transport',
+      controls: { motion: 0.4 },
+      assignments: [{
+        id: 'drums-motion',
+        source: 'drums',
+        signal: 'transient',
+        target: 'motion',
+        amount: 0.2,
+        polarity: 'unipolar',
+        enabled: true,
+      }],
+      qualityMode: 'auto',
+      seed: 42,
+    },
+  }],
+});
+assert.equal(transportVisualizer.scope, 'visualizer');
+
 const laneRelativeSequenceData = {
   euclideanPatternEnabled: true,
   euclideanPatternPreset: 'tresillo',
@@ -132,6 +161,26 @@ assert.deepEqual(storedLegacyState.versions[0]?.data, {
 assert.deepEqual(storedLegacyState.versions[0]?.dualRanges?.filterCutoff, { min: 100, max: 2000 });
 assert.equal(storedLegacyState.versions[0]?.sliderModes?.filterCutoff, 'walk');
 
+const storedArmedFreeze = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
+  ...entry,
+  type: 'state',
+  scope: 'global',
+  engine: undefined,
+  source: 'global',
+  versions: [{
+    ...entry.versions[0],
+    data: {
+      spectralFreezeEnabled: true,
+      spectralFreezeActive: true,
+      spectralFreezeCaptureSerial: 41,
+    },
+  }],
+}));
+assert.deepEqual(storedArmedFreeze.versions[0]?.data, {
+  spectralFreezeEnabled: true,
+  spectralFreezeActive: true,
+});
+
 assert.throws(
   () => decodeCurrentPresetEntry(canonicalizeStoredPresetEntry({
     ...entry,
@@ -216,12 +265,11 @@ assert.throws(
         controls: {},
         reaction: {},
         seed: 1,
-        legacyAlias: true,
       },
     }],
   }),
   UnsupportedPresetVersionError,
-  'visualizer data must reject unknown keys instead of accepting arbitrary records',
+  'retired visualizer formats must not re-enter the current preset contract',
 );
 
 console.log('current preset schema regression passed');

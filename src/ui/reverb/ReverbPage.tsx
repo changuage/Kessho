@@ -17,7 +17,8 @@ import type { SelectRenderer } from '../../app/AppControls';
 import { PresetDropdown } from '../../presets/PresetDropdown';
 import type { PresetEntry } from '../../presets/types';
 import ReverbEnvelopeCanvas from './ReverbEnvelopeCanvas';
-import SpectralFreezeCard, { nextSpectralFreezeCaptureSerial } from './SpectralFreezeCard';
+import SpectralFreezeCard from './SpectralFreezeCard';
+import { nextSpectralFreezeCaptureSerial } from '../spectralFreezeGesture';
 import './reverb.css';
 
 // ═══ Reverb Character Presets ═══
@@ -109,9 +110,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
     params: {
       // Spectral freeze: slushy, held indefinitely, slow spectral drift
       spectralFreezeEnabled: true,
-      spectralFreezeActive: false,
       spectralFreezeMode: 'slushy',
-      spectralFreezeCaptureSerial: 0,
       spectralFreezeRefresh: 0.18,
       spectralFreezeInputSensitivity: 0.65,
       spectralFreezeMix: 1.0,
@@ -142,9 +141,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
     description: 'Slow ping-pong scan through the rolling spectral memory',
     params: {
       spectralFreezeEnabled: true,
-      spectralFreezeActive: false,
       spectralFreezeMode: 'stretch',
-      spectralFreezeCaptureSerial: 0,
       spectralFreezeStretchSpeed: 0.5,
       spectralFreezeDirection: 'pingpong',
       spectralFreezePosition: 0,
@@ -162,9 +159,7 @@ export const REVERB_CHARACTER_PRESETS: Record<string, {
     description: 'A stretched memory that slowly absorbs new spectral detail',
     params: {
       spectralFreezeEnabled: true,
-      spectralFreezeActive: false,
       spectralFreezeMode: 'livingStretch',
-      spectralFreezeCaptureSerial: 0,
       spectralFreezeStretchSpeed: 0.333333,
       spectralFreezeDirection: 'pingpong',
       spectralFreezePosition: 0,

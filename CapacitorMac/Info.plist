@@ -35,5 +35,15 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/changuage/Kessho/releases/download/macos-updates/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>gksxKToL414H7f4iFXKCr0vvoTKBqTXdYOj2hEM7TNQ=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

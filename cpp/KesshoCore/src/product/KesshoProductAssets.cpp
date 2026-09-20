@@ -266,7 +266,19 @@ bool nearlyEqual(float left, float right) {
     const uint32_t asset_id = voice.asset_slot < kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS
         ? assets[voice.asset_slot].asset_id
         : 0u;
-    if (asset_id == 0u || !soundscapeWantsAsset(source, asset_id)) {
+    const bool canonical_texture_voice =
+        voice.soundscape_texture_voice &&
+        voice.soundscape_texture_slot < kSoundscapeTextureSlotCount &&
+        soundscapeTextureParam(
+            source,
+            voice.soundscape_texture_slot,
+            kSoundscapeTextureParamAssetId,
+            0.0f) > 0.0f;
+    const bool wanted = canonical_texture_voice
+        ? soundscapeTextureSlotEnabled(source, voice.soundscape_texture_slot) &&
+            soundscapeTextureAssetId(source, voice.soundscape_texture_slot) == asset_id
+        : soundscapeWantsAsset(source, asset_id);
+    if (asset_id == 0u || !wanted) {
       if (voice.soundscape_texture_voice) {
         releaseSoundscapeTextureVoice(voice, voice.soundscape_asset_level);
         continue;

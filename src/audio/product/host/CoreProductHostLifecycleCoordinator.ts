@@ -43,10 +43,17 @@ export class CoreProductHostLifecycleCoordinator {
     document.documentElement.dataset.coreProductRuntimePhase = phase;
   }
 
+  private expectSnapshotAfterResume(): void {
+    (this.options.runtime as CoreProductRuntime & {
+      expectSnapshotAfterResume?: () => void;
+    }).expectSnapshotAfterResume?.();
+  }
+
   async start(sliderState?: Record<string, unknown>): Promise<void> {
     if (sliderState) {
       this.options.setLatestSliderState({ ...sliderState });
     }
+    this.expectSnapshotAfterResume();
     await this.options.runtime.resume();
     this.options.flushRuntimeProductEvents();
     this.publishParityStartupPhase('runtime-resumed');
@@ -71,6 +78,7 @@ export class CoreProductHostLifecycleCoordinator {
     // Recalibrate after every explicit resume so events queued across a
     // suspend cannot inherit a stale wall-clock offset.
     this.options.realtimeTimestampMapper.reset();
+    this.expectSnapshotAfterResume();
     await this.options.runtime.resume();
     this.options.flushRuntimeProductEvents();
     this.options.resetSequencerEvolveState();

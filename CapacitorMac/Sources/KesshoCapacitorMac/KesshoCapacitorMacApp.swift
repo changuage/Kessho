@@ -7,6 +7,7 @@ import Foundation
 import KesshoNativeBridge
 import KesshoProductCore
 import Network
+import Sparkle
 import SwiftUI
 import WebKit
 
@@ -14,6 +15,11 @@ import WebKit
 struct KesshoCapacitorMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var runtime = KesshoMacRuntime()
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     init() {
         if CommandLine.arguments.contains("--native-product-diagnostics-smoke") {
@@ -21,6 +27,9 @@ struct KesshoCapacitorMacApp: App {
         }
         if CommandLine.arguments.contains("--native-product-background-smoke") {
             KesshoMacNativeDiagnosticsSmoke.runBackgroundAndExit()
+        }
+        if CommandLine.arguments.contains("--webview-security-smoke") {
+            KesshoMacWebViewSecuritySmoke.runAndExit()
         }
     }
 
@@ -32,6 +41,11 @@ struct KesshoCapacitorMacApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updaterController.checkForUpdates(nil)
+                }
+            }
             CommandGroup(after: .appInfo) {
                 Button("Reload Kessho") {
                     runtime.reloadWebView()
@@ -82,13 +96,21 @@ final class KesshoMacRuntime: ObservableObject {
             }
         }
         audioOutputObserver.onChange = { [weak self] status in
-            self?.dispatchEvent(plugin: "KesshoMacShell", eventName: "audioOutputChanged", data: status)
+            Task { @MainActor in
+                guard let self else { return }
+                self.audioSessionHost.handleOutputDeviceChange()
+                self.dispatchEvent(plugin: "KesshoMacShell", eventName: "audioOutputChanged", data: status)
+            }
         }
         audioOutputObserver.start()
     }
 
     func attach(_ webView: WKWebView) {
         self.webView = webView
+    }
+
+    var trustedWebOrigin: KesshoWebOriginPolicy {
+        server.originPolicy
     }
 
     func startWebApp(completion: @escaping (URL) -> Void) {
@@ -164,6 +186,35 @@ final class KesshoMacRuntime: ObservableObject {
             return audioSessionHost.stopNativeProductRendererForDiagnostics()
         case "probeNativeRendererForDiagnostics":
             return try audioSessionHost.probeNativeProductRendererForDiagnostics()
+        case "prepareNativeProductRuntime":
+            return audioSessionHost.prepareNativeProductRuntime()
+        case "loadNativeProductSnapshot":
+            try audioSessionHost.loadNativeProductSnapshot(options)
+            return audioSessionHost.statusPayload()
+        case "enqueueNativeProductEvents":
+            try audioSessionHost.enqueueNativeProductEvents(options)
+            return audioSessionHost.statusPayload()
+        case "registerNativeProductFileAsset":
+            try audioSessionHost.registerNativeProductFileAsset(options)
+            return audioSessionHost.statusPayload()
+        case "registerNativeProductDecodedAsset":
+            try audioSessionHost.registerNativeProductDecodedAsset(options)
+            return audioSessionHost.statusPayload()
+        case "unregisterNativeProductAsset":
+            try audioSessionHost.unregisterNativeProductAsset(options)
+            return audioSessionHost.statusPayload()
+        case "resetNativeProductRuntime":
+            try audioSessionHost.resetNativeProductRuntime()
+            return audioSessionHost.statusPayload()
+        case "startNativeProductRuntime":
+            return try audioSessionHost.startNativeProductRuntime()
+        case "stopNativeProductRuntime":
+            return audioSessionHost.stopNativeProductRuntime()
+        case "getNativeProductTelemetry":
+            return try audioSessionHost.nativeProductTelemetry()
+        case "setNativeProductInteractionDemand":
+            try audioSessionHost.setNativeProductInteractionDemand(options)
+            return audioSessionHost.statusPayload()
         case "setNowPlaying":
             return audioSessionHost.statusPayload()
         case "setPlaybackState":
@@ -312,6 +363,7 @@ final class KesshoMacRuntime: ObservableObject {
     private func evaluateBridgeFunction(_ functionName: String, payload: [String: Any]) {
         guard
             let webView,
+            trustedWebOrigin.allows(webView.url),
             JSONSerialization.isValidJSONObject(payload),
             let data = try? JSONSerialization.data(withJSONObject: payload),
             let json = String(data: data, encoding: .utf8)
@@ -341,6 +393,61 @@ final class KesshoMacRuntime: ObservableObject {
     }
 }
 
+struct KesshoWebOriginPolicy: Equatable {
+    let scheme: String
+    let host: String
+    let port: Int
+
+    init(origin: URL) {
+        let scheme = origin.scheme?.lowercased() ?? ""
+        self.scheme = scheme
+        self.host = origin.host?.lowercased() ?? ""
+        self.port = origin.port ?? Self.defaultPort(for: scheme)
+    }
+
+    func allows(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return allows(
+            scheme: url.scheme,
+            host: url.host,
+            port: url.port ?? Self.defaultPort(for: url.scheme)
+        )
+    }
+
+    func allowsMainFrame(_ frameInfo: WKFrameInfo) -> Bool {
+        let origin = frameInfo.securityOrigin
+        return allowsMainFrame(
+            isMainFrame: frameInfo.isMainFrame,
+            scheme: origin.protocol,
+            host: origin.host,
+            port: origin.port
+        )
+    }
+
+    func allowsMainFrame(isMainFrame: Bool, scheme: String?, host: String?, port: Int) -> Bool {
+        isMainFrame && allows(scheme: scheme, host: host, port: port)
+    }
+
+    func shouldOpenExternalNavigation(targetIsMainFrame: Bool?) -> Bool {
+        targetIsMainFrame ?? true
+    }
+
+    private func allows(scheme: String?, host: String?, port: Int) -> Bool {
+        guard let scheme, let host else { return false }
+        return self.scheme == scheme.lowercased()
+            && self.host == host.lowercased()
+            && self.port == port
+    }
+
+    private static func defaultPort(for scheme: String?) -> Int {
+        switch scheme?.lowercased() {
+        case "http": return 80
+        case "https": return 443
+        default: return -1
+        }
+    }
+}
+
 struct KesshoWebView: NSViewRepresentable {
     @ObservedObject var runtime: KesshoMacRuntime
 
@@ -353,7 +460,7 @@ struct KesshoWebView: NSViewRepresentable {
         userContentController.addUserScript(WKUserScript(
             source: Self.capacitorRuntimeScript,
             injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
+            forMainFrameOnly: true
         ))
         userContentController.add(context.coordinator, name: "kesshoCapacitor")
 
@@ -369,7 +476,7 @@ struct KesshoWebView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = false
-        webView.customUserAgent = "KesshoCapacitorMac/1.0"
+        webView.customUserAgent = KesshoMacUserAgent.value
         webView.pageZoom = 1.0
         #if DEBUG
         if #available(macOS 13.3, *) {
@@ -389,13 +496,77 @@ struct KesshoWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
         private let runtime: KesshoMacRuntime
+        private let originPolicy: KesshoWebOriginPolicy
 
         init(runtime: KesshoMacRuntime) {
             self.runtime = runtime
+            self.originPolicy = runtime.trustedWebOrigin
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard originPolicy.allowsMainFrame(message.frameInfo) else { return }
             runtime.handleBridgeMessage(message.body)
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if originPolicy.allows(url) {
+                decisionHandler(.allow)
+            } else {
+                if originPolicy.shouldOpenExternalNavigation(targetIsMainFrame: navigationAction.targetFrame?.isMainFrame) {
+                    openExternalLink(url)
+                }
+                decisionHandler(.cancel)
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationResponse: WKNavigationResponse,
+            decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+        ) {
+            guard let url = navigationResponse.response.url else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if originPolicy.allows(url) {
+                decisionHandler(.allow)
+            } else {
+                if originPolicy.shouldOpenExternalNavigation(targetIsMainFrame: navigationResponse.isForMainFrame) {
+                    openExternalLink(url)
+                }
+                decisionHandler(.cancel)
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            guard let url = navigationAction.request.url else { return nil }
+
+            if originPolicy.allows(url) {
+                webView.load(navigationAction.request)
+            } else {
+                openExternalLink(url)
+            }
+            return nil
+        }
+
+        private func openExternalLink(_ url: URL) {
+            guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+            _ = NSWorkspace.shared.open(url)
         }
     }
 
@@ -489,6 +660,17 @@ struct KesshoWebView: NSViewRepresentable {
         startNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'startNativeRendererForDiagnostics'),
         stopNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'stopNativeRendererForDiagnostics'),
         probeNativeRendererForDiagnostics: () => call('KesshoAudioSession', 'probeNativeRendererForDiagnostics'),
+        prepareNativeProductRuntime: () => call('KesshoAudioSession', 'prepareNativeProductRuntime'),
+        loadNativeProductSnapshot: (options) => call('KesshoAudioSession', 'loadNativeProductSnapshot', options),
+        enqueueNativeProductEvents: (options) => call('KesshoAudioSession', 'enqueueNativeProductEvents', options),
+        registerNativeProductFileAsset: (options) => call('KesshoAudioSession', 'registerNativeProductFileAsset', options),
+        registerNativeProductDecodedAsset: (options) => call('KesshoAudioSession', 'registerNativeProductDecodedAsset', options),
+        unregisterNativeProductAsset: (options) => call('KesshoAudioSession', 'unregisterNativeProductAsset', options),
+        resetNativeProductRuntime: () => call('KesshoAudioSession', 'resetNativeProductRuntime'),
+        startNativeProductRuntime: () => call('KesshoAudioSession', 'startNativeProductRuntime'),
+        stopNativeProductRuntime: () => call('KesshoAudioSession', 'stopNativeProductRuntime'),
+        getNativeProductTelemetry: () => call('KesshoAudioSession', 'getNativeProductTelemetry'),
+        setNativeProductInteractionDemand: (options) => call('KesshoAudioSession', 'setNativeProductInteractionDemand', options),
         setNowPlaying: (options) => call('KesshoAudioSession', 'setNowPlaying', options),
         setPlaybackState: (options) => call('KesshoAudioSession', 'setPlaybackState', options),
         addListener: (eventName, callback) => addListener('KesshoAudioSession', eventName, callback),
@@ -505,6 +687,69 @@ struct KesshoWebView: NSViewRepresentable {
       };
     })();
     """
+}
+
+enum KesshoMacUserAgent {
+    static let value = makeUserAgent(
+        productName: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String,
+        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    )
+
+    static func makeUserAgent(productName: String?, version: String?) -> String {
+        "\(sanitize(productName, fallback: "KesshoCapacitorMac"))/\(sanitize(version, fallback: "1.0"))"
+    }
+
+    private static func sanitize(_ value: String?, fallback: String) -> String {
+        let sanitized = (value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
+        guard !sanitized.isEmpty else { return fallback }
+        return String(sanitized.prefix(64))
+    }
+}
+
+enum KesshoMacWebViewSecuritySmoke {
+    static func runAndExit() -> Never {
+        let policy = KesshoWebOriginPolicy(origin: StaticWebServer.originURL)
+        let sameOrigin = URL(string: "http://127.0.0.1:\(StaticWebServer.port.rawValue)/presets?smoke=1")
+        let metadataUserAgent = KesshoMacUserAgent.makeUserAgent(
+            productName: "Kessho Capacitor / Preview",
+            version: "2.4 beta"
+        )
+        let fallbackUserAgent = KesshoMacUserAgent.makeUserAgent(productName: nil, version: nil)
+        let checks: [(String, Bool)] = [
+            ("same-origin navigation", policy.allows(sameOrigin)),
+            ("different host", !policy.allows(URL(string: "http://localhost:\(StaticWebServer.port.rawValue)/"))),
+            ("different port", !policy.allows(URL(string: "http://127.0.0.1:80/"))),
+            ("different scheme", !policy.allows(URL(string: "https://127.0.0.1:\(StaticWebServer.port.rawValue)/"))),
+            ("trusted main frame", policy.allowsMainFrame(
+                isMainFrame: true,
+                scheme: "HTTP",
+                host: "127.0.0.1",
+                port: Int(StaticWebServer.port.rawValue)
+            )),
+            ("untrusted subframe", !policy.allowsMainFrame(
+                isMainFrame: false,
+                scheme: "http",
+                host: "127.0.0.1",
+                port: Int(StaticWebServer.port.rawValue)
+            )),
+            ("external main-frame handoff", policy.shouldOpenExternalNavigation(targetIsMainFrame: true)),
+            ("external new-window handoff", policy.shouldOpenExternalNavigation(targetIsMainFrame: nil)),
+            ("external subframe suppression", !policy.shouldOpenExternalNavigation(targetIsMainFrame: false)),
+            ("sanitized metadata user agent", metadataUserAgent == "Kessho-Capacitor-Preview/2.4-beta"),
+            ("user agent fallback", fallbackUserAgent == "KesshoCapacitorMac/1.0"),
+        ]
+
+        guard checks.allSatisfy({ $0.1 }) else {
+            let failed = checks.filter { !$0.1 }.map { $0.0 }.joined(separator: ", ")
+            fputs("Kessho Capacitor macOS WebView security smoke failed: \(failed)\n", stderr)
+            Darwin.exit(1)
+        }
+        print("Kessho Capacitor macOS WebView security smoke passed")
+        Darwin.exit(0)
+    }
 }
 
 enum KesshoMacNativeDiagnosticsSmoke {
@@ -540,15 +785,32 @@ enum KesshoMacNativeDiagnosticsSmoke {
             let host = KesshoMacAudioSessionHost(observeNotifications: false)
             _ = try host.startNativeProductRendererForDiagnostics()
             try assertStatus(host, key: "nativeProductRendererRunning", equals: true)
-            host.recordAppHiddenForDiagnostics()
+            let outputObserver = MacAudioOutputObserver()
+            outputObserver.onChange = { _ in
+                host.handleOutputDeviceChange()
+            }
+            outputObserver.start()
+            outputObserver.emitCurrentStatusForDiagnostics()
             try assertStatus(host, key: "routeChangeCount", equals: 1)
-            try assertStatus(host, key: "lastRouteChangeReason", equals: "appHidden")
+            try assertStatus(host, key: "lastRouteChangeReason", equals: "outputDeviceChanged")
+            try assertStatus(host, key: "nativeProductRendererRunning", equals: true)
+            let framesBeforeHide = try host.nativeRenderedSampleTime()
+            let application = NSApplication.shared
+            application.setActivationPolicy(.accessory)
+            application.hide(nil)
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+            let framesAfterHide = try host.nativeRenderedSampleTime()
+            guard application.isHidden, framesAfterHide > framesBeforeHide else {
+                throw BridgeError.runtime("native Product Core did not advance while the app was hidden")
+            }
+            try assertStatus(host, key: "routeChangeCount", equals: 1)
+            try assertStatus(host, key: "lastRouteChangeReason", equals: "outputDeviceChanged")
             host.recordSleepBeganForDiagnostics()
             try assertStatus(host, key: "interruptionBeginCount", equals: 1)
             try assertStatus(host, key: "lastInterruptionType", equals: "began")
             host.recordWakeEndedForDiagnostics()
             try assertStatus(host, key: "interruptionEndCount", equals: 1)
-            try assertStatus(host, key: "mediaServicesResetCount", equals: 1)
+            try assertStatus(host, key: "mediaServicesResetCount", equals: 0)
             try assertStatus(host, key: "lastNativeProductRendererError", equals: "none")
             try assertStatus(host, key: "nativeProductRendererRunning", equals: true)
             _ = host.stopNativeProductRendererForDiagnostics()
@@ -558,7 +820,7 @@ enum KesshoMacNativeDiagnosticsSmoke {
             guard peak > 0.00001, rms > 0.000001 else {
                 throw BridgeError.runtime("macOS app native Product Core background probe stayed silent")
             }
-            print("Kessho Capacitor macOS native Product Core background smoke passed peak=\(peak) rms=\(rms)")
+            print("Kessho Capacitor macOS native Product Core background smoke passed peak=\(peak) rms=\(rms) hiddenFrames=\(framesAfterHide - framesBeforeHide)")
             Darwin.exit(0)
         } catch {
             fputs("Kessho Capacitor macOS native Product Core background smoke failed: \(error.localizedDescription)\n", stderr)
@@ -631,6 +893,165 @@ final class KesshoMacAudioSessionHost {
     func stop() {
         isPlaying = false
         _ = stopNativeProductRendererForDiagnostics()
+    }
+
+    func prepareNativeProductRuntime() -> [String: Any] {
+        prepareNativeProductRenderer()
+        return statusPayload()
+    }
+
+    func loadNativeProductSnapshot(_ options: [String: Any]) throws {
+        prepareNativeProductRenderer()
+        guard let encoded = options["snapshotBase64"] as? String,
+              let data = Data(base64Encoded: encoded),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native Product Core snapshot")
+        }
+        try mutateNativeProductEngine(engine) { engine.loadSnapshotData(data) }
+    }
+
+    func enqueueNativeProductEvents(_ options: [String: Any]) throws {
+        prepareNativeProductRenderer()
+        guard let encoded = options["eventsBase64"] as? String,
+              let data = Data(base64Encoded: encoded),
+              let engine = nativeProductEngine,
+              engine.enqueueEventsData(data) else {
+            throw BridgeError.runtime("invalid native Product Core event batch")
+        }
+    }
+
+    func registerNativeProductFileAsset(_ options: [String: Any]) throws {
+        prepareNativeProductRenderer()
+        guard let assetId = Self.uint32(options["assetId"]),
+              let assetPath = options["assetPath"] as? String,
+              let flags = Self.uint32(options["flags"]),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native Product Core file asset")
+        }
+        let root = Bundle.main.resourceURL!.appendingPathComponent("WebApp", isDirectory: true).standardizedFileURL
+        let relativePath = (assetPath.removingPercentEncoding ?? assetPath).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let url = root.appendingPathComponent(relativePath).standardizedFileURL
+        guard url.path.hasPrefix(root.path + "/"), FileManager.default.fileExists(atPath: url.path) else {
+            throw BridgeError.runtime("native Product Core asset path is outside the app bundle")
+        }
+        try mutateNativeProductEngine(engine) {
+            try engine.registerAudioFileAsset(withId: assetId, url: url, flags: flags)
+            return true
+        }
+    }
+
+    func registerNativeProductDecodedAsset(_ options: [String: Any]) throws {
+        prepareNativeProductRenderer()
+        guard let assetId = Self.uint32(options["assetId"]),
+              let sampleRate = options["sampleRate"] as? Double,
+              let flags = Self.uint32(options["flags"]),
+              let encodedChannels = options["channelsBase64"] as? [String],
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native Product Core decoded asset")
+        }
+        let channels = try encodedChannels.map { encoded -> Data in
+            guard let data = Data(base64Encoded: encoded) else {
+                throw BridgeError.runtime("invalid native Product Core decoded asset channel")
+            }
+            return data
+        }
+        try mutateNativeProductEngine(engine) {
+            engine.registerDecodedAsset(withId: assetId, channels: channels, sampleRate: sampleRate, flags: flags)
+        }
+    }
+
+    func unregisterNativeProductAsset(_ options: [String: Any]) throws {
+        guard let assetId = Self.uint32(options["assetId"]),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("native Product Core asset release failed")
+        }
+        try mutateNativeProductEngine(engine) { engine.unregisterAsset(withId: assetId) }
+    }
+
+    func resetNativeProductRuntime() throws {
+        guard let engine = nativeProductEngine else {
+            throw BridgeError.runtime("native Product Core reset failed")
+        }
+        try mutateNativeProductEngine(engine) { engine.resetRenderer() }
+    }
+
+    func startNativeProductRuntime() throws -> [String: Any] {
+        prepareNativeProductRenderer()
+        guard let engine = nativeProductEngine else {
+            throw BridgeError.runtime("native Product Core engine unavailable")
+        }
+        try engine.start()
+        nativeProductRendererRunning = engine.isRunning()
+        nativeProductRendererStartCount += 1
+        isPlaying = true
+        return statusPayload()
+    }
+
+    func stopNativeProductRuntime() -> [String: Any] {
+        nativeProductEngine?.stop()
+        nativeProductRendererRunning = false
+        nativeProductRendererStopCount += 1
+        isPlaying = false
+        return statusPayload()
+    }
+
+    func nativeProductTelemetry() throws -> [String: Any] {
+        guard let data = nativeProductEngine?.copyTelemetryData(),
+              let interaction = nativeProductEngine?.copyInteractionSignalsData(),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("native Product Core telemetry unavailable")
+        }
+        let interactionEvents = engine.copyInteractionEventsData()
+        return [
+            "telemetryBase64": data.base64EncodedString(),
+            "interactionBase64": interaction.base64EncodedString(),
+            "interactionEventsBase64": interactionEvents.base64EncodedString(),
+            "interactionEventOverflowCount": engine.interactionEventOverflowCount()
+        ]
+    }
+
+    func setNativeProductInteractionDemand(_ options: [String: Any]) throws {
+        guard let demandMask = Self.uint32(options["demandMask"]),
+              let sourceMask = Self.uint32(options["sourceMask"]),
+              let engine = nativeProductEngine,
+              engine.setInteractionDemandMask(demandMask, sourceMask: sourceMask) else {
+            throw BridgeError.runtime("native Product Core interaction demand failed")
+        }
+    }
+
+    func nativeRenderedSampleTime() throws -> UInt64 {
+        guard let data = nativeProductEngine?.copyTelemetryData(),
+              data.count == MemoryLayout<KesshoProductTelemetry>.size else {
+            throw BridgeError.runtime("native Product Core telemetry unavailable")
+        }
+        return data.withUnsafeBytes { rawBuffer in
+            rawBuffer.loadUnaligned(as: KesshoProductTelemetry.self).absolute_sample_time
+        }
+    }
+
+    private static func uint32(_ value: Any?) -> UInt32? {
+        guard let number = value as? NSNumber else { return nil }
+        let raw = number.int64Value
+        return raw >= 0 && raw <= UInt32.max ? UInt32(raw) : nil
+    }
+
+    private func mutateNativeProductEngine(
+        _ engine: KesshoAppleProductAudioEngine,
+        operation: () throws -> Bool
+    ) throws {
+        let shouldResume = engine.isRunning()
+        if shouldResume { engine.stop() }
+        do {
+            guard try operation() else {
+                throw BridgeError.runtime("native Product Core mutation failed")
+            }
+            if shouldResume { try engine.start() }
+            nativeProductRendererRunning = engine.isRunning()
+        } catch {
+            if shouldResume { try? engine.start() }
+            nativeProductRendererRunning = engine.isRunning()
+            throw error
+        }
     }
 
     func statusPayload() -> [String: Any] {
@@ -709,7 +1130,7 @@ final class KesshoMacAudioSessionHost {
         }
     }
 
-    private func prepareNativeProductRenderer(sampleRate: Double = 48_000, maxBlockSize: UInt32 = 256) {
+    private func prepareNativeProductRenderer(sampleRate: Double = 48_000, maxBlockSize: UInt32 = 1024) {
         if nativeProductEngine == nil {
             nativeProductEngine = KesshoAppleProductAudioEngine(sampleRate: sampleRate, maxBlockSize: maxBlockSize)
         }
@@ -736,19 +1157,6 @@ final class KesshoMacAudioSessionHost {
                 self?.handleInterruptionEnded()
             }
         })
-        notificationObservers.append(NotificationCenter.default.addObserver(
-            forName: NSApplication.didHideNotification,
-            object: NSApp,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleRouteChange(reason: "appHidden")
-            }
-        })
-    }
-
-    func recordAppHiddenForDiagnostics() {
-        handleRouteChange(reason: "appHidden")
     }
 
     func recordSleepBeganForDiagnostics() {
@@ -759,10 +1167,21 @@ final class KesshoMacAudioSessionHost {
         handleInterruptionEnded()
     }
 
+    func handleOutputDeviceChange() {
+        handleRouteChange(reason: "outputDeviceChanged")
+    }
+
     private func handleRouteChange(reason: String) {
         routeChangeCount += 1
         lastRouteChangeReason = reason
-        nativeProductEngine?.handleRouteChange()
+        do {
+            try nativeProductEngine?.recoverAfterRouteChange()
+            nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
+            lastNativeProductRendererError = "none"
+        } catch {
+            nativeProductRendererRunning = false
+            lastNativeProductRendererError = "\(error)"
+        }
         onAudioSessionEvent?([
             "type": "routeChange",
             "reason": lastRouteChangeReason,
@@ -788,11 +1207,10 @@ final class KesshoMacAudioSessionHost {
         lastInterruptionType = "ended"
         do {
             try nativeProductEngine?.handleInterruptionEndedShouldResume(isPlaying)
-            mediaServicesResetCount += 1
-            try nativeProductEngine?.handleMediaServicesReset()
             nativeProductRendererRunning = nativeProductEngine?.isRunning() ?? false
             lastNativeProductRendererError = "none"
         } catch {
+            nativeProductRendererRunning = false
             lastNativeProductRendererError = "\(error)"
         }
         onAudioSessionEvent?([
@@ -1046,16 +1464,28 @@ final class MacAudioOutputObserver {
     var onChange: (([String: Any]) -> Void)?
 
     private lazy var defaultDeviceListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-        self?.bindDefaultDevice()
-        self?.emitIfChanged()
+        Task { @MainActor in
+            self?.bindDefaultDevice()
+            self?.emitIfChanged()
+        }
+    }
+    private lazy var devicesListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        Task { @MainActor in
+            self?.bindDefaultDevice()
+            self?.emitIfChanged()
+        }
     }
     private lazy var deviceListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-        self?.emitIfChanged()
+        Task { @MainActor in
+            self?.emitIfChanged()
+        }
     }
 
     func start() {
         var address = Self.defaultDeviceAddress
         AudioObjectAddPropertyListenerBlock(systemObject, &address, .main, defaultDeviceListener)
+        address = Self.devicesAddress
+        AudioObjectAddPropertyListenerBlock(systemObject, &address, .main, devicesListener)
         bindDefaultDevice()
     }
 
@@ -1087,8 +1517,17 @@ final class MacAudioOutputObserver {
         onChange?(payload)
     }
 
+    func emitCurrentStatusForDiagnostics() {
+        emitIfChanged()
+    }
+
     private static let defaultDeviceAddress = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    private static let devicesAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDevices,
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
@@ -1107,7 +1546,11 @@ final class MacAudioOutputObserver {
 }
 
 final class StaticWebServer {
+    static let port = NWEndpoint.Port(rawValue: 49_831)!
+    static let originURL = URL(string: "http://127.0.0.1:\(port.rawValue)/")!
+
     let rootURL: URL
+    let originPolicy: KesshoWebOriginPolicy
 
     private let queue = DispatchQueue(label: "app.kessho.capacitor.mac.webserver")
     private var listener: NWListener?
@@ -1116,6 +1559,7 @@ final class StaticWebServer {
 
     init(rootURL: URL) {
         self.rootURL = rootURL
+        self.originPolicy = KesshoWebOriginPolicy(origin: Self.originURL)
     }
 
     func start(completion: @escaping (Result<URL, Error>) -> Void) throws {
@@ -1132,26 +1576,30 @@ final class StaticWebServer {
         }
 
         let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
         parameters.requiredInterfaceType = .loopback
 
-        let listener = try NWListener(using: parameters, on: .any)
+        let listener: NWListener
+        do {
+            listener = try NWListener(using: parameters, on: Self.port)
+        } catch {
+            throw StaticWebServerError.bindFailed(Self.port.rawValue, error.localizedDescription)
+        }
         self.listener = listener
 
         listener.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
             case .ready:
-                guard let port = listener.port else { return }
-                let url = URL(string: "http://127.0.0.1:\(port.rawValue)/")!
-                self.readyURL = url
+                guard let port = listener.port, port == Self.port else {
+                    self.fail(StaticWebServerError.bindFailed(Self.port.rawValue, "The listener did not bind the requested stable port."))
+                    return
+                }
+                self.readyURL = Self.originURL
                 let pending = self.completions
                 self.completions.removeAll()
-                pending.forEach { $0(.success(url)) }
+                pending.forEach { $0(.success(Self.originURL)) }
             case .failed(let error):
-                let pending = self.completions
-                self.completions.removeAll()
-                pending.forEach { $0(.failure(error)) }
+                self.fail(StaticWebServerError.bindFailed(Self.port.rawValue, error.localizedDescription))
             default:
                 break
             }
@@ -1162,6 +1610,14 @@ final class StaticWebServer {
         }
 
         listener.start(queue: queue)
+    }
+
+    private func fail(_ error: Error) {
+        listener?.cancel()
+        listener = nil
+        let pending = completions
+        completions.removeAll()
+        pending.forEach { $0(.failure(error)) }
     }
 
     private func handle(_ connection: NWConnection) {
@@ -1311,11 +1767,14 @@ final class StaticWebServer {
 
 enum StaticWebServerError: LocalizedError {
     case missingWebBundle(String)
+    case bindFailed(UInt16, String)
 
     var errorDescription: String? {
         switch self {
         case .missingWebBundle(let path):
             return "Missing built web bundle at \(path). Run npm run cap:mac:build."
+        case .bindFailed(let port, let reason):
+            return "Could not bind the Kessho macOS loopback web app to stable port \(port). \(reason)"
         }
     }
 }

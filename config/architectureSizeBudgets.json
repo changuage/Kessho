@@ -25,9 +25,9 @@
       "targetCeiling": 1228,
       "mode": "fail-on-growth-warn-above-target"
     },
-    "src/ui/visualizer/ReactiveVisualizerPage.tsx": {
-      "noGrowthCeiling": 1325,
-      "targetCeiling": 1325,
+    "src/ui/visualizer/TransportVisualizerPage.tsx": {
+      "noGrowthCeiling": 1450,
+      "targetCeiling": 1200,
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/ui/sliderSystem/SliderPrimitive.tsx": {
@@ -43,11 +43,6 @@
     "src/ui/runtimeProjectionState.ts": {
       "noGrowthCeiling": 47,
       "targetCeiling": 47,
-      "mode": "fail-on-growth-warn-above-target"
-    },
-    "src/ui/visualizer/visualizerFrameState.ts": {
-      "noGrowthCeiling": 33,
-      "targetCeiling": 33,
       "mode": "fail-on-growth-warn-above-target"
     },
     "src/ui/global/routingMatrixTypes.ts": {

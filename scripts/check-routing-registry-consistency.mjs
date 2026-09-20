@@ -53,8 +53,8 @@ function assert(condition, message) {
 }
 
 const registry = read('src/ui/routing/routingSourceRegistry.ts');
-const fxRoutingGraph = read('src/ui/routing/fxRoutingGraph.ts');
-const routingMatrix = read('src/ui/global/RoutingMatrix.tsx');
+const fxRoutingGraph = read('src/audio/fxRoutingGraph.ts');
+const routingMatrix = read('src/ui/global/routingMatrixModel.ts');
 const globalPage = read('src/ui/global/GlobalPage.tsx');
 const engineGroups = read('src/ui/snowflakeV2/engineGroups.ts');
 const snowflakeUi = read('src/ui/SnowflakeUI.tsx');
@@ -65,7 +65,7 @@ const dawOutputPanel = read('src/ui/routing/DawOutputPanel.tsx');
 const helpCatalog = read('src/ui/sliderHelpCatalog.ts');
 
 const registryIds = idsFromBlock(registry, 'export const ROUTING_SOURCE_REGISTRY = [', '] as const satisfies readonly RoutingSourceDef[]');
-const matrixIds = idsFromBlock(routingMatrix, 'const ROWS: MatrixRow[] = [', 'function scaleRangeTowardZero');
+const matrixIds = idsFromBlock(routingMatrix, 'export const ROWS: MatrixRow[] = [', 'export function fxMatrixRow');
 const dawSourceIds = sourceIdsFromBlock(dawOutputRouting, 'export const DAW_OUTPUT_SOURCE_DEFS = [', '] as const');
 
 assert(sameArray(registryIds, EXPECTED_ROUTING_ROW_IDS), `Routing registry row ids drifted: ${registryIds.join(',')}`);
@@ -132,7 +132,7 @@ assert(
   'Snowflake UI must include Degrade send runtime dependencies and star control.',
 );
 assert(
-  helpCatalog.includes('Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, and Dynamics') &&
+  helpCatalog.includes('Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, Saturator, and Dynamics') &&
     helpCatalog.includes('routingMatrixTextureColumn'),
   'Routing help text must describe the registry columns with Dynamics terminology.',
 );

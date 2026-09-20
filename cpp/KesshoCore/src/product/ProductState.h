@@ -2,6 +2,7 @@
 #include "ProductBuffers.h"
 #include "ProductGraphState.h"
 #include "ProductFxState.h"
+#include "ProductInteractionRuntimeState.h"
 #include "ProductMidiRuntimeState.h"
 #include "ProductModulationState.h"
 #include "ProductModuleRuntimeState.h"
@@ -20,7 +21,7 @@
 #include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "kessho_drum.h"
 using namespace kessho::product::internal;
-struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
+struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, ProductInteractionRuntimeState {
   explicit KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags);
   double sample_rate = 48000.0;
   uint32_t max_block_size = 128;
@@ -182,7 +183,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   uint32_t rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   uint32_t rng_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   uint32_t fx_configuration_batch_depth = 0u;
-  bool fx_configuration_pending = false;
+  bool fx_configuration_pending = false, reverb_configuration_pending = false,
+       spectral_freeze_configuration_pending = false;
 #if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
   uint32_t debug_fx_configuration_count = 0u;
   uint32_t debug_reverb_configuration_count = 0u;
@@ -223,6 +225,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void advanceGranularReturnGains(uint64_t absolute_frame);
   void setMasterLimiterCeilingDb(float value);
   void resetMasterTelemetryState();
+#include "ProductInteractionMethods.inc"
   void resetSidechainRuntime();
   float sidechainTargetAmount(uint32_t target) const;
   float sidechainBusAmount() const;
@@ -620,7 +623,15 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void renderDynamics(float* out_l, float* out_r, uint32_t frames);
   void applyMaster(float* out_l, float* out_r, uint32_t frames);
   void clearAudioOutput(float* out_l, float* out_r, uint32_t frames);
-  bool captureStems() const { return stems_enabled || graph_taps_enabled; }
+  bool captureStems() const {
+    constexpr uint32_t analysis_mask =
+        KESSHO_PRODUCT_INTERACTION_DEMAND_ENVELOPE |
+        KESSHO_PRODUCT_INTERACTION_DEMAND_PEAK |
+        KESSHO_PRODUCT_INTERACTION_DEMAND_RMS |
+        KESSHO_PRODUCT_INTERACTION_DEMAND_ONSET;
+    return stems_enabled || graph_taps_enabled ||
+        ((interaction_demand_mask & analysis_mask) != 0u && interaction_source_mask != 0u);
+  }
   void clearStemOutput(uint32_t frames);
   void clearBusOutput(uint32_t frames);
   void clearGraphTapOutput(uint32_t frames);

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { useAnimationVisibility } from '../hooks/useAnimationVisibility';
+import { getCappedCanvasDpr, useAnimationVisibility } from '../hooks/useAnimationVisibility';
 import type { OrbitNoteConfig, OrbitRuntimeVisualState, OrbitSequencerConfig, OrbitSplineConfig } from './orbitSequencerTypes';
 import {
   ORBIT_RADIUS_SCALE,
@@ -598,7 +598,7 @@ export function OrbitSequencerCanvas({
     if (!canvas) return;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = getCappedCanvasDpr();
       const width = Math.max(1, Math.floor(entry.contentRect.width));
       const height = Math.max(1, Math.floor(entry.contentRect.height));
       canvas.width = Math.floor(width * dpr);
@@ -626,6 +626,8 @@ export function OrbitSequencerCanvas({
     <div className="orbit-canvas-wrap">
       <canvas
         ref={canvasRef}
+        role="img"
+        aria-label={`Orbit sequencer visualization with ${config.notes.length} nodes. Use the node list and inspector controls to select and edit nodes; pointer or touch users can also drag nodes and spline handles on the visualization.`}
         onPointerDown={(event) => {
           const point = canvasPointer(event);
           if (!point) return;

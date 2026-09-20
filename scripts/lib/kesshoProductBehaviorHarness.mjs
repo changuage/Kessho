@@ -1663,6 +1663,15 @@ export function loadRuntimeAdapterHarness() {
   vm.runInNewContext(`${generatedParamsJs}
 globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsContext, { filename: generatedParamsPath });
 
+  const numericExport = (path, name) => {
+    const source = readProjectFile(path);
+    const match = new RegExp(`export const ${name}\\s*=\\s*(0x[0-9a-fA-F]+|[0-9]+)`).exec(source);
+    assert(match, `missing numeric export ${name} in ${path}`);
+    return Number(match[1]);
+  };
+  const generatedSchemaPath = 'src/audio/generated/kesshoProductSchema.ts';
+  const coreProductEventsPath = 'src/audio/coreProductEvents.ts';
+
   const context = {
     CORE_PRODUCT_SOURCE_IDS: {
       pad1: 1,
@@ -1688,6 +1697,13 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
     ],
 	    KESSHO_PRODUCT_LEAD_PARAM_COUNT: 112,
 	    KESSHO_PRODUCT_PAD_PARAM_COUNT: 58,
+    SOUNDSCAPE_TEXTURE_PARAM_START: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_START'),
+    SOUNDSCAPE_TEXTURE_PARAM_STRIDE: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_STRIDE'),
+    SOUNDSCAPE_TEXTURE_SLOT_COUNT: numericExport(generatedSchemaPath, 'KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_SLOT_COUNT'),
+    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET'),
+    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET'),
+    CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE'),
+    CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE: numericExport(coreProductEventsPath, 'CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE'),
     KESSHO_PRODUCT_PARAM_IDS: createParamIds(),
     KESSHO_PRODUCT_PARAMS: generatedParamsContext.__generatedProductParams,
     HARMONY_QUALITY_IDS: {

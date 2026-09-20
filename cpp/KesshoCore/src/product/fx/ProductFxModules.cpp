@@ -1,20 +1,5 @@
 #include "../KesshoProductEngineInternal.h"
 
-void KesshoProductEngine::beginFxConfigurationBatch() {
-  if (fx_configuration_batch_depth == 0u) {
-    fx_configuration_pending = false;
-  }
-  ++fx_configuration_batch_depth;
-}
-
-void KesshoProductEngine::endFxConfigurationBatch() {
-  if (fx_configuration_batch_depth == 0u) return;
-  --fx_configuration_batch_depth;
-  if (fx_configuration_batch_depth != 0u || !fx_configuration_pending) return;
-  fx_configuration_pending = false;
-  configureFxModules();
-}
-
 void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
   configureSpectralFreezeModule();
   if (!std::isfinite(previous_bpm) || !std::isfinite(transport.bpm) ||
@@ -47,8 +32,8 @@ void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
 }
 
 void KesshoProductEngine::configureSpectralFreezeModule() {
-  if (fx_configuration_batch_depth != 0u) {
-    fx_configuration_pending = true;
+  if (fx_configuration_batch_depth > 0u) {
+    spectral_freeze_configuration_pending = true;
     return;
   }
   if (!spectral_freeze_module) return;
@@ -72,7 +57,7 @@ void KesshoProductEngine::configureSpectralFreezeModule() {
 }
 
 void KesshoProductEngine::configureFxModules() {
-  if (fx_configuration_batch_depth != 0u) {
+  if (fx_configuration_batch_depth > 0u) {
     fx_configuration_pending = true;
     return;
   }

@@ -1,4 +1,8 @@
 import type { VisualizerPulseKey } from './visualizerSignals';
+import {
+  readProductInteractionVisualizerSignal,
+  resetProductInteractionSignalSnapshot,
+} from '../../audio/productInteractionSignalStore';
 
 export type VisualizerTelemetrySignal = 'level' | 'transient' | 'density' | 'phase';
 
@@ -85,21 +89,23 @@ export function readVisualizerTelemetrySignal(
   signal: VisualizerTelemetrySignal,
   at = nowMs(),
 ): number | null {
+  const interactionValue = readProductInteractionVisualizerSignal(channel, signal, at);
   const index = offset(channel, signal);
-  if (!valid[index]) return null;
+  if (!valid[index]) return interactionValue;
   const elapsed = Math.max(0, at - (updatedAt[index] ?? 0));
   const value = values[index] ?? 0;
   if (signal === 'phase') return value;
-  if (signal === 'transient') return clamp01(value * Math.exp(-elapsed / 700));
+  if (signal === 'transient') return Math.max(interactionValue ?? 0, clamp01(value * Math.exp(-elapsed / 700)));
   const staleMs = signal === 'level' ? 220 : 500;
-  if (elapsed <= staleMs) return value;
+  if (elapsed <= staleMs) return Math.max(interactionValue ?? 0, value);
   const releaseMs = signal === 'level' ? 900 : 1400;
   const decayed = value * Math.exp(-(elapsed - staleMs) / releaseMs);
-  return decayed < 0.001 ? null : clamp01(decayed);
+  return decayed < 0.001 ? interactionValue : Math.max(interactionValue ?? 0, clamp01(decayed));
 }
 
 export function resetVisualizerTelemetry(): void {
   values.fill(0);
   updatedAt.fill(0);
   valid.fill(0);
+  resetProductInteractionSignalSnapshot();
 }

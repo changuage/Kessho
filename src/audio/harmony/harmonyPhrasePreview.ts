@@ -49,7 +49,7 @@ function harmonyNotes(
 ): SimpleSequencerVizNote[] {
   const sourceValue = state.synthChordGeneratorSource ?? 'sample1';
   const voiceCount = clamp(Math.round(state.synthChordGeneratorVoiceCount ?? 6), 1, 8);
-  const octaveShift = clamp(Math.round(state.synthOctave ?? 0), -2, 2) * 12;
+  const octaveShift = clamp(Math.round(state.synthOctave ?? 0), -4, 4) * 12;
   const spreadSeconds = clamp(state.waveSpread ?? 0.125, 0, 1) * spreadSpanSeconds;
   const renderedNotes = notes.length === 0
     ? []

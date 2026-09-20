@@ -138,8 +138,8 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   const previousVisibilityRef = useRef({ documentVisible, runtimeProjectionActive: false });
   const pendingTelemetryRefreshRef = useRef<(() => void) | null>(null);
   const morphProjection = useMemo(() => {
-    if (!runtimeProjectionActive || !telemetry || !preparedRef.current) return null;
     const prepared = preparedRef.current;
+    if (!runtimeProjectionActive || !telemetry || !prepared) return null;
     return projectBackgroundJourneyMorph(telemetry, prepared.playableNodes, prepared.presets);
   }, [runtimeProjectionActive, telemetry]);
 
@@ -149,8 +149,10 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   }, []);
 
   const requestFreshTelemetry = useCallback(() => {
-    cancelPendingTelemetryRefresh();
-    pendingTelemetryRefreshRef.current = requestAndReadBackgroundJourneyTelemetry(
+    if (pendingTelemetryRefreshRef.current) return;
+    let cancelRequest: () => void = () => undefined;
+    let requestSettled = false;
+    cancelRequest = requestAndReadBackgroundJourneyTelemetry(
       () => productEngine.requestTelemetryOnce(),
       () => productEngine.getTelemetry(),
       (callback) => {
@@ -162,11 +164,18 @@ export function useBackgroundJourneyRuntimeSurface(options: {
         return () => window.cancelAnimationFrame(frame);
       },
       (freshTelemetry) => {
-        pendingTelemetryRefreshRef.current = null;
         setTelemetry(freshTelemetry);
       },
+      8,
+      () => {
+        requestSettled = true;
+        if (pendingTelemetryRefreshRef.current === cancelRequest) {
+          pendingTelemetryRefreshRef.current = null;
+        }
+      },
     );
-  }, [cancelPendingTelemetryRefresh]);
+    if (!requestSettled) pendingTelemetryRefreshRef.current = cancelRequest;
+  }, []);
 
   useEffect(() => {
     if (appliedConfigFingerprintRef.current === configFingerprint) return;

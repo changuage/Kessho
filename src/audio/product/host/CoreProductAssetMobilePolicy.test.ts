@@ -5,9 +5,11 @@ import type { AssetTransferOwnership, CoreProductRuntime } from '../../coreProdu
 import { CoreProductAssetNotReadyError, CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
 
 const ownerships: AssetTransferOwnership[] = [];
+const registeredAssets: DecodedCoreProductAsset[] = [];
 const runtime = {
   audioContext: {} as AudioContext,
-  registerAsset: async (_asset: DecodedCoreProductAsset, ownership: AssetTransferOwnership) => {
+  registerAsset: async (asset: DecodedCoreProductAsset, ownership: AssetTransferOwnership) => {
+    registeredAssets.push(asset);
     ownerships.push(ownership);
   },
   requestAssetRelease: () => {},
@@ -43,6 +45,27 @@ assert.ok(decodeCount > 1, 'mobile decode serialization fixture did not request 
 assert.equal(maxActiveDecodes, 1, 'mobile asset decodes were not serialized');
 assert.ok(ownerships.every((ownership) => ownership === 'transfer'), 'mobile decoded assets were cloned instead of transferred');
 assert.ok(registrar.hostDecodedBytes() <= 16 * 1024 * 1024, 'mobile host cache exceeded its budget');
+
+let nativeDecodeCount = 0;
+const nativeDecode: typeof decodeCoreProductAsset = async () => {
+  nativeDecodeCount += 1;
+  throw new Error('native bundled assets must not use Web Audio decode');
+};
+const nativeRegistrar = new CoreProductAssetRegistrar(
+  runtime,
+  () => state,
+  false,
+  nativeDecode,
+  () => true,
+  false,
+  true,
+);
+await nativeRegistrar.ensureSampleSlotAssetForNote('sample1', 60, 0.8);
+const nativeAsset = registeredAssets[registeredAssets.length - 1];
+assert.equal(nativeDecodeCount, 0, 'macOS bundled asset registration decoded through Web Audio');
+assert.match(nativeAsset?.sourceUrl ?? '', /samples\//, 'native registration did not retain the bundled source URL');
+assert.equal(nativeAsset?.channels.length, 0, 'native source registration copied decoded channel data');
+assert.equal(nativeRegistrar.hostDecodedBytes(), 0, 'native source registration populated the host decode cache');
 
 let hiddenDecodeCount = 0;
 const hiddenDecode: typeof decodeCoreProductAsset = async (...args) => {

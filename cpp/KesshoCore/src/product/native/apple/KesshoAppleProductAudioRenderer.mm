@@ -224,9 +224,26 @@ OSStatus renderProductCoreToAudioBufferList(
   }
   float* left = static_cast<float*>(output_data->mBuffers[0].mData);
   float* right = static_cast<float*>(output_data->mBuffers[1].mData);
+  if (left == nullptr || right == nullptr || frame_count == 0u ||
+      frame_count > UINT32_MAX || runtime->maxBlockSize() == 0u) {
+    return kAudio_ParamError;
+  }
+  uint32_t rendered_frames = 0u;
   const uint32_t frames = static_cast<uint32_t>(frame_count);
-  const int32_t status = runtime->renderCallback(left, right, frames);
-  return status == KESSHO_PRODUCT_OK ? noErr : kAudio_ParamError;
+  while (rendered_frames < frames) {
+    const uint32_t block_frames = std::min(
+        frames - rendered_frames,
+        runtime->maxBlockSize());
+    const int32_t status = runtime->renderCallback(
+        left + rendered_frames,
+        right + rendered_frames,
+        block_frames);
+    if (status != KESSHO_PRODUCT_OK) {
+      return kAudio_ParamError;
+    }
+    rendered_frames += block_frames;
+  }
+  return noErr;
 }
 
 } // namespace
@@ -291,6 +308,30 @@ OSStatus renderProductCoreToAudioBufferList(
     return NO;
   }
   return _runtime->copyTelemetry(*telemetry) == KESSHO_PRODUCT_OK;
+}
+
+- (BOOL)setInteractionDemandMask:(uint32_t)demandMask sourceMask:(uint32_t)sourceMask {
+  if (_runtime == nullptr) {
+    return NO;
+  }
+  return _runtime->setInteractionDemand(demandMask, sourceMask) == KESSHO_PRODUCT_OK;
+}
+
+- (BOOL)copyInteractionSignals:(KesshoProductInteractionSignalSnapshot*)signals {
+  if (_runtime == nullptr || signals == nullptr) {
+    return NO;
+  }
+  return _runtime->copyInteractionSignals(*signals) == KESSHO_PRODUCT_OK;
+}
+
+- (uint32_t)drainInteractionEvents:(KesshoProductInteractionEvent*)events
+                     maxEventCount:(uint32_t)maxEventCount
+                     overflowCount:(uint32_t*)overflowCount {
+  if (_runtime == nullptr) {
+    if (overflowCount != nullptr) *overflowCount = 0u;
+    return 0u;
+  }
+  return _runtime->drainInteractionEvents(events, maxEventCount, overflowCount);
 }
 
 - (BOOL)registerDecodedAssetWithId:(uint32_t)assetId

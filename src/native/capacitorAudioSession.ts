@@ -110,6 +110,22 @@ type KesshoAudioSessionPlugin = {
   startNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStartStatus>;
   stopNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStopStatus>;
   probeNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererProbeStatus>;
+  prepareNativeProductRuntime?: () => Promise<KesshoAudioSessionStatus>;
+  loadNativeProductSnapshot?: (options: { snapshotBase64: string }) => Promise<KesshoAudioSessionStatus>;
+  enqueueNativeProductEvents?: (options: { eventsBase64: string }) => Promise<KesshoAudioSessionStatus>;
+  registerNativeProductFileAsset?: (options: { assetId: number; assetPath: string; flags: number }) => Promise<KesshoAudioSessionStatus>;
+  registerNativeProductDecodedAsset?: (options: { assetId: number; sampleRate: number; flags: number; channelsBase64: string[] }) => Promise<KesshoAudioSessionStatus>;
+  unregisterNativeProductAsset?: (options: { assetId: number }) => Promise<KesshoAudioSessionStatus>;
+  resetNativeProductRuntime?: () => Promise<KesshoAudioSessionStatus>;
+  startNativeProductRuntime?: () => Promise<KesshoAudioSessionStatus>;
+  stopNativeProductRuntime?: () => Promise<KesshoAudioSessionStatus>;
+  getNativeProductTelemetry?: () => Promise<{
+    telemetryBase64: string;
+    interactionBase64: string;
+    interactionEventsBase64: string;
+    interactionEventOverflowCount: number;
+  }>;
+  setNativeProductInteractionDemand?: (options: { demandMask: number; sourceMask: number }) => Promise<KesshoAudioSessionStatus>;
   getIOSAudioSessionTelemetry?: () => Promise<KesshoIOSAudioSessionTelemetry>;
   setNowPlaying: (options: KesshoNowPlayingPayload) => Promise<void>;
   setPlaybackState: (options: { isPlaying: boolean }) => Promise<void>;
@@ -124,6 +140,21 @@ type KesshoAudioSessionPlugin = {
     ): Promise<CapacitorListenerHandle>;
   };
 };
+
+export type KesshoNativeProductRuntimePlugin = Required<Pick<
+  KesshoAudioSessionPlugin,
+  | 'prepareNativeProductRuntime'
+  | 'loadNativeProductSnapshot'
+  | 'enqueueNativeProductEvents'
+  | 'registerNativeProductFileAsset'
+  | 'registerNativeProductDecodedAsset'
+  | 'unregisterNativeProductAsset'
+  | 'resetNativeProductRuntime'
+  | 'startNativeProductRuntime'
+  | 'stopNativeProductRuntime'
+  | 'getNativeProductTelemetry'
+  | 'setNativeProductInteractionDemand'
+>>;
 
 type CapacitorRuntime = {
   isNativePlatform?: () => boolean;
@@ -288,6 +319,18 @@ export function getCapacitorAudioSessionPlugin(): KesshoAudioSessionPlugin | nul
   const plugin = capacitor?.Plugins?.[PLUGIN_NAME];
   if (!plugin) return null;
   return plugin as KesshoAudioSessionPlugin;
+}
+
+export function getMacNativeProductRuntimePlugin(): KesshoNativeProductRuntimePlugin | null {
+  if (typeof window === 'undefined' || window.Capacitor?.getPlatform?.() !== 'macos') return null;
+  const plugin = getCapacitorAudioSessionPlugin();
+  if (!plugin?.prepareNativeProductRuntime || !plugin.loadNativeProductSnapshot ||
+      !plugin.enqueueNativeProductEvents || !plugin.registerNativeProductFileAsset ||
+      !plugin.registerNativeProductDecodedAsset || !plugin.unregisterNativeProductAsset ||
+      !plugin.resetNativeProductRuntime || !plugin.startNativeProductRuntime ||
+      !plugin.stopNativeProductRuntime || !plugin.getNativeProductTelemetry ||
+      !plugin.setNativeProductInteractionDemand) return null;
+  return plugin as KesshoNativeProductRuntimePlugin;
 }
 
 export function isCapacitorAudioSessionAvailable(): boolean {

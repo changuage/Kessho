@@ -61,7 +61,7 @@ export function coreProductArrangementSnapshotFromState(
     leadRandomSourceId: leadRandomSourceId(randomSource),
     leadPhraseSeconds,
     leadDensity: clamp(numberFromState(arrangementState, 'lead1Density', 0.5), 0.1, 12),
-    leadOctave: clamp(Math.round(numberFromState(arrangementState, 'lead1Octave', 1)), -1, 2),
+    leadOctave: clamp(Math.round(numberFromState(arrangementState, 'lead1Octave', 1)), -4, 4),
     leadOctaveRange: clamp(Math.round(numberFromState(arrangementState, 'lead1OctaveRange', 2)), 1, 4),
     leadHoldSeconds: coreProductSynthSequencerHoldSecondsFromState(
       arrangementState,
@@ -72,7 +72,7 @@ export function coreProductArrangementSnapshotFromState(
     leadVelocityMax: 0.9,
     rngState: arrangementRngState(arrangementState),
     waveSpread: clamp(numberFromState(arrangementState, 'waveSpread', 0.125), 0, 1),
-    synthOctave: clamp(Math.round(numberFromState(arrangementState, 'synthOctave', 0)), -2, 2),
+    synthOctave: clamp(Math.round(numberFromState(arrangementState, 'synthOctave', 0)), -4, 4),
     leadChordBias: leadTension < 0 ? 0.9 : 0.9 - leadTension * 0.4,
     synthVoiceMask: clamp(Math.round(numberFromState(arrangementState, 'synthVoiceMask', 63)), 0, 255) >>> 0,
     pad2VoiceAssign: clamp(Math.round(numberFromState(arrangementState, 'pad2VoiceAssign', 0)), 0, 255) >>> 0,

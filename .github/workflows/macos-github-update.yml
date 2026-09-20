@@ -1,0 +1,84 @@
+name: macOS GitHub update
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Numeric app version, for example 1.2.3"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: macos-14
+    env:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: brew install emscripten
+
+      - name: Resolve release version
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          version="${DISPATCH_VERSION:-${GITHUB_REF_NAME#v}}"
+          if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "Version must contain one to three numeric components: $version" >&2
+            exit 1
+          fi
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "Repository secret SPARKLE_PRIVATE_KEY is required" >&2
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+
+      - name: Build universal update archive
+        run: npm run cap:mac:build -- --arch universal --archive --version "$APP_VERSION" --build-number "$GITHUB_RUN_NUMBER"
+
+      - name: Sign Sparkle appcast
+        shell: bash
+        run: |
+          mkdir -p build/macos/update
+          archive="$(find build/macos -maxdepth 1 -type f -name "*-$APP_VERSION-universal.zip" -print -quit)"
+          tool="$(find build/swiftpm -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
+          if [ -z "$archive" ] || [ -z "$tool" ]; then
+            echo "Update archive or Sparkle appcast tool is missing" >&2
+            exit 1
+          fi
+          cp "$archive" build/macos/update/
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$tool" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/changuage/Kessho/releases/download/$RELEASE_TAG/" \
+            --link "https://github.com/changuage/Kessho/releases/tag/$RELEASE_TAG" \
+            build/macos/update
+          grep -q 'sparkle:edSignature=' build/macos/update/appcast.xml
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" build/macos/update/*.zip build/macos/update/appcast.xml --clobber
+          else
+            gh release create "$RELEASE_TAG" build/macos/update/*.zip build/macos/update/appcast.xml \
+              --title "Kessho $APP_VERSION" --generate-notes
+          fi
+          if gh release view macos-updates >/dev/null 2>&1; then
+            gh release upload macos-updates build/macos/update/appcast.xml --clobber
+          else
+            gh release create macos-updates build/macos/update/appcast.xml \
+              --title "macOS automatic update feed" --notes "Stable Sparkle appcast asset." --prerelease
+          fi

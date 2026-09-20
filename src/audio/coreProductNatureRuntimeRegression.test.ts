@@ -24,6 +24,9 @@ import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE } from './coreProductSoundscapesSnapshot';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
 import type { SliderState } from '../ui/state';
+import { DEFAULT_STATE } from '../ui/state';
+import { createCoreProductSnapshot } from './coreProductSnapshot';
+import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 
 type ExpectedRangeTarget = {
   targetId: number;
@@ -45,7 +48,7 @@ function assertResolvedTargets(key: string, expected: ExpectedRangeTarget[]): vo
   for (const target of targets) {
     const event = createCoreProductModulationRangeEvent(
       target,
-      { min: 0.25, max: 0.75 },
+      { min: 0, max: 1 },
       CORE_PRODUCT_MODULATION_RANGE_MODE.randomWalk,
       0.5,
       {
@@ -126,6 +129,55 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     { state: { [key]: stateValue } as Partial<SliderState> },
   );
   assert.equal(event.value4, expectedValue, `${String(key)} must map ${String(stateValue)} to ${expectedValue}`);
+}
+
+{
+  const disabledState: SliderState = {
+    ...DEFAULT_STATE,
+    natureMasterEnabled: false,
+    nature1Enabled: false,
+    nature1SampleId: 'birds-alps',
+    nature1Level: 0.65,
+  };
+  const enabledState: SliderState = {
+    ...disabledState,
+    natureMasterEnabled: true,
+    nature1Enabled: true,
+  };
+  const enabledDiff = buildCoreProductSnapshotDiff(
+    createCoreProductSnapshot({ ...disabledState }),
+    createCoreProductSnapshot({ ...enabledState }),
+  );
+  assert.equal(enabledDiff.applied, true, 'enabling Nature while running must use live parameter events');
+  if (enabledDiff.applied) {
+    assert(enabledDiff.events.some((event) => (
+      event.targetId === natureSlotParamTarget(0, 6) &&
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel &&
+      event.value === 1
+    )), 'live Nature enable must target the canonical texture gate');
+    assert(!enabledDiff.events.some((event) => (
+      (event.targetId === CORE_PRODUCT_SOURCE_IDS.pad1 || event.targetId === CORE_PRODUCT_SOURCE_IDS.pad2) &&
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel
+    )), 'Nature enable must not resend synth source levels');
+  }
+
+  const levelState = { ...enabledState, nature1Level: 0.2 };
+  const levelDiff = buildCoreProductSnapshotDiff(
+    createCoreProductSnapshot({ ...enabledState }),
+    createCoreProductSnapshot({ ...levelState }),
+  );
+  assert.equal(levelDiff.applied, true, 'Nature level edits must not reload the whole engine');
+  if (levelDiff.applied) {
+    assert(levelDiff.events.some((event) => (
+      event.targetId === natureSlotParamTarget(0, 7) &&
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel &&
+      Math.abs((event.value ?? 0) - 0.2) < 1e-6
+    )), 'Nature level edits must target only the canonical slot level');
+    assert(!levelDiff.events.some((event) => (
+      (event.targetId === CORE_PRODUCT_SOURCE_IDS.pad1 || event.targetId === CORE_PRODUCT_SOURCE_IDS.pad2) &&
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel
+    )), 'Nature level edits must not touch synth source levels');
+  }
 }
 
 {

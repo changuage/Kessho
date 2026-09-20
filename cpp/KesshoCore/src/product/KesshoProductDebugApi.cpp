@@ -1,6 +1,5 @@
 #include "KesshoProductEngineInternal.h"
 extern "C" {
-
 int32_t kessho_product_debug_render_events(
     KesshoProductEngine* engine,
     KesshoSequencerEvent* out_events,
@@ -14,12 +13,14 @@ int32_t kessho_product_debug_render_events(
   uint32_t generated_count = 0u;
   uint32_t cursor = 0u;
   while (cursor < frames) {
+    engine->beginFxConfigurationBatch();
     while (
         control_index < engine->control_event_count &&
         engine->control_events[control_index].event.sample_offset == cursor) {
       engine->applyControlEvent(engine->control_events[control_index].event);
       ++control_index;
     }
+    engine->endFxConfigurationBatch();
     engine->applyPendingTransportTransition();
     engine->applyPendingSequencerAudibilityTransitions();
     engine->advanceHarmonyClock();

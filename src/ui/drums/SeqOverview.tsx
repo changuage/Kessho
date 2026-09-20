@@ -114,15 +114,18 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 {DRUM_VOICE_ORDER.map((voice) => {
                   const on = seq.sources[voice as DrumVoiceType];
                   return (
-                    <span
+                    <button
+                      type="button"
                       key={voice}
                       className={`seq-ov-src-toggle${on ? ' on' : ''}`}
                       data-voice={voice}
                       style={{ '--vc': DRUM_VOICES[voice].color } as React.CSSProperties}
+                      aria-label={`${DRUM_VOICES[voice].label} source`}
+                      aria-pressed={on}
                       onClick={(e) => { e.stopPropagation(); onToggleSource?.(row, voice, !on); }}
                     >
                       {DRUM_VOICES[voice].icon}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
@@ -141,7 +144,7 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                 const visibleCells = sequencerGridCellCount(seq.trigger.steps);
                 const columnCount = sequencerGridColumnCount(seq.trigger.steps);
                 return (
-            <div className="seq-step-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
+            <div className="seq-step-grid" style={{ '--seq-grid-base-columns': columnCount } as React.CSSProperties}>
               {new Array(visibleCells).fill(0).map((_, step) => {
                 const inRange = step < seq.trigger.steps;
                 const hit = inRange ? (seq.trigger.pattern[step] ?? false) : false;
@@ -156,34 +159,57 @@ const SeqOverview: React.FC<SeqOverviewProps> = ({
                     <button
                       type="button"
                       className={`seq-step-cell${hit ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}`}
-                      style={{ touchAction: 'none' } as React.CSSProperties}
+                      style={{ touchAction: 'pan-y' } as React.CSSProperties}
+                      aria-label={`Trigger step ${step + 1}`}
+                      aria-pressed={inRange ? hit : undefined}
+                      disabled={!inRange}
                       onPointerDown={inRange ? (e) => {
-                        e.preventDefault();
+                        const pointerType = e.pointerType;
+                        if (pointerType !== 'touch') e.preventDefault();
                         e.stopPropagation();
                         const el = e.currentTarget;
-                        el.setPointerCapture(e.pointerId);
+                        const pointerId = e.pointerId;
+                        const startX = e.clientX;
                         const startY = e.clientY;
+                        el.setPointerCapture(e.pointerId);
                         const startProb = prob;
                         let dragged = false;
                         const onMove = (ev: PointerEvent) => {
-                          if (Math.abs(ev.clientY - startY) > 5) dragged = true;
+                          if (ev.pointerId !== pointerId) return;
+                          const deltaX = ev.clientX - startX;
+                          const deltaY = ev.clientY - startY;
+                          if (pointerType === 'touch' && Math.abs(deltaX) <= Math.abs(deltaY)) return;
+                          const probabilityDelta = pointerType === 'touch' ? deltaX : -deltaY;
+                          if (Math.abs(probabilityDelta) > 5) dragged = true;
                           if (!dragged) return;
                           const pct = Math.max(0, Math.min(1,
-                            startProb + (startY - ev.clientY) / OV_PROB_DRAG_PX
+                            startProb + probabilityDelta / OV_PROB_DRAG_PX
                           ));
                           const snapped = Math.round(pct * 20) / 20;
                           onSetProbability?.(row, step, snapped);
                           setDragPopup({ x: ev.clientX, y: ev.clientY, text: `${Math.round(snapped * 100)}%` });
                         };
-                        const onUp = () => {
+                        const cleanup = () => {
                           el.removeEventListener('pointermove', onMove);
                           el.removeEventListener('pointerup', onUp);
+                          el.removeEventListener('pointercancel', cleanup);
+                          if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
                           setDragPopup(null);
+                        };
+                        const onUp = (ev: PointerEvent) => {
+                          if (ev.pointerId !== pointerId) return;
+                          cleanup();
                           if (!dragged) onToggleTriggerStep?.(row, step);
                         };
+                        el.addEventListener('pointercancel', cleanup);
                         el.addEventListener('pointermove', onMove);
                         el.addEventListener('pointerup', onUp);
                       } : undefined}
+                      onClick={(e) => {
+                        if (e.detail !== 0 || !inRange) return;
+                        e.stopPropagation();
+                        onToggleTriggerStep?.(row, step);
+                      }}
                       onDoubleClick={inRange ? (e) => {
                         e.stopPropagation();
                         onResetProbability?.(row, step);

@@ -1,10 +1,10 @@
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
 import type { JourneyConfig } from '../audio/journeyTypes';
-import type { SavedPreset } from './state';
 import {
   resolveBackgroundJourneyRuntimePhase,
   type BackgroundJourneyRuntimePhase,
 } from '../audio/product/journey/reconcileBackgroundJourneyProjection';
+import type { SavedPreset } from './state';
 
 export type BackgroundJourneyTelemetryProjection = {
   phase: BackgroundJourneyRuntimePhase;
@@ -16,6 +16,10 @@ export type BackgroundJourneyTelemetryProjection = {
 };
 
 export type BackgroundJourneyMorphProjection = {
+  presetA: SavedPreset;
+  presetB: SavedPreset;
+  position: number;
+  direction: 'toA' | 'toB';
   morphPresetA: SavedPreset;
   morphPresetB: SavedPreset;
   morphSlotAName: string;
@@ -37,11 +41,18 @@ export function requestAndReadBackgroundJourneyTelemetry(
   scheduleRead: ScheduleTelemetryRead,
   onFreshTelemetry: (telemetry: CoreProductTelemetrySnapshot) => void,
   maxReads = 8,
+  onSettled: () => void = () => undefined,
 ): () => void {
   const previousTelemetry = readTelemetry();
   let cancelled = false;
+  let settled = false;
   let reads = 0;
   let cancelScheduledRead: (() => void) | null = null;
+  const settle = (): void => {
+    if (settled) return;
+    settled = true;
+    onSettled();
+  };
 
   const readFreshTelemetry = (): void => {
     if (cancelled) return;
@@ -49,11 +60,13 @@ export function requestAndReadBackgroundJourneyTelemetry(
     if (latestTelemetry && latestTelemetry !== previousTelemetry) {
       cancelScheduledRead = null;
       onFreshTelemetry(latestTelemetry);
+      settle();
       return;
     }
     reads += 1;
     if (reads >= Math.max(1, maxReads)) {
       cancelScheduledRead = null;
+      settle();
       return;
     }
     cancelScheduledRead = scheduleRead(readFreshTelemetry);
@@ -62,9 +75,11 @@ export function requestAndReadBackgroundJourneyTelemetry(
   requestTelemetry();
   cancelScheduledRead = scheduleRead(readFreshTelemetry);
   return () => {
+    if (cancelled) return;
     cancelled = true;
     cancelScheduledRead?.();
     cancelScheduledRead = null;
+    settle();
   };
 }
 
@@ -102,24 +117,22 @@ export function projectBackgroundJourneyMorph(
   const progress = Number.isFinite(telemetry.journeyMorphProgress)
     ? Math.max(0, Math.min(1, telemetry.journeyMorphProgress!))
     : 0;
+  const presetA = reverse ? nextPreset : currentPreset;
+  const presetB = reverse ? currentPreset : nextPreset;
+  const position = (reverse ? 1 - progress : progress) * 100;
+  const direction = reverse ? 'toA' : 'toB';
 
-  if (reverse) {
-    return {
-      morphPresetA: nextPreset,
-      morphPresetB: currentPreset,
-      morphSlotAName: nextPreset.name,
-      morphSlotBName: currentPreset.name,
-      morphPosition: (1 - progress) * 100,
-      morphDirection: 'toA',
-    };
-  }
   return {
-    morphPresetA: currentPreset,
-    morphPresetB: nextPreset,
-    morphSlotAName: currentPreset.name,
-    morphSlotBName: nextPreset.name,
-    morphPosition: progress * 100,
-    morphDirection: 'toB',
+    presetA,
+    presetB,
+    position,
+    direction,
+    morphPresetA: presetA,
+    morphPresetB: presetB,
+    morphSlotAName: presetA.name,
+    morphSlotBName: presetB.name,
+    morphPosition: position,
+    morphDirection: direction,
   };
 }
 

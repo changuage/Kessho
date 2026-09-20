@@ -717,8 +717,8 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "arrangement.synthOctave",
     "type": "int",
     "id": 43,
-    "min": -2,
-    "max": 2
+    "min": -4,
+    "max": 4
   },
   {
     "name": "ArrangementWaveSpread",
@@ -791,8 +791,8 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "path": "arrangement.leadOctave",
     "type": "int",
     "id": 53,
-    "min": -1,
-    "max": 2
+    "min": -4,
+    "max": 4
   },
   {
     "name": "ArrangementLeadOctaveRange",
@@ -4762,7 +4762,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1164,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq1LowFreq",
@@ -4826,7 +4826,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1172,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq1HighFreq",
@@ -4888,7 +4888,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1180,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq2LowFreq",
@@ -4952,7 +4952,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "uint",
     "id": 1188,
     "min": 0,
-    "max": 1
+    "max": 3
   },
   {
     "name": "FxDynamicsEq2HighFreq",
@@ -5444,7 +5444,7 @@ export const KESSHO_PRODUCT_PARAMS = Object.freeze([
     "type": "float",
     "id": 431,
     "min": 0,
-    "max": 1
+    "max": 4
   },
   {
     "name": "RoutingFxRouteEnabled",

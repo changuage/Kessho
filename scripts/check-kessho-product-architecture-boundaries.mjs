@@ -64,6 +64,7 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductRoutingState.h', 90],
   ['cpp/KesshoCore/src/product/ProductModulationState.h', 80],
   ['cpp/KesshoCore/src/product/ProductModuleRuntimeState.h', 70],
+  ['cpp/KesshoCore/src/product/ProductInteractionRuntimeState.h', 40],
   ['cpp/KesshoCore/src/product/ProductSourcePresetPatch.h', 620],
   ['cpp/KesshoCore/src/product/ProductSequencerState.h', 120],
   ['cpp/KesshoCore/src/product/ProductBuffers.h', 80],

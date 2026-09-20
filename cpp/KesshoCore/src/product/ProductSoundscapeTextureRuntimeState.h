@@ -15,6 +15,8 @@ enum SoundscapeTextureFallbackReason : uint32_t {
 
 struct SoundscapeTextureRuntime {
   bool initialized = false; uint32_t asset_id = 0u;
+  float output_level = 0.0f, output_level_target = 0.0f, output_level_delta = 0.0f;
+  uint32_t output_level_ramp_remaining = 0u;
   uint32_t seed = 0u, rng_state = 0u;
   uint64_t next_start_frame = 0u;
   uint32_t next_slice_id = 1u, last_slice_id = 0u;

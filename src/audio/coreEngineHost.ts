@@ -1866,7 +1866,7 @@ function createLeadRandomPreview(
   const phraseClock = sliderState.leadRandomClockSource ?? 'globalPhrase';
   const phraseSeconds = getPhraseDurationForClockSource(sliderState, phraseClock);
   const density = boundedNumber(state.lead1Density, 0.5, 0.1, 12);
-  const baseOctaveOffset = boundedInteger(state.lead1Octave, 1, -1, 2);
+  const baseOctaveOffset = boundedInteger(state.lead1Octave, 1, -4, 4);
   const octaveRange = boundedInteger(state.lead1OctaveRange, 2, 1, 4);
   const baseLow = 64 + baseOctaveOffset * 12;
   const baseHigh = baseLow + octaveRange * 12;
@@ -1919,7 +1919,7 @@ function createLeadRandomPreview(
     const availableNotes = getScaleNotesInRange(
       harmonyState.scaleFamily,
       Math.max(24, baseLow),
-      Math.min(108, baseHigh),
+      Math.min(127, baseHigh),
       harmonyState.effectiveRoot,
     );
     const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));

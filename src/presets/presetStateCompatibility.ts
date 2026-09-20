@@ -15,9 +15,8 @@ const SHARED_LEAD_ADDITIVE_KEYS = [
   ['leadGlide', 'lead1Glide', 'lead2Glide'],
 ] as const satisfies readonly [keyof SliderState, keyof SliderState, keyof SliderState][];
 
-/** Runtime capture state must never be restored from a preset. */
+/** Edge-trigger serial is runtime-only; L4 owns whether capture is armed. */
 const TRANSIENT_PRESET_STATE_KEYS = [
-  'spectralFreezeActive',
   'spectralFreezeCaptureSerial',
 ] as const satisfies readonly (keyof SliderState)[];
 

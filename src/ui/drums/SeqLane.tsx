@@ -513,7 +513,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
           return (
         <div
           className="seq-step-grid"
-          style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
+          style={{ '--seq-grid-base-columns': columnCount } as React.CSSProperties}
         >
           {new Array(visibleCells).fill(0).map((_, step) => {
             const inRange = step < laneSteps;
@@ -574,6 +574,9 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     type="button"
                     className={cellClass}
                     style={{ '--sc': color, touchAction: 'none' } as React.CSSProperties}
+                    aria-label={`Trigger step ${step + 1}`}
+                    aria-pressed={inRange ? active : undefined}
+                    disabled={!inRange}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       const el = e.currentTarget;
@@ -627,6 +630,17 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       };
                       el.addEventListener('pointermove', onMove);
                       el.addEventListener('pointerup', onUp);
+                    }}
+                    onClick={(event) => {
+                      if (event.detail !== 0 || !inRange) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onSelectStep?.(step);
+                      if (event.shiftKey && active && onCycleTriggerHold) {
+                        onCycleTriggerHold(step);
+                      } else {
+                        onToggleTriggerStep?.(step);
+                      }
                     }}
                     onDoubleClick={() => inRange ? onResetProbability?.(step) : undefined}
                   >

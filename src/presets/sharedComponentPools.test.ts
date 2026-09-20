@@ -8,6 +8,8 @@ import {
   buildPadVoicePoolInstance,
   buildSaturatorPoolInstance,
   extractSaturatorContent,
+  extractDynamicsEqContent,
+  hydrateDynamicsEqContent,
   hydrateSaturatorContent,
   hydrateSharedComponentRef,
   sharedComponentPoolCandidates,
@@ -35,6 +37,20 @@ export async function runSharedComponentPoolRegression(): Promise<void> {
   assert.equal(batch.uniqueByHash.size, 2);
   assert.equal(eq[0]?.content.inputGain, state.dynamicsEq1InputGain);
   assert.equal('dynamicsEq1InputGain' in (eq[0]?.content ?? {}), false);
+  assert.deepStrictEqual(
+    Object.keys(extractDynamicsEqContent(state, 0)),
+    [
+      'highFreq', 'highGain', 'highQ', 'highSlope', 'highType',
+      'inputGain',
+      'lowFreq', 'lowGain', 'lowQ', 'lowSlope', 'lowType',
+      'midFreq', 'midGain', 'midQ',
+      'mix', 'outputGain',
+    ],
+    'Dynamics EQ presets must save every EQ parameter',
+  );
+  const hydratedEq2 = hydrateDynamicsEqContent(eq[0]!.content, 1);
+  assert.equal(hydratedEq2.dynamicsEq2LowFreq, state.dynamicsEq1LowFreq);
+  assert.equal(hydratedEq2.dynamicsEq2Mix, state.dynamicsEq1Mix);
 
   state.masterSaturationMode = state.dynamicsSaturationMode;
   state.masterSaturationQuality = state.dynamicsSaturationQuality;

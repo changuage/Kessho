@@ -50,7 +50,7 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
     if (hasActiveLegacySoundscapeVoice(asset_id)) {
       continue;
     }
-    triggerVoice(
+    const uint32_t triggered_voice = triggerVoice(
         KESSHO_PRODUCT_SOURCE_SOUNDSCAPE,
         60.0f,
         1.0f,
@@ -60,6 +60,10 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
         source.expression,
         hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u),
         asset_id);
+    if (triggered_voice != kProductInvalidVoiceIndex) {
+      emitVoiceInteractionEvent(KESSHO_PRODUCT_SOURCE_SOUNDSCAPE,
+          KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, transport.sample_frame, 60.0f, 1.0f);
+    }
   }
   // Preserve legacy/custom whole-sample refs that are not one of the four
   // canonical texture assets. Canonical slots never depend on this list.
@@ -72,10 +76,14 @@ void KesshoProductEngine::ensureSoundscapeVoice() {
       continue;
     }
     if ((assets[slot].flags & KESSHO_PRODUCT_ASSET_SOUNDSCAPE) == 0u || hasActiveLegacySoundscapeVoice(asset_id)) continue;
-    triggerVoice(
+    const uint32_t triggered_voice = triggerVoice(
         KESSHO_PRODUCT_SOURCE_SOUNDSCAPE, 60.0f, 1.0f,
         static_cast<float>(static_cast<double>(assets[slot].frame_count) / std::max(1.0, assets[slot].sample_rate)),
         source.morph, source.distance, source.expression,
         hashU32(rng_seed ^ asset_id ^ 0x51f15ca9u), asset_id);
+    if (triggered_voice != kProductInvalidVoiceIndex) {
+      emitVoiceInteractionEvent(KESSHO_PRODUCT_SOURCE_SOUNDSCAPE,
+          KESSHO_PRODUCT_INTERACTION_ORIGIN_SYSTEM, transport.sample_frame, 60.0f, 1.0f);
+    }
   }
 }

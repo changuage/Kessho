@@ -17,6 +17,7 @@
  */
 
 #include "kessho_reverb.h"
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>

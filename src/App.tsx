@@ -74,6 +74,7 @@ import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
 import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { useBackgroundJourneyRuntimeSurface } from './ui/useBackgroundJourneyRuntimeSurface';
+import { JourneyStatusPill } from './ui/JourneyStatusPill';
 import { TEXT_SYMBOLS } from './designSystem/textSymbols';
 import {
   DRUM_VOICE_PARAM_ROUTES,
@@ -209,7 +210,7 @@ import {
   GranularPage,
   JourneyModeView,
   LAZY_PAGE_FALLBACK,
-  ReactiveVisualizerPage,
+  TransportVisualizerPage,
   ReverbPage,
   RoutingPage,
   SynthPage,
@@ -686,9 +687,11 @@ const App: React.FC = () => {
     setSynthPresetPoolRequest(null);
   }, []);
   const [textureVisualTelemetryActive, setTextureVisualTelemetryActive] = useState(false);
+  const [synthVisualTelemetryActive, setSynthVisualTelemetryActive] = useState(false);
   const productVisualTelemetryActive = uiMode === 'advanced' && (
     (activeTab === 'visualizer' && reactiveVisualizerToggle.enabled) ||
-    (activeTab === 'texture' && textureVisualTelemetryActive)
+    (activeTab === 'texture' && textureVisualTelemetryActive) ||
+    (activeTab === 'synth' && synthVisualTelemetryActive)
   );
   useEffect(() => {
     setProductVisualTelemetryActive(productVisualTelemetryActive);
@@ -949,6 +952,20 @@ const App: React.FC = () => {
     startProductPlayback,
     setIsJourneyPlaying,
   });
+  const projectedMorphPresetA = backgroundJourney.morphProjection?.presetA ?? morphPresetA;
+  const projectedMorphPresetB = backgroundJourney.morphProjection?.presetB ?? morphPresetB;
+  const stopJourneyForEdit = useCallback(() => {
+    if (!isJourneyPlaying) return;
+    const projection = backgroundJourney.morphProjection;
+    if (projection) {
+      setMorphPresetA(projection.presetA);
+      setMorphPresetB(projection.presetB);
+      setMorphSlotAName(projection.presetA.name);
+      setMorphSlotBName(projection.presetB.name);
+      setMorphPosition(projection.position);
+    }
+    backgroundJourney.stop();
+  }, [backgroundJourney.morphProjection, backgroundJourney.stop, isJourneyPlaying]);
   const handleJourneyPlay = useCallback(() => {
     if (backgroundJourney.uiState.status === 'ready') {
       void backgroundJourney.startPrepared();
@@ -1045,10 +1062,7 @@ const App: React.FC = () => {
       const { domain, key, sliderValue: value, stateValue } = command;
       hasUserInteractedRef.current = true;
 
-      if (isJourneyPlaying) {
-        console.log('[Journey] Slider change blocked - journey is playing');
-        return;
-      }
+      stopJourneyForEdit();
 
       const isStateNumericValue = typeof stateValue === 'number';
       const isMorphActive = morphPresetA !== null || morphPresetB !== null;
@@ -1297,7 +1311,7 @@ const App: React.FC = () => {
       }
     },
     [
-      isJourneyPlaying,
+      stopJourneyForEdit,
       morphPosition,
       morphPresetA,
       morphPresetB,
@@ -1449,6 +1463,7 @@ const App: React.FC = () => {
   const handleSelectChange = useCallback(
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
       hasUserInteractedRef.current = true;
+      stopJourneyForEdit();
       const padMorphParamChange = getPadMorphParamChange(key);
       setState((prev) => {
         let newState: SliderState = { ...prev, [key]: value } as SliderState;
@@ -1632,7 +1647,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch],
+    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch, stopJourneyForEdit],
   );
 
   useEffect(() => {
@@ -2311,8 +2326,8 @@ const App: React.FC = () => {
   });
 
   const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
-    morphPresetA,
-    morphPresetB,
+    morphPresetA: projectedMorphPresetA,
+    morphPresetB: projectedMorphPresetB,
     morphMode,
     morphPosition,
     currentCofStep: engineState.cofCurrentStep,
@@ -2345,16 +2360,18 @@ const App: React.FC = () => {
   });
 
   const handleMorphSlotAClear = useCallback(() => {
+    stopJourneyForEdit();
     setMorphPresetA(null);
     setMorphSlotAName('');
     setMorphPosition(0);
-  }, []);
+  }, [stopJourneyForEdit]);
 
   const handleMorphSlotBClear = useCallback(() => {
+    stopJourneyForEdit();
     setMorphPresetB(null);
     setMorphSlotBName('');
     setMorphPosition(0);
-  }, []);
+  }, [stopJourneyForEdit]);
 
   const { handleLoadMorphA, handleLoadMorphB } = useMorphSlotLoadRuntimeSurface<SavedPreset>({
     morphPresetA,
@@ -2564,6 +2581,7 @@ const App: React.FC = () => {
   const handleRoutingSourceToggle = useCallback(
     (sourceId: string, enabled: boolean) => {
       hasUserInteractedRef.current = true;
+      stopJourneyForEdit();
       setState((prev) => {
         const natureChild = /^nature([1-4])$/.exec(sourceId);
         if (natureChild) {
@@ -2653,7 +2671,7 @@ const App: React.FC = () => {
         return finalState;
       });
     },
-    [applyMorphEndpointStatePatch],
+    [applyMorphEndpointStatePatch, stopJourneyForEdit],
   );
 
   const routingMuteGroupsController = useRoutingMuteGroupSystem({
@@ -2679,6 +2697,9 @@ const App: React.FC = () => {
       {children}
     </PresetPoolProvider>
   );
+  const journeyStatusPill = isJourneyPlaying && journey.state && journey.config
+    ? <JourneyStatusPill state={journey.state} config={journey.config} />
+    : null;
 
   if (POINT_CLOUDS_ENGINE_MODE) return <div aria-hidden="true" style={{ width: 1, height: 1, overflow: 'hidden' }} />;
 
@@ -2881,6 +2902,7 @@ const App: React.FC = () => {
           ...m?.container,
         }}
       >
+        {journeyStatusPill}
         {DevCpuOverlay && (
           <React.Suspense fallback={null}>
             <DevCpuOverlay setPerfMonitorEnabled={setProductPerfMonitorEnabled} setPerfUpdateCallback={setProductPerfUpdateCallback} />
@@ -3088,7 +3110,7 @@ const App: React.FC = () => {
                 onEnable={reactiveVisualizerToggle.show}
                 onHide={reactiveVisualizerToggle.hide}
               >
-                <ReactiveVisualizerPage
+                <TransportVisualizerPage
                   state={state}
                   sliderModes={sliderModes}
                   dualRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
@@ -3156,6 +3178,7 @@ const App: React.FC = () => {
                 diceLane={productPageRuntimeSurface.synthPageSequencerBridge.diceLane}
                 evolvedOverrides={synthEvolvedOverrides}
                 {...productPageRuntimeSurface.synthPageRuntimeProps}
+                onVisualTelemetryActiveChange={setSynthVisualTelemetryActive}
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}

@@ -3,13 +3,13 @@ import test from 'node:test';
 
 import type { JourneyConfig } from '../audio/journeyTypes';
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
-import type { SavedPreset } from './state';
 import {
   projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
   shouldRefreshBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
+import type { SavedPreset } from './state';
 
 const playableNodes = [
   { id: 'node-a' },
@@ -158,6 +158,29 @@ test('foreground reconciliation waits for the fresh asynchronous host snapshot b
   assert.equal(projectedPhraseProgress, 0.6);
   assert.equal(projectedMorphProgress, 0.25);
   cancel();
+});
+
+test('a telemetry read settles after its retry budget so the next poll can proceed', () => {
+  const staleSnapshot = {} as CoreProductTelemetrySnapshot;
+  const reads: Array<() => void> = [];
+  let settled = 0;
+  const cancel = requestAndReadBackgroundJourneyTelemetry(
+    () => undefined,
+    () => staleSnapshot,
+    (callback) => {
+      reads.push(callback);
+      return () => undefined;
+    },
+    () => assert.fail('stale telemetry must not be projected'),
+    2,
+    () => { settled += 1; },
+  );
+
+  reads.shift()?.();
+  reads.shift()?.();
+  assert.equal(settled, 1);
+  cancel();
+  assert.equal(settled, 1, 'cancelling an already-settled read must not settle it twice');
 });
 
 test('authoritative foreground telemetry projects the current node and schedule step without resetting the journey', () => {

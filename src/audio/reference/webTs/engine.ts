@@ -11420,8 +11420,8 @@ export class AudioEngine {
     const rng = this.rng;
     const scale = this.harmonyState.scaleFamily;
     const rootNote = this.effectiveRoot;
-    const baseOctaveOffset = this.sliderState.lead1Octave;
-    const octaveRange = this.sliderState.lead1OctaveRange ?? 2;
+    const baseOctaveOffset = Math.max(-4, Math.min(4, Math.round(this.sliderState.lead1Octave ?? 1)));
+    const octaveRange = Math.max(1, Math.min(4, Math.round(this.sliderState.lead1OctaveRange ?? 2)));
     const phraseDuration = getPhraseDurationForClockSource(
       this.sliderState,
       this.sliderState.leadRandomClockSource ?? 'globalPhrase',
@@ -11440,7 +11440,7 @@ export class AudioEngine {
     const leadChordBias = leadT < 0 ? 0.9 : 0.9 - leadT * 0.4;
     for (let i = 0; i < notesThisPhrase; i++) {
       const timing = rng() * phraseDuration;
-      let availableNotes = getScaleNotesInRange(scale, Math.max(24, baseLow), Math.min(108, baseHigh), rootNote);
+      let availableNotes = getScaleNotesInRange(scale, Math.max(24, baseLow), Math.min(127, baseHigh), rootNote);
       if (availableNotes.length === 0) continue;
       const midiNote = pickChordWeightedNote(rng, availableNotes, chordMidi, leadChordBias);
       const frequency = midiToFreq(midiNote);

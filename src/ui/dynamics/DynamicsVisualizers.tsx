@@ -1375,7 +1375,7 @@ type DynamicsEqBandState = {
   gain: number;
   q: number;
   slope: number;
-  type: 'shelf' | 'bell';
+  type: SliderState['dynamicsEq1LowType'];
 };
 
 const EQ_FREQ_MIN = 20;
@@ -1410,9 +1410,10 @@ function readEqNumber(
   });
 }
 
-function readEqBandType(state: SliderState, key: keyof SliderState | undefined): 'shelf' | 'bell' {
+function readEqBandType(state: SliderState, key: keyof SliderState | undefined): SliderState['dynamicsEq1LowType'] {
   if (!key) return 'bell';
-  return state[key] === 'bell' ? 'bell' : 'shelf';
+  const value = state[key];
+  return value === 'bell' || value === 'highpass' || value === 'lowpass' ? value : 'shelf';
 }
 
 function getEqBandStates(
@@ -1422,6 +1423,8 @@ function getEqBandStates(
 ): DynamicsEqBandState[] {
   const prefix = eqId === 'eq1' ? 'dynamicsEq1' : 'dynamicsEq2';
   const key = (suffix: string) => `${prefix}${suffix}` as keyof SliderState;
+  const lowType = readEqBandType(state, key('LowType'));
+  const highType = readEqBandType(state, key('HighType'));
   return [
     {
       band: 'low',
@@ -1434,10 +1437,10 @@ function getEqBandStates(
       edge: 'low',
       color: CYAN,
       freq: readEqNumber(state, key('LowFreq'), eqId === 'eq1' ? 120 : 90, sliderProps),
-      gain: readEqNumber(state, key('LowGain'), 0, sliderProps),
+      gain: lowType === 'highpass' || lowType === 'lowpass' ? 0 : readEqNumber(state, key('LowGain'), 0, sliderProps),
       q: readEqNumber(state, key('LowQ'), 0.7, sliderProps),
       slope: readEqNumber(state, key('LowSlope'), 1, sliderProps),
-      type: readEqBandType(state, key('LowType')),
+      type: lowType,
     },
     {
       band: 'mid',
@@ -1464,10 +1467,10 @@ function getEqBandStates(
       edge: 'high',
       color: ROSE,
       freq: readEqNumber(state, key('HighFreq'), eqId === 'eq1' ? 8000 : 10000, sliderProps),
-      gain: readEqNumber(state, key('HighGain'), 0, sliderProps),
+      gain: highType === 'highpass' || highType === 'lowpass' ? 0 : readEqNumber(state, key('HighGain'), 0, sliderProps),
       q: readEqNumber(state, key('HighQ'), 0.7, sliderProps),
       slope: readEqNumber(state, key('HighSlope'), 1, sliderProps),
-      type: readEqBandType(state, key('HighType')),
+      type: highType,
     },
   ];
 }
@@ -1487,6 +1490,12 @@ function shelfResponseDb(freq: number, center: number, gain: number, slope: numb
 }
 
 function eqBandResponseDb(freq: number, band: DynamicsEqBandState): number {
+  if (band.type === 'highpass' || band.type === 'lowpass') {
+    const ratio = Math.max(0.000001, freq / Math.max(1, band.freq));
+    const denominator = (1 - ratio * ratio) ** 2 + (ratio / Math.max(EQ_Q_MIN, band.q)) ** 2;
+    const numerator = band.type === 'highpass' ? ratio ** 4 : 1;
+    return 10 * Math.log10(Math.max(0.000001, numerator / Math.max(0.000001, denominator)));
+  }
   if (band.edge && band.type === 'shelf') {
     return shelfResponseDb(freq, band.freq, band.gain, band.slope, band.edge);
   }
@@ -1629,7 +1638,10 @@ export function DynamicsEqVisualizer({ state, eqId, onParamChange, sliderProps }
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      const badgeText = `${band.label} ${formatEqHz(band.freq)} ${band.gain >= 0 ? '+' : ''}${band.gain.toFixed(1)}`;
+      const passLabel = band.type === 'highpass' ? 'HP' : band.type === 'lowpass' ? 'LP' : null;
+      const badgeText = passLabel
+        ? `${passLabel} ${formatEqHz(band.freq)} Q${band.q.toFixed(1)}`
+        : `${band.label} ${formatEqHz(band.freq)} ${band.gain >= 0 ? '+' : ''}${band.gain.toFixed(1)}`;
       const badgeY = clamp(nodeY - 21, plot.y + 4, plot.y + plot.h - 21);
       drawBadge(ctx, badgeText, nodeX, badgeY, band.color, 'center');
 
@@ -1654,10 +1666,12 @@ export function DynamicsEqVisualizer({ state, eqId, onParamChange, sliderProps }
     const xUnit = clamp01((point.x - active.plot.x) / active.plot.w);
     const freq = clamp(fromLogNorm(xUnit, EQ_FREQ_MIN, EQ_FREQ_MAX), EQ_FREQ_MIN, EQ_FREQ_MAX);
     if (active.kind === 'node') {
-      const gainUnit = 1 - clamp01((point.y - active.plot.y) / active.plot.h);
-      const gain = EQ_GAIN_MIN + gainUnit * (EQ_GAIN_MAX - EQ_GAIN_MIN);
       onParamChange(band.freqKey, roundStep(freq, 1));
-      onParamChange(band.gainKey, roundStep(clamp(gain, EQ_GAIN_MIN, EQ_GAIN_MAX), 0.1));
+      if (band.type !== 'highpass' && band.type !== 'lowpass') {
+        const gainUnit = 1 - clamp01((point.y - active.plot.y) / active.plot.h);
+        const gain = EQ_GAIN_MIN + gainUnit * (EQ_GAIN_MAX - EQ_GAIN_MIN);
+        onParamChange(band.gainKey, roundStep(clamp(gain, EQ_GAIN_MIN, EQ_GAIN_MAX), 0.1));
+      }
       return;
     }
     const octaves = Math.abs(Math.log2(Math.max(0.001, freq / Math.max(1, band.freq))));

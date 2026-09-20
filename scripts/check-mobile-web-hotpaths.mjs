@@ -12,7 +12,12 @@ function assert(condition, message) {
 
 const leadEditor = read('src/ui/synth/Lead4opFMEditorOverlay.tsx');
 const sliderHelp = read('src/ui/SliderHelpOverlay.tsx');
+const keyboardTargets = read('src/ui/keyboard/keyboardTargets.ts');
+const app = read('src/App.tsx');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
+const drumSeqOverview = read('src/ui/drums/SeqOverview.tsx');
+const seqLane = read('src/ui/drums/SeqLane.tsx');
+const drumCss = read('src/ui/drums/drums.css');
 const simplePhraseVisualizer = read('src/ui/synth/SimplePhraseVisualizer.tsx');
 const delayPage = read('src/ui/delay/DelayPage.tsx');
 const delayRhythmMap = read('src/ui/delay/DelayRhythmMap.tsx');
@@ -60,6 +65,13 @@ assert(
 );
 
 assert(
+  keyboardTargets.includes('button, a[href], summary') &&
+    keyboardTargets.includes('[role="button"], [role="slider"]') &&
+    keyboardTargets.includes('target instanceof Element'),
+  'Global shortcut target guard must defer to native and established interactive controls'
+);
+
+assert(
   synthPage.includes('const leadPresetOptions = useMemo<LeadPresetOption[]>') &&
     synthPage.includes('const leadPresetOptionById = useMemo') &&
     synthPage.includes('const findLeadPresetOption = useCallback'),
@@ -99,6 +111,43 @@ assert(
   synthPage.includes("const livePadFilterVizMounted = isSynthSourceCardExpanded('pad1') || isSynthSourceCardExpanded('pad2')") &&
     synthPage.includes('enabled: isRunning && liveSourceTelemetryAvailable && livePadFilterVizMounted'),
   'Synth live filter telemetry polling must only run while pad filter visualizers are mounted'
+);
+
+assert(
+  app.includes("(activeTab === 'synth' && synthVisualTelemetryActive)") &&
+    app.includes('onVisualTelemetryActiveChange={setSynthVisualTelemetryActive}'),
+  'Synth visual telemetry demand must be gated by the active Synth tab and wired from App'
+);
+
+assert(
+  synthPage.includes('const synthRuntimeVisualsVisible = orbitRuntimeVisualsVisible || anchorWalkerRuntimeVisualsVisible;') &&
+    synthPage.includes('onVisualTelemetryActiveChange?.(false);'),
+  'Synth visual telemetry demand must follow visible Orbit/Walker detail visuals and clean up'
+);
+
+assert(
+  drumSeqOverview.includes('aria-label={`${DRUM_VOICES[voice].label} source`}') &&
+    drumSeqOverview.includes('aria-pressed={on}') &&
+    seqLane.includes('aria-pressed={inRange ? active : undefined}') &&
+    seqLane.includes('onClick={(event) =>') &&
+    seqLane.includes('event.detail !== 0') &&
+    seqLane.includes('onCycleTriggerHold(step)') &&
+    drumCss.includes('.drum-root .seq-ov-controls .seq-ov-src-toggle') &&
+    drumCss.includes('min-width: var(--k-hit-min)') &&
+    drumCss.includes('min-height: var(--k-hit-min)') &&
+    drumCss.includes('min-width: var(--k-hit-touch)') &&
+    drumCss.includes('min-height: var(--k-hit-touch)') &&
+    !drumCss.includes('.drum-root .seq-ov-src-toggle { width: 18px; height: 18px;') &&
+    [drumSeqOverview, synthPage].every(source =>
+      source.includes("touchAction: 'pan-y'") &&
+      source.includes("const probabilityDelta = pointerType === 'touch' ? deltaX : -deltaY;") &&
+      source.includes("pointerType === 'touch' && Math.abs(deltaX) <= Math.abs(deltaY)") &&
+      source.includes("addEventListener('pointercancel'") &&
+      source.includes('aria-label={`Trigger step ${step + 1}`}') &&
+      source.includes('aria-pressed={inRange ? hit : undefined}') &&
+      source.includes('e.detail !== 0')
+    ),
+  'Sequencer overview triggers must keep accessible toggle state, vertical touch scrolling, and horizontal touch probability editing'
 );
 
 assert(

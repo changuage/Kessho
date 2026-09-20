@@ -103,9 +103,16 @@ const SAT_QUALITY_OPTIONS: Array<{ value: SliderState['dynamicsSaturationQuality
   { value: 'hq', label: 'HQ' },
 ];
 
-const EQ_EDGE_TYPE_OPTIONS: Array<{ value: SliderState['dynamicsEq1LowType']; label: string }> = [
+const EQ_LOW_TYPE_OPTIONS: Array<{ value: SliderState['dynamicsEq1LowType']; label: string }> = [
   { value: 'shelf', label: 'Shelf' },
   { value: 'bell', label: 'Bell' },
+  { value: 'highpass', label: 'High-pass' },
+];
+
+const EQ_HIGH_TYPE_OPTIONS: Array<{ value: SliderState['dynamicsEq1HighType']; label: string }> = [
+  { value: 'shelf', label: 'Shelf' },
+  { value: 'bell', label: 'Bell' },
+  { value: 'lowpass', label: 'Low-pass' },
 ];
 
 type ToggleableDynamicsModule =
@@ -253,6 +260,10 @@ function makeEqualizerPresetOptions(laneIndex: 0 | 1): UsePresetsOptions {
     ),
     customApply: (snapshot, data) => ({
       ...snapshot,
+      ...hydrateDynamicsEqContent(
+        DEFAULT_STATE as unknown as Record<string, unknown>,
+        laneIndex,
+      ),
       ...hydrateDynamicsEqContent(data, laneIndex),
     }),
   };
@@ -502,10 +513,14 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
     const presetName = config.id === 'eq1' ? eq1PresetName : eq2PresetName;
     const presetOptions = config.id === 'eq1' ? eq1PresetOptions : eq2PresetOptions;
     const onPresetLoad = config.id === 'eq1' ? handleEq1PresetLoad : handleEq2PresetLoad;
-    const lowType = state[config.lowTypeKey] === 'bell' ? 'bell' : 'shelf';
-    const highType = state[config.highTypeKey] === 'bell' ? 'bell' : 'shelf';
+    const lowType = state[config.lowTypeKey] === 'bell' || state[config.lowTypeKey] === 'highpass'
+      ? state[config.lowTypeKey]
+      : 'shelf';
+    const highType = state[config.highTypeKey] === 'bell' || state[config.highTypeKey] === 'lowpass'
+      ? state[config.highTypeKey]
+      : 'shelf';
     const note = enabled
-      ? `${lowType === 'shelf' ? 'Low shelf' : 'Low bell'} / ${highType === 'shelf' ? 'High shelf' : 'High bell'}`
+      ? `${lowType === 'highpass' ? 'High-pass' : lowType === 'shelf' ? 'Low shelf' : 'Low bell'} / ${highType === 'lowpass' ? 'Low-pass' : highType === 'shelf' ? 'High shelf' : 'High bell'}`
       : 'Off';
 
     return (
@@ -543,7 +558,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             <div className="dynamics-eq-type-row">
               <span className="dynamics-chip-label">Low</span>
               <div className="dynamics-mode-row" aria-label={`${config.label} low band type`}>
-                {EQ_EDGE_TYPE_OPTIONS.map((option) => (
+                {EQ_LOW_TYPE_OPTIONS.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -557,7 +572,7 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
               </div>
               <span className="dynamics-chip-label">High</span>
               <div className="dynamics-mode-row" aria-label={`${config.label} high band type`}>
-                {EQ_EDGE_TYPE_OPTIONS.map((option) => (
+                {EQ_HIGH_TYPE_OPTIONS.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -588,7 +603,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             <div className="dynamics-subsection">Low Band</div>
             <div className="dynamics-grid-2">
               {config.lowControls.map((control) => {
-                if (lowType === 'shelf' ? String(control.key).endsWith('Q') : String(control.key).endsWith('Slope')) return null;
+                const key = String(control.key);
+                if (lowType === 'highpass' ? key.endsWith('Gain') || key.endsWith('Slope') : lowType === 'shelf' ? key.endsWith('Q') : key.endsWith('Slope')) return null;
                 return renderDynamicsSlider(control);
               })}
             </div>
@@ -599,7 +615,8 @@ const DynamicsPage: React.FC<DynamicsPageProps> = ({
             <div className="dynamics-subsection">High Band</div>
             <div className="dynamics-grid-2">
               {config.highControls.map((control) => {
-                if (highType === 'shelf' ? String(control.key).endsWith('Q') : String(control.key).endsWith('Slope')) return null;
+                const key = String(control.key);
+                if (highType === 'lowpass' ? key.endsWith('Gain') || key.endsWith('Slope') : highType === 'shelf' ? key.endsWith('Q') : key.endsWith('Slope')) return null;
                 return renderDynamicsSlider(control);
               })}
             </div>

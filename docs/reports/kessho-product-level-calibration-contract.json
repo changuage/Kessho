@@ -19,11 +19,11 @@
   "fxRms": {
     "delay_a_main": 0.141981766,
     "delay_a_reverb": 0.141981766,
-    "delay_b_main": 0.0839518905,
-    "delay_b_reverb": 0.0839518905,
+    "delay_b_main": 0.108513013,
+    "delay_b_reverb": 0.108513013,
     "granular_main": 0.00435695285,
     "granular_reverb": 0.0132730184,
-    "reverb_main": 0.0501123816
+    "reverb_main": 0.0582578257
   },
   "fxLoudness": {
     "source": "KESSHO_PRODUCT_LEVEL_CALIBRATION_JSON fixture fx.*.lufs (Product FX loudness baseline)",
@@ -31,11 +31,11 @@
     "lufs": {
       "delay_a_main": -15.08516,
       "delay_a_reverb": -15.08516,
-      "delay_b_main": -20.07863,
-      "delay_b_reverb": -20.07863,
+      "delay_b_main": -17.6074459,
+      "delay_b_reverb": -17.6074459,
       "granular_main": -48.0268,
       "granular_reverb": -38.34677,
-      "reverb_main": -24.38846
+      "reverb_main": -22.9121767
     }
   },
   "productFxLoudness": {

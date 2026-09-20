@@ -1,4 +1,5 @@
 import type { GeneratedSequencerCaptureEvent } from './coreProductGeneratedSequencerCaptureTypes';
+import type { ProductInteractionEvent, ProductInteractionSignalSnapshot } from './productInteractionVocabulary';
 
 export type CoreProductSimpleSequencerVisualEvent = {
   eventId: number;
@@ -129,6 +130,9 @@ export type CoreProductGranularVisualEvent = {
 };
 
 export type CoreProductTelemetrySnapshot = {
+  interactionSignals?: ProductInteractionSignalSnapshot;
+  interactionEvents?: ProductInteractionEvent[];
+  interactionEventOverflowCount?: number;
   schemaHash: number;
   sampleRate?: number;
   blockSize?: number;
@@ -321,6 +325,9 @@ export type CoreProductModulationDebugSnapshot = {
 export type CoreProductVisualTelemetrySnapshot = Pick<
   CoreProductTelemetrySnapshot,
   | 'schemaHash'
+  | 'interactionSignals'
+  | 'interactionEvents'
+  | 'interactionEventOverflowCount'
   | 'transportRunning'
   | 'absoluteSampleTime'
   | 'transportBpm'

@@ -382,7 +382,7 @@ const mixEntries: Record<string, SliderHelpEntry> = {
 const routingEntries: Record<string, SliderHelpEntry> = {
   routingMatrixOverview: entry(
     'Shows source levels and FX sends in one dense grid.',
-    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, and Dynamics. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Dynamics cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
+    'Rows are sound sources and return buses. Columns are Level, Delay A, Delay B, Granular, Degrade, Freeze, Reverb, Saturator, and Dynamics. Drag an amount cell to trim one route. In walk or sample-and-hold, drag the band edges to resize the range or drag the band body to move the whole range. Double-click on desktop or long-press on touch to cycle modes. Drag an amount column header left or right to trim every editable route in that destination column. Click a Dynamics cell to cycle Skip, EQ 1, EQ 2, and Sidechain. Use Source all/on to switch between every source and only active sources.',
     [
       rt('FX Routing Matrix', 'FX Routing Matrix', 'full', [
         'Routing uses the neutral MatrixSurface baseline: row/source dots carry identity, while destination columns and cells stay visually neutral.',
@@ -423,6 +423,11 @@ const routingEntries: Record<string, SliderHelpEntry> = {
     'Sends rows into the shared Reverb return.',
     'The Reverb column controls how much each source feeds the shared reverb tail. Drag one cell for a single source, or drag the Reverb header to trim every editable reverb send together. Degrade can feed Reverb, but that disables the reverse Reverb-to-Degrade route.',
     [rt('FX Routing Matrix', 'Reverb Column')],
+  ),
+  routingMatrixSaturationColumn: entry(
+    'Sends FX returns into the shared creative Saturator.',
+    'The Saturator column controls processor-to-processor feeds into creative saturation. Adjust individual FX cells; direct sound-source routing is unavailable because Product Core exposes this as an FX graph destination.',
+    [rt('FX Routing Matrix', 'Saturator Column')],
   ),
   routingMatrixTextureColumn: entry(
     'Chooses the terminal Texture Bus path for each row.',

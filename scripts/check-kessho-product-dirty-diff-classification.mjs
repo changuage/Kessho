@@ -324,10 +324,10 @@ await runCheckWithReport({
     const classifyBody = methodBody(runtimeAdapter, 'classifySnapshotReloadReason');
     for (const token of [
       "assetRefsChanged(previous.assetRefs, next.assetRefs)) return 'asset-reference-change'",
-      "soundscapeSnapshotChanged(previous, next)) return 'soundscape-param-change'",
+      "!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change'",
       "previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change'",
       "previousSource.sourceId !== nextSource.sourceId) return 'source-structure-change'",
-      "previousSource.assetId !== nextSource.assetId) return 'source-structure-change'",
+      "previousSource.assetId !== nextSource.assetId && !(canonicalSoundscapePatch && nextSource.sourceId === CORE_PRODUCT_SOURCE_IDS.soundscape)) return 'source-structure-change'",
       "this.legacyExactBridgeFieldsPresent(previousSource) || this.legacyExactBridgeFieldsPresent(nextSource)) return 'source-structure-change'",
       "this.sourcePresetEndpointBodyChanged(previousSource, nextSource)) return 'source-structure-change'",
       "this.padOverrideChanged(previousSource, nextSource)) return 'pad-override-change'",
@@ -738,7 +738,23 @@ await runCheckWithReport({
     const soundscapeParamNext = clone(base);
     soundscapeParamNext.soundscape.moduleParams[1] = 0.72;
     const soundscapeParamDiff = adapterHarness.buildCoreProductSnapshotDiff(base, soundscapeParamNext);
-    assert(soundscapeParamDiff.applied === false && soundscapeParamDiff.reason === 'soundscape-param-change', 'soundscape structured param changes must full-reload with classified reason');
+    assert(soundscapeParamDiff.applied === true, 'compatible soundscape module param changes must dirty-diff');
+    assert(
+      soundscapeParamDiff.events.some((event) =>
+        event.type === 'param' &&
+          event.paramId === 'SourceLevel' &&
+          event.targetId === adapterHarness.context.CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + 1 &&
+          Math.abs(event.value - 0.72) < 1.0e-6),
+      'soundscape module param dirty diff did not emit the targeted runtime param event',
+    );
+
+    const soundscapeShapeNext = clone(base);
+    soundscapeShapeNext.soundscape.moduleParamCount = 1;
+    const soundscapeShapeDiff = adapterHarness.buildCoreProductSnapshotDiff(base, soundscapeShapeNext);
+    assert(
+      soundscapeShapeDiff.applied === false && soundscapeShapeDiff.reason === 'soundscape-param-change',
+      'soundscape structured shape changes must full-reload with classified reason',
+    );
 
     const soundscapeOffBase = clone(base);
     soundscapeOffBase.sources[1] = makeSource(7);

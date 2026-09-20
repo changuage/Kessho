@@ -4,7 +4,7 @@ import type { MatrixCellHandle, SliderRuntimeRendererProps } from '../sliderSyst
 import type { SliderMode, SliderState } from '../state';
 import type { FxRoutingGraphState, FxRoutingNodeId } from '../routing/fxRoutingGraph';
 
-export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'freeze' | 'reverb';
+export type SliderColumnId = 'level' | 'delayA' | 'delayB' | 'granular' | 'degrade' | 'freeze' | 'reverb' | 'creativeSaturation';
 export type ColumnId = SliderColumnId | 'dynamics';
 export type CellHandle = MatrixCellHandle; export interface RouteControl { key: keyof SliderState; label: string }
 export interface MatrixCell { kind: 'editable' | 'self' | 'blocked' | 'fx'; route?: RouteControl; fxRoute?: readonly [FxRoutingNodeId, FxRoutingNodeId]; note?: string }

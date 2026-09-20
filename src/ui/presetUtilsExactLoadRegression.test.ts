@@ -99,7 +99,7 @@ const authoredFreeze = applyPreset(makePreset({
 assert.equal(authoredFreeze.state.spectralFreezeEnabled, true);
 assert.equal(authoredFreeze.state.spectralFreezeMode, 'slushy');
 assert.equal(authoredFreeze.state.spectralFreezeDiffusion, 0.91);
-assert.equal(authoredFreeze.state.spectralFreezeActive, false);
+assert.equal(authoredFreeze.state.spectralFreezeActive, true);
 assert.equal(authoredFreeze.state.spectralFreezeCaptureSerial, 0);
 
 const currentWithoutAdditiveSynthLaneFields = makePreset({});

@@ -1153,7 +1153,18 @@ export default function RoutingMatrix({
                 />
               </>
             )}
-            <span className="routing-matrix-cell-readout">
+            <span
+              className={`routing-matrix-cell-readout${runtime?.onCycleMode ? ' mode-cycle' : ''}`}
+              title={runtime?.onCycleMode ? 'Click to cycle slider type' : undefined}
+              onPointerDown={runtime?.onCycleMode ? (event) => event.stopPropagation() : undefined}
+              onDoubleClick={runtime?.onCycleMode ? (event) => event.stopPropagation() : undefined}
+              onClick={(event) => {
+                if (!route || !runtime?.onCycleMode) return;
+                event.preventDefault();
+                event.stopPropagation();
+                runtime.onCycleMode(route.key);
+              }}
+            >
               {mode === 'single' ? (
                 <span className="routing-matrix-cell-value">{readout}</span>
               ) : (

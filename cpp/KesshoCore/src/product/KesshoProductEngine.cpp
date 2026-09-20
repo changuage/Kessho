@@ -84,6 +84,8 @@
   generated_sequencer_capture_event_counter = 1u;
   simple_sequencer_visual_ring.reset();
   simple_sequencer_visual_event_counter = 1u;
+  resetInteractionSignals();
+  resetInteractionEvents();
   synth_sequencer_chain = {};
   drum_sequencer_chain = {};
   evolution_amount = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_EVOLUTION_AMOUNT;
@@ -207,6 +209,10 @@
   audio_render_sample_frame = 0u;
   snapshot_loaded_once = false;
   control_event_count = 0;
+  fx_configuration_batch_depth = 0u;
+  fx_configuration_pending = false;
+  reverb_configuration_pending = false;
+  spectral_freeze_configuration_pending = false;
   pending_phrase_timing_event_count = 0u;
   pending_phrase_timing_apply_frame = 0u;
   sequencer_events.clear();
@@ -261,6 +267,8 @@
   generated_sequencer_capture_event_counter = 1u;
   simple_sequencer_visual_ring.reset();
   simple_sequencer_visual_event_counter = 1u;
+  resetInteractionSignals();
+  resetInteractionEvents();
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;

@@ -837,10 +837,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
 
 export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
-    key: 'spectralFreezeActive',
-    reason: 'Runtime capture gesture state; presets must never restore an active freeze capture.',
-  },
-  {
     key: 'spectralFreezeCaptureSerial',
     reason: 'Runtime capture edge serial; presets must never replay a historical capture trigger.',
   },

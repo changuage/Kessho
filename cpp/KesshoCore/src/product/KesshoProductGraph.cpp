@@ -328,6 +328,10 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
   if (!soundscapes_module) {
     return;
   }
+  if (fx_configuration_batch_depth > 0u) {
+    soundscapes_module_params_dirty = true;
+    return;
+  }
   float* params = soundscapes_module->params();
   if (params == nullptr || soundscapes_module->paramCount() < static_cast<int>(kSoundscapeModuleParamCount)) {
     return;
@@ -340,6 +344,7 @@ void KesshoProductEngine::configureSoundscapesModuleFromSource() {
       soundscapes_module_params_configured = false;
       soundscapes_module_param_cache = {};
     }
+    soundscapes_module_params_dirty = false;
     return;
   }
   std::array<float, kSoundscapeModuleParamCount> desired{};

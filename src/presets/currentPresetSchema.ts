@@ -51,15 +51,11 @@ const CURRENT_PARAMETER_KEYS = new Set([
 const CURRENT_SPECIAL_DATA_KEYS = new Set([
   'format',
   'formatVersion',
-  'mode',
   'controls',
-  'reactiveRanges',
-  'vizSliderModes',
-  'reaction',
-  'performanceMacros',
-  'layerMacros',
   'qualityMode',
   'seed',
+  'renderer',
+  'assignments',
   'lead1PresetAData',
   'lead1PresetBData',
   'lead2PresetCData',
@@ -149,16 +145,27 @@ function validateVersionData(value: Record<string, unknown>, index: number, type
     }
   }
   if (type === 'source' && scope === 'visualizer') {
-    if (value.format !== 'kessho-visualizer-preset' || (value.formatVersion !== 1 && value.formatVersion !== 2) ||
-        typeof value.mode !== 'string' || !isRecord(value.controls) || !isRecord(value.reaction) ||
-        !isFiniteNumber(value.seed)) {
+    const transportAssignments = Array.isArray(value.assignments) ? value.assignments : null;
+    const isTransportVisualizer = value.formatVersion === 3
+      && value.renderer === 'transport'
+      && isRecord(value.controls)
+      && transportAssignments !== null
+      && (value.qualityMode === 'auto' || value.qualityMode === 'mobileSafe' || value.qualityMode === 'desktopBeauty')
+      && isFiniteNumber(value.seed);
+    if (value.format !== 'kessho-visualizer-preset' || !isTransportVisualizer) {
       fail(`versions[${index}].data`, 'visualizer data does not match the current format');
     }
-    if (value.vizSliderModes !== undefined) {
-      if (!isRecord(value.vizSliderModes)) fail(`versions[${index}].data.vizSliderModes`, 'visualizer slider modes must be an object');
-      for (const [key, mode] of Object.entries(value.vizSliderModes)) {
-        if (typeof key !== 'string' || (mode !== 'single' && mode !== 'walk' && mode !== 'sampleHold' && mode !== 'shape')) {
-          fail(`versions[${index}].data.vizSliderModes.${key}`, 'visualizer slider mode is invalid');
+    if (isTransportVisualizer && transportAssignments) {
+      for (const [assignmentIndex, assignment] of transportAssignments.entries()) {
+        if (!isRecord(assignment)
+            || typeof assignment.id !== 'string'
+            || typeof assignment.source !== 'string'
+            || typeof assignment.signal !== 'string'
+            || typeof assignment.target !== 'string'
+            || !isFiniteNumber(assignment.amount)
+            || (assignment.polarity !== 'unipolar' && assignment.polarity !== 'bipolar')
+            || typeof assignment.enabled !== 'boolean') {
+          fail(`versions[${index}].data.assignments[${assignmentIndex}]`, 'Transport assignment is invalid');
         }
       }
     }

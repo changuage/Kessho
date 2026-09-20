@@ -282,7 +282,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
       int scale_intervals[kMaxScaleNotes]{};
       const uint32_t scale_count = std::max<uint32_t>(1u, scaleIntervals(harmony.scale_id, scale_intervals));
       const int32_t low = 64 + arrangement.lead_octave * 12;
-      const int32_t high = std::min<int32_t>(108, low + static_cast<int32_t>(arrangement.lead_octave_range * 12u));
+      const int32_t high = std::min<int32_t>(127, low + static_cast<int32_t>(arrangement.lead_octave_range * 12u));
       const int32_t root_pitch_class = positiveModulo(roundedInt(harmony.root_midi), 12u);
       const int32_t root_base = 36 + root_pitch_class;
       int32_t available[64]{};

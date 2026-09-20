@@ -165,8 +165,12 @@ export class CoreProductArrangementProjection {
       this.padChordPlan = updateRuntimePlanNotes(this.padChordPlan, [...this.padChordPlan.notes, note]);
       return;
     }
-    const rangeMinMidi = 64 + Math.round(Number(this.state.lead1Octave ?? 1)) * 12;
-    const rangeMaxMidi = rangeMinMidi + Math.round(Number(this.state.lead1OctaveRange ?? 2)) * 12;
+    const baseOctaveOffset = Math.max(-4, Math.min(4, Math.round(Number(this.state.lead1Octave ?? 1))));
+    const octaveRange = Math.max(1, Math.min(4, Math.round(Number(this.state.lead1OctaveRange ?? 2))));
+    const baseLowMidi = 64 + baseOctaveOffset * 12;
+    const baseHighMidi = baseLowMidi + octaveRange * 12;
+    const rangeMinMidi = Math.max(24, baseLowMidi);
+    const rangeMaxMidi = Math.min(127, baseHighMidi);
     if (!this.randomTimingPlan || this.randomTimingPlan.phraseIndex !== event.phraseIndex) {
       this.previousRandomTimingPlan = createCarryoverPlan(
         'randomTiming',
