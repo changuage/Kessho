@@ -2422,6 +2422,38 @@ const App: React.FC = () => {
     onRoutingMuteGroupsLoad: restoreRoutingMuteGroupsFromPreset,
   });
 
+  const backgroundMorphControlsLocked = backgroundJourney.runtimeProjectionActive;
+  const handleMorphPositionChangeForUi = useCallback(
+    (...args: Parameters<typeof handleMorphPositionChange>) => {
+      if (backgroundMorphControlsLocked) return;
+      handleMorphPositionChange(...args);
+    },
+    [backgroundMorphControlsLocked, handleMorphPositionChange],
+  );
+  const handleLoadMorphAForUi = useCallback(
+    (...args: Parameters<typeof handleLoadMorphA>) => backgroundMorphControlsLocked ? false : handleLoadMorphA(...args),
+    [backgroundMorphControlsLocked, handleLoadMorphA],
+  );
+  const handleLoadMorphBForUi = useCallback(
+    (...args: Parameters<typeof handleLoadMorphB>) => backgroundMorphControlsLocked ? false : handleLoadMorphB(...args),
+    [backgroundMorphControlsLocked, handleLoadMorphB],
+  );
+  const handleMorphSlotAClearForUi = useCallback(() => {
+    if (!backgroundMorphControlsLocked) handleMorphSlotAClear();
+  }, [backgroundMorphControlsLocked, handleMorphSlotAClear]);
+  const handleMorphSlotBClearForUi = useCallback(() => {
+    if (!backgroundMorphControlsLocked) handleMorphSlotBClear();
+  }, [backgroundMorphControlsLocked, handleMorphSlotBClear]);
+  const handleMorphModeChangeForUi = useCallback((mode: 'manual' | 'auto') => {
+    if (!backgroundMorphControlsLocked) setMorphMode(mode);
+  }, [backgroundMorphControlsLocked]);
+  const handleMorphPlayPhrasesChangeForUi = useCallback((value: number) => {
+    if (!backgroundMorphControlsLocked) setMorphPlayPhrases(value);
+  }, [backgroundMorphControlsLocked]);
+  const handleMorphTransitionPhrasesChangeForUi = useCallback((value: number) => {
+    if (!backgroundMorphControlsLocked) setMorphTransitionPhrases(value);
+  }, [backgroundMorphControlsLocked]);
+
   // ========================================================================
   // JOURNEY MODE CALLBACKS
   // ========================================================================
@@ -2634,6 +2666,13 @@ const App: React.FC = () => {
     phraseSeconds: engineState.transportDebug?.effectivePhraseSeconds ?? getEffectivePhraseDuration(state),
     productRuntimeActive: productRuntimeCore,
   });
+
+  const backgroundMorphProjection = backgroundJourney.morphProjection;
+  const displayedMorphPresetA = backgroundMorphProjection?.morphPresetA ?? morphPresetA;
+  const displayedMorphPresetB = backgroundMorphProjection?.morphPresetB ?? morphPresetB;
+  const displayedMorphPosition = backgroundMorphProjection?.morphPosition ?? morphPosition;
+  const displayedMorphSlotAName = backgroundMorphProjection?.morphSlotAName ?? morphSlotAName;
+  const displayedMorphSlotBName = backgroundMorphProjection?.morphSlotBName ?? morphSlotBName;
 
   const renderWithPresetPoolProvider = (children: React.ReactNode) => (
     <PresetPoolProvider value={activePresetPool} onChange={setActivePresetPool}>
@@ -3009,24 +3048,24 @@ const App: React.FC = () => {
                 onHarmonyLiveLayerChange={handleHarmonyLiveLayerChange}
                 routingMuteGroupSnapshot={routingMuteGroupsController.runtimeSnapshot}
                 {...globalRuntimeProps}
-                morphCoFViz={morphCoFViz}
-                morphPresetA={morphPresetA}
-                morphPresetB={morphPresetB}
-                morphPosition={morphPosition}
+                morphCoFViz={backgroundMorphProjection ? null : morphCoFViz}
+                morphPresetA={displayedMorphPresetA}
+                morphPresetB={displayedMorphPresetB}
+                morphPosition={displayedMorphPosition}
                 morphMode={morphMode}
                 morphPlayPhrases={morphPlayPhrases}
                 morphTransitionPhrases={morphTransitionPhrases}
                 morphCountdown={morphCountdown}
-                onLoadMorphA={handleLoadMorphA}
-                morphSlotAName={morphSlotAName}
-                onClearMorphA={handleMorphSlotAClear}
-                onLoadMorphB={handleLoadMorphB}
-                morphSlotBName={morphSlotBName}
-                onClearMorphB={handleMorphSlotBClear}
-                onMorphPositionChange={handleMorphPositionChange}
-                onMorphModeChange={setMorphMode}
-                onMorphPlayPhrasesChange={setMorphPlayPhrases}
-                onMorphTransitionPhrasesChange={setMorphTransitionPhrases}
+                onLoadMorphA={handleLoadMorphAForUi}
+                morphSlotAName={displayedMorphSlotAName}
+                onClearMorphA={handleMorphSlotAClearForUi}
+                onLoadMorphB={handleLoadMorphBForUi}
+                morphSlotBName={displayedMorphSlotBName}
+                onClearMorphB={handleMorphSlotBClearForUi}
+                onMorphPositionChange={handleMorphPositionChangeForUi}
+                onMorphModeChange={handleMorphModeChangeForUi}
+                onMorphPlayPhrasesChange={handleMorphPlayPhrasesChangeForUi}
+                onMorphTransitionPhrasesChange={handleMorphTransitionPhrasesChangeForUi}
                 statePresetName={statePresetName}
                 sliderModes={sliderModes}
                 dualSliderRanges={dualSliderRanges as Record<string, { min: number; max: number }>}
@@ -3296,8 +3335,8 @@ const App: React.FC = () => {
           releaseVisiblePageWakeLock={releaseVisiblePageWakeLock}
           isJourneyPlaying={isJourneyPlaying}
           journey={journey}
-          journeyMorphDirection={journeyMorphDirectionRef.current}
-          morphPosition={morphPosition}
+          journeyMorphDirection={backgroundMorphProjection?.morphDirection ?? journeyMorphDirectionRef.current}
+          morphPosition={displayedMorphPosition}
           mobileDebugPanelStyle={m?.debugPanel}
         />
 

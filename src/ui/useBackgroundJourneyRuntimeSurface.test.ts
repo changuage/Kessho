@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import type { JourneyConfig } from '../audio/journeyTypes';
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
+import type { SavedPreset } from './state';
 import {
+  projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
   shouldRefreshBackgroundJourneyTelemetry,
@@ -13,6 +15,86 @@ const playableNodes = [
   { id: 'node-a' },
   { id: 'node-b' },
 ] as JourneyConfig['nodes'];
+
+const morphNodes = [
+  { id: 'node-a' },
+  { id: 'node-b' },
+  { id: 'node-c' },
+] as JourneyConfig['nodes'];
+
+const morphPresets = new Map<string, SavedPreset>([
+  ['node-a', { name: 'Preset A', timestamp: '', state: {} as SavedPreset['state'] }],
+  ['node-b', { name: 'Preset B', timestamp: '', state: {} as SavedPreset['state'] }],
+  ['node-c', { name: 'Preset C', timestamp: '', state: {} as SavedPreset['state'] }],
+]);
+
+test('background morph projection alternates A/B slots on even and odd transitions', () => {
+  const forward = projectBackgroundJourneyMorph({
+    journeyCurrentNodeIndex: 0,
+    journeyNextNodeIndex: 1,
+    journeyScheduleIndex: 0,
+    journeyTransitionCount: 0,
+    journeyMorphProgress: 0.25,
+  }, morphNodes, morphPresets);
+  assert.ok(forward);
+  assert.equal(forward.morphPresetA.name, 'Preset A');
+  assert.equal(forward.morphPresetB.name, 'Preset B');
+  assert.equal(forward.morphSlotAName, 'Preset A');
+  assert.equal(forward.morphSlotBName, 'Preset B');
+  assert.equal(forward.morphPosition, 25);
+  assert.equal(forward.morphDirection, 'toB');
+
+  const reverse = projectBackgroundJourneyMorph({
+    journeyCurrentNodeIndex: 1,
+    journeyNextNodeIndex: 2,
+    journeyScheduleIndex: 1,
+    journeyTransitionCount: 1,
+    journeyMorphProgress: 0.25,
+  }, morphNodes, morphPresets);
+  assert.ok(reverse);
+  assert.equal(reverse.morphPresetA.name, 'Preset C');
+  assert.equal(reverse.morphPresetB.name, 'Preset B');
+  assert.equal(reverse.morphPosition, 75);
+  assert.equal(reverse.morphDirection, 'toA');
+});
+
+test('background morph projection preserves alternating parity through loop restarts and self-loops', () => {
+  const afterLoop = projectBackgroundJourneyMorph({
+    journeyCurrentNodeIndex: 0,
+    journeyNextNodeIndex: 1,
+    journeyScheduleIndex: 0,
+    journeyTransitionCount: 2,
+    journeyMorphProgress: 0,
+  }, morphNodes, morphPresets);
+  assert.ok(afterLoop);
+  assert.equal(afterLoop.morphPresetA.name, 'Preset A');
+  assert.equal(afterLoop.morphPresetB.name, 'Preset B');
+  assert.equal(afterLoop.morphPosition, 0);
+  assert.equal(afterLoop.morphDirection, 'toB');
+
+  const selfLoop = projectBackgroundJourneyMorph({
+    journeyCurrentNodeIndex: 1,
+    journeyNextNodeIndex: 1,
+    journeyScheduleIndex: 1,
+    journeyTransitionCount: 3,
+    journeyMorphProgress: 0,
+  }, morphNodes, morphPresets);
+  assert.ok(selfLoop);
+  assert.equal(selfLoop.morphPresetA.name, 'Preset B');
+  assert.equal(selfLoop.morphPresetB.name, 'Preset B');
+  assert.equal(selfLoop.morphPosition, 100);
+  assert.equal(selfLoop.morphDirection, 'toA');
+});
+
+test('background morph projection declines incomplete telemetry or preset maps', () => {
+  assert.equal(projectBackgroundJourneyMorph({
+    journeyCurrentNodeIndex: 0,
+    journeyNextNodeIndex: 99,
+    journeyScheduleIndex: 0,
+    journeyTransitionCount: 0,
+    journeyMorphProgress: 0,
+  }, morphNodes, morphPresets), null);
+});
 
 test('foreground reconciliation waits for the fresh asynchronous host snapshot before projecting', () => {
   const staleSnapshot = {

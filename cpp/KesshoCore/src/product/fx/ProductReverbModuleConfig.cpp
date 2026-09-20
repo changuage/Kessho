@@ -1,6 +1,10 @@
 #include "../KesshoProductEngineInternal.h"
 
 void KesshoProductEngine::configureReverbModule() {
+  if (fx_configuration_batch_depth != 0u) {
+    fx_configuration_pending = true;
+    return;
+  }
   if (!reverb_module) {
     return;
   }
@@ -51,5 +55,8 @@ void KesshoProductEngine::configureReverbModule() {
       fx.reverb_bloom + clampFloat(reverb_bloom_boost, 0.0f, 1.0f) * 0.18f,
       -1.0f,
       1.0f);
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  ++debug_reverb_configuration_count;
+#endif
   reverb_module->commitParams();
 }

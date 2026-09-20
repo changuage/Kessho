@@ -19,6 +19,7 @@ import {
 import type { SavedPreset, SliderState } from './state';
 import type { UseJourneyResult } from './journeyState';
 import {
+  projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
   shouldRefreshBackgroundJourneyTelemetry,
@@ -60,8 +61,9 @@ type OptimizationContext = {
   configFingerprint: string;
 };
 
-export type { BackgroundJourneyTelemetryProjection } from './backgroundJourneyRuntimeCoordinator';
+export type { BackgroundJourneyMorphProjection, BackgroundJourneyTelemetryProjection } from './backgroundJourneyRuntimeCoordinator';
 export {
+  projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
@@ -135,6 +137,11 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   const terminalStateRef = useRef({ terminalRevision: null as number | null, observedRunning: false });
   const previousVisibilityRef = useRef({ documentVisible, runtimeProjectionActive: false });
   const pendingTelemetryRefreshRef = useRef<(() => void) | null>(null);
+  const morphProjection = useMemo(() => {
+    if (!runtimeProjectionActive || !telemetry || !preparedRef.current) return null;
+    const prepared = preparedRef.current;
+    return projectBackgroundJourneyMorph(telemetry, prepared.playableNodes, prepared.presets);
+  }, [runtimeProjectionActive, telemetry]);
 
   const cancelPendingTelemetryRefresh = useCallback(() => {
     pendingTelemetryRefreshRef.current?.();
@@ -449,5 +456,16 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     setUiState({ status: 'idle' });
   }, [journey.stop, setIsJourneyPlaying]);
 
-  return { uiState, prepare, findOptimization, confirmOptimization, startPrepared, foregroundOnly, stop, cancel };
+  return {
+    uiState,
+    morphProjection,
+    runtimeProjectionActive,
+    prepare,
+    findOptimization,
+    confirmOptimization,
+    startPrepared,
+    foregroundOnly,
+    stop,
+    cancel,
+  };
 }

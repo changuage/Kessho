@@ -151,6 +151,26 @@ void uploadFiniteJourney(KesshoProductEngine* engine) {
   enqueue(engine, start);
 }
 
+void uploadContinuousJourney(KesshoProductEngine* engine) {
+  KesshoProductEvent begin{};
+  begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_JOURNEY_SCHEDULE;
+  begin.target_id = 0xf1234567u;
+  begin.value = 1.0f;
+  begin.value2 = 1.0f;
+  begin.value3 = 0.0f;
+  begin.flags = 81u;
+  enqueue(engine, begin);
+  uploadEntry(engine, 0u, 0u, 1u, 0u, 128u, 1000u);
+  uploadProgram(engine, 0u, 0.2f, 0.8f);
+  KesshoProductEvent commit{};
+  commit.event_kind = KESSHO_PRODUCT_EVENT_KIND_COMMIT_JOURNEY_SCHEDULE;
+  enqueue(engine, commit);
+  KesshoProductEvent start{};
+  start.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_JOURNEY_SCHEDULE_ENABLED;
+  start.value = 1.0f;
+  enqueue(engine, start);
+}
+
 void requireScheduleExecutesAndLoops() {
   KesshoProductEngine* engine = createEngine();
   uploadLoop(engine);
@@ -246,6 +266,20 @@ void requireFiniteJourneyCompletesWithoutStoppingAudio() {
       "transport restart restarted a completed Journey");
   require(engine->journey_schedule_runtime.phase == ProductJourneyPhase::FinalHold,
       "transport restart changed completed Journey phase");
+  kessho_product_destroy(engine);
+}
+
+void requireJourneyMorphUsesSampleFrameProgress() {
+  KesshoProductEngine* engine = createEngine();
+  uploadContinuousJourney(engine);
+  render(engine);
+  render(engine);
+  render(engine);
+
+  requireNear(engine->journey_schedule_runtime.scene_position, 0.128f,
+      "Journey morph did not use sample-frame progress");
+  requireNear(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level, 0.2768f,
+      "Journey morph did not apply intermediate source level");
   kessho_product_destroy(engine);
 }
 
@@ -355,6 +389,7 @@ int main() {
   requireScheduleExecutesAndLoops();
   requireSelfLoopSkipsMorph();
   requireFiniteJourneyCompletesWithoutStoppingAudio();
+  requireJourneyMorphUsesSampleFrameProgress();
   requireMalformedCommitIsAtomic();
   requireNonFiniteUploadValuesAreRejected();
   requireJourneyScheduleSuspendedHostFixture();

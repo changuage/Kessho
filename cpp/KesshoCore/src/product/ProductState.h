@@ -181,6 +181,12 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   RoutingState routing{};
   uint32_t rng_seed = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
   uint32_t rng_state = kessho::product::generated::KESSHO_PRODUCT_DEFAULT_RNG_SEED;
+  uint32_t fx_configuration_batch_depth = 0u;
+  bool fx_configuration_pending = false;
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  uint32_t debug_fx_configuration_count = 0u;
+  uint32_t debug_reverb_configuration_count = 0u;
+#endif
   uint32_t sequencer_evolve_rng_stream_seed = 0u;
   uint32_t sequencer_evolve_rng_stream_state = 0u;
   bool sequencer_evolve_rng_stream_initialized = false;
@@ -200,6 +206,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState {
   void configureDynamicsDriftModule();
   void configureFxModules();
   void configureSpectralFreezeModule();
+  void beginFxConfigurationBatch();
+  void endFxConfigurationBatch();
   void retimeTempoSyncedFx(float previous_bpm);
   void configureReverbModule();
   void resetReverbHarmonyCoupling();

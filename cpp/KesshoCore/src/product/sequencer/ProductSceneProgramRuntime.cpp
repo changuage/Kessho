@@ -80,6 +80,7 @@ void applySceneProgram(
     float previous,
     float position,
     bool program_changed) {
+  engine.beginFxConfigurationBatch();
   if (!applySourceLevelEntriesAsBatch(engine, active, position)) {
     for (uint32_t index = 0u; index < active.entry_count; ++index) {
       ProductSceneEntry& entry = active.entries[index];
@@ -111,6 +112,7 @@ void applySceneProgram(
       engine.applyControlEvent(command.event);
     }
   }
+  engine.endFxConfigurationBatch();
 }
 
 } // namespace

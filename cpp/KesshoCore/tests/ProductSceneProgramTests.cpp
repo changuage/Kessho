@@ -106,6 +106,80 @@ void setPosition(KesshoProductEngine* engine, float position) {
   renderBlock(engine);
 }
 
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+void requireFxConfigurationIsBatchedForSceneUpdates() {
+  KesshoProductEngine* engine = createEngine();
+  engine->debug_fx_configuration_count = 0u;
+
+  ProductSceneProgramBuffer& active = engine->scene_program_runtime.buffers[0];
+  active = {};
+  active.entry_count = 2u;
+  active.entries[0].event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.entries[0].param_id = KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_LEFT_MS_ID;
+  active.entries[0].value_a = 250.0f;
+  active.entries[0].value_b = 1250.0f;
+  active.entries[1].event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.entries[1].param_id = KESSHO_PRODUCT_PARAM_FX_DELAY_BBASE_TIME_MS_ID;
+  active.entries[1].value_a = 500.0f;
+  active.entries[1].value_b = 1500.0f;
+  engine->scene_program_runtime.active_buffer = 0u;
+  engine->scene_program_runtime.active = true;
+
+  setPosition(engine, 0.5f);
+  require(engine->debug_fx_configuration_count == 1u,
+      "scene FX entries triggered more than one configuration flush");
+  requireNear(engine->fx.delay_a_time_left_ms, 750.0f,
+      "scene Delay A value was not applied");
+  requireNear(engine->fx.delay_b_base_time_ms, 1000.0f,
+      "scene Delay B value was not applied");
+
+  engine->debug_fx_configuration_count = 0u;
+  engine->debug_reverb_configuration_count = 0u;
+  engine->fx.reverb_chord_wash = true;
+  engine->fx.reverb_resolution_bloom = true;
+  active = {};
+  active.entry_count = 2u;
+  active.entries[0].event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.entries[0].param_id = KESSHO_PRODUCT_PARAM_FX_REVERB_CHORD_WASH_ID;
+  active.entries[0].value_a = 1.0f;
+  active.entries[0].value_b = 0.0f;
+  active.entries[0].interpolation = ProductSceneInterpolation::DiscreteA;
+  active.entries[1].event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  active.entries[1].param_id = KESSHO_PRODUCT_PARAM_FX_REVERB_RESOLUTION_BLOOM_ID;
+  active.entries[1].value_a = 1.0f;
+  active.entries[1].value_b = 0.0f;
+  active.entries[1].interpolation = ProductSceneInterpolation::DiscreteA;
+  setPosition(engine, 1.0f);
+  require(engine->debug_reverb_configuration_count == 1u,
+      "scene reverb entries triggered more than one configuration flush");
+  require(!engine->fx.reverb_chord_wash && !engine->fx.reverb_resolution_bloom,
+      "scene reverb values were not applied");
+
+  engine->debug_reverb_configuration_count = 0u;
+  KesshoProductEvent direct_reverb{};
+  direct_reverb.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  direct_reverb.param_id = KESSHO_PRODUCT_PARAM_FX_REVERB_CHORD_WASH_ID;
+  direct_reverb.value = 0.0f;
+  enqueue(engine, direct_reverb);
+  renderBlock(engine);
+  require(engine->debug_reverb_configuration_count == 1u,
+      "ordinary reverb control event was not configured immediately");
+
+  engine->debug_fx_configuration_count = 0u;
+  KesshoProductEvent direct{};
+  direct.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
+  direct.param_id = KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_LEFT_MS_ID;
+  direct.value = 1100.0f;
+  enqueue(engine, direct);
+  renderBlock(engine);
+  require(engine->debug_fx_configuration_count == 1u,
+      "ordinary FX control event was not configured immediately");
+  requireNear(engine->fx.delay_a_time_left_ms, 1100.0f,
+      "ordinary FX control event was not applied");
+  kessho_product_destroy(engine);
+}
+#endif
+
 void requireInterpolationAndBoundaryCommands() {
   KesshoProductEngine* engine = createEngine();
   uploadFixture(engine);
@@ -308,6 +382,9 @@ void requireAudibleBidirectionalPcmParity() {
 
 int main() {
   requireInterpolationAndBoundaryCommands();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  requireFxConfigurationIsBatchedForSceneUpdates();
+#endif
   requireCommitIsAtomic();
   requireNonFiniteSceneValuesAreRejected();
   requireSoundscapeTargetsAndTelemetry();

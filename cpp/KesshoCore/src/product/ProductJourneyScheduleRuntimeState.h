@@ -58,10 +58,8 @@ struct ProductJourneyScheduleRuntimeState {
   uint32_t schedule_index = 0u;
   uint32_t active_program_index = kProductJourneyNoIndex;
   uint32_t transition_count = 0u;
-  uint32_t scene_position_step = 0u;
   uint64_t phase_start_frame = 0u;
   uint64_t phase_end_frame = 0u;
-  uint64_t next_scene_apply_frame = 0u;
   float scene_position = 0.0f;
   float previous_scene_position = 0.0f;
   ProductJourneyPhase phase = ProductJourneyPhase::Off;

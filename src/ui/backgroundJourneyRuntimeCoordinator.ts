@@ -1,5 +1,6 @@
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
 import type { JourneyConfig } from '../audio/journeyTypes';
+import type { SavedPreset } from './state';
 import {
   resolveBackgroundJourneyRuntimePhase,
   type BackgroundJourneyRuntimePhase,
@@ -12,6 +13,15 @@ export type BackgroundJourneyTelemetryProjection = {
   scheduleIndex: number | null;
   phraseProgress: number;
   morphProgress: number;
+};
+
+export type BackgroundJourneyMorphProjection = {
+  morphPresetA: SavedPreset;
+  morphPresetB: SavedPreset;
+  morphSlotAName: string;
+  morphSlotBName: string;
+  morphPosition: number;
+  morphDirection: 'toA' | 'toB';
 };
 
 export type BackgroundJourneyRuntimeVisibility = {
@@ -71,6 +81,45 @@ export function projectBackgroundJourneyTelemetry(
     scheduleIndex: Number.isInteger(telemetry.journeyScheduleIndex) ? telemetry.journeyScheduleIndex! : null,
     phraseProgress: telemetry.journeyHoldProgress ?? 0,
     morphProgress: telemetry.journeyMorphProgress ?? 0,
+  };
+}
+
+export function projectBackgroundJourneyMorph(
+  telemetry: Pick<CoreProductTelemetrySnapshot, 'journeyCurrentNodeIndex' | 'journeyNextNodeIndex' | 'journeyScheduleIndex' | 'journeyTransitionCount' | 'journeyMorphProgress'>,
+  playableNodes: JourneyConfig['nodes'],
+  presets: ReadonlyMap<string, SavedPreset>,
+): BackgroundJourneyMorphProjection | null {
+  const currentNode = playableNodes[telemetry.journeyCurrentNodeIndex ?? -1];
+  const nextNode = playableNodes[telemetry.journeyNextNodeIndex ?? -1];
+  const currentPreset = currentNode ? presets.get(currentNode.id) : undefined;
+  const nextPreset = nextNode ? presets.get(nextNode.id) : undefined;
+  if (!currentPreset || !nextPreset) return null;
+
+  const paritySource = Number.isInteger(telemetry.journeyTransitionCount)
+    ? telemetry.journeyTransitionCount!
+    : telemetry.journeyScheduleIndex ?? 0;
+  const reverse = (Math.max(0, paritySource) & 1) === 1;
+  const progress = Number.isFinite(telemetry.journeyMorphProgress)
+    ? Math.max(0, Math.min(1, telemetry.journeyMorphProgress!))
+    : 0;
+
+  if (reverse) {
+    return {
+      morphPresetA: nextPreset,
+      morphPresetB: currentPreset,
+      morphSlotAName: nextPreset.name,
+      morphSlotBName: currentPreset.name,
+      morphPosition: (1 - progress) * 100,
+      morphDirection: 'toA',
+    };
+  }
+  return {
+    morphPresetA: currentPreset,
+    morphPresetB: nextPreset,
+    morphSlotAName: currentPreset.name,
+    morphSlotBName: nextPreset.name,
+    morphPosition: progress * 100,
+    morphDirection: 'toB',
   };
 }
 
