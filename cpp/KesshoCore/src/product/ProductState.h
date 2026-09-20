@@ -282,12 +282,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
       const float range_maxes[64],
       float fallback,
       uint32_t sample_seed) const;
-  uint32_t stepU32Value(
-      uint32_t step,
-      uint32_t low,
-      uint32_t high,
-      const uint32_t values[64],
-      uint32_t fallback) const;
+  uint32_t stepU32Value(uint32_t step, uint32_t low, uint32_t high,
+                        const uint32_t values[64], uint32_t fallback) const;
   void setStepOverride(LaneState& lane, uint32_t step, bool enabled);
   void clearLaneStepOverrides(LaneState& lane);
   uint32_t stepFieldId(uint32_t field) const;

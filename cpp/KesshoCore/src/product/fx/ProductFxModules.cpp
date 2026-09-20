@@ -12,8 +12,7 @@ void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
   fx.delay_a_time_right_ms = clampFloat(fx.delay_a_time_right_ms * tempo_ratio, 10.0f, 5000.0f);
   fx.delay_b_base_time_ms = clampFloat(fx.delay_b_base_time_ms * tempo_ratio, 20.0f, 5000.0f);
 
-  // A live tempo drag can produce many control events per second. Only publish
-  // the three affected delay parameters instead of rebuilding every FX module.
+  // Tempo drags publish only the three affected delay parameters to avoid rebuilding every FX module.
   if (delay_a_module) {
     float* params = delay_a_module->params();
     if (params != nullptr && delay_a_module->paramCount() >= 3) {
@@ -67,8 +66,7 @@ void KesshoProductEngine::configureFxModules() {
   if (delay_a_module) {
     float* params = delay_a_module->params();
     if (params != nullptr && delay_a_module->paramCount() >= 17) {
-      const bool active =
-          fx.delay_a_enabled &&
+      const bool active = fx.delay_a_enabled &&
           (fx.delay_a_mix > 0.0001f ||
            routing.fx_edge_mask[kFxNodeDelayA] != 0u ||
            routing.delay_a_to_delay_b_feedback > 0.0001f);
@@ -97,8 +95,7 @@ void KesshoProductEngine::configureFxModules() {
   if (delay_b_module) {
     float* params = delay_b_module->params();
     if (params != nullptr && delay_b_module->paramCount() >= 25) {
-      const bool active =
-          fx.delay_b_enabled &&
+      const bool active = fx.delay_b_enabled &&
           (fx.delay_b_mix > 0.0001f ||
            routing.fx_edge_mask[kFxNodeDelayB] != 0u ||
            routing.delay_b_to_delay_a_feedback > 0.0001f);
