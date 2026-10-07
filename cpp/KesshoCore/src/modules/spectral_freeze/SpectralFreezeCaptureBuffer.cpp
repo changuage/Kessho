@@ -119,6 +119,55 @@ int SpectralFreezeCaptureBuffer::validSamples() const noexcept {
   return activeValidSamples();
 }
 
+void SpectralFreezeCaptureBuffer::readStereo(
+    double start_position, float* output_l, float* output_r, int frames) const noexcept {
+  if (output_l == nullptr || output_r == nullptr || frames <= 0) {
+    return;
+  }
+  const int valid = activeValidSamples();
+  if (valid <= 0 || !std::isfinite(start_position)) {
+    std::fill_n(output_l, frames, 0.0f);
+    std::fill_n(output_r, frames, 0.0f);
+    return;
+  }
+  int oldest = activeWritePosition() - valid;
+  if (oldest < 0) {
+    oldest += capacity_samples_;
+  }
+  // Integer scan positions need no interpolation. Copy each contiguous ring span.
+  if (start_position >= 0.0 && start_position + frames <= valid &&
+      start_position == std::floor(start_position)) {
+    int start = oldest + static_cast<int>(start_position);
+    if (start >= capacity_samples_) {
+      start -= capacity_samples_;
+    }
+    const int first = std::min(frames, capacity_samples_ - start);
+    std::copy_n(left_.data() + start, first, output_l);
+    std::copy_n(right_.data() + start, first, output_r);
+    std::copy_n(left_.data(), frames - first, output_l + first);
+    std::copy_n(right_.data(), frames - first, output_r + first);
+    return;
+  }
+  for (int frame = 0; frame < frames; ++frame) {
+    const double position = std::clamp(start_position + static_cast<double>(frame),
+        0.0, static_cast<double>(valid - 1));
+    const int index = static_cast<int>(position);
+    const float fraction = static_cast<float>(position - static_cast<double>(index));
+    int a = oldest + index;
+    if (a >= capacity_samples_) {
+      a -= capacity_samples_;
+    }
+    int b = index == valid - 1 ? a : a + 1;
+    if (b == capacity_samples_) {
+      b = 0;
+    }
+    const float left = left_[static_cast<size_t>(a)];
+    const float right = right_[static_cast<size_t>(a)];
+    output_l[frame] = left + (left_[static_cast<size_t>(b)] - left) * fraction;
+    output_r[frame] = right + (right_[static_cast<size_t>(b)] - right) * fraction;
+  }
+}
+
 int SpectralFreezeCaptureBuffer::activeValidSamples() const noexcept {
   return locked_ ? locked_valid_samples_ : valid_samples_;
 }

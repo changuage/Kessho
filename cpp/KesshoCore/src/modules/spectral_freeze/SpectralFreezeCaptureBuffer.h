@@ -17,6 +17,7 @@ public:
   [[nodiscard]] float readLeft(double chronological_position) const noexcept;
   [[nodiscard]] float readRight(double chronological_position) const noexcept;
   [[nodiscard]] float read(int channel, double chronological_position) const noexcept;
+  void readStereo(double start_position, float* output_l, float* output_r, int frames) const noexcept;
 
   [[nodiscard]] int capacitySamples() const noexcept { return capacity_samples_; }
   [[nodiscard]] int validSamples() const noexcept;

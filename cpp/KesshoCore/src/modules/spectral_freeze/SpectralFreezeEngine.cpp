@@ -292,10 +292,11 @@ void SpectralFreezeEngine::extractLiveMidSideFrames() noexcept {
 
 void SpectralFreezeEngine::extractCaptureMidSideFrames(double center_position) noexcept {
   const double start = center_position - static_cast<double>(SpectralFreezeStft::kFftSize / 2);
+  capture_.readStereo(start, analysis_frame_mid_.data(), analysis_frame_side_.data(),
+      SpectralFreezeStft::kFftSize);
   for (int index = 0; index < SpectralFreezeStft::kFftSize; ++index) {
-    const double position = start + static_cast<double>(index);
-    const float left = capture_.readLeft(position);
-    const float right = capture_.readRight(position);
+    const float left = analysis_frame_mid_[static_cast<size_t>(index)];
+    const float right = analysis_frame_side_[static_cast<size_t>(index)];
     analysis_frame_mid_[static_cast<size_t>(index)] = (left + right) * kInverseSqrtTwo;
     analysis_frame_side_[static_cast<size_t>(index)] = (left - right) * kInverseSqrtTwo;
   }

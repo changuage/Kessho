@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "KesshoCore/KesshoCore.h"
@@ -120,6 +121,22 @@ int main() {
     require(capture.prepare(8.0, 2.0), "spectral capture buffer prepare failed");
     require(capture.capacitySamples() == 16, "spectral capture buffer capacity mismatch");
     require(!capture.lock(), "empty spectral capture should not lock");
+    const auto checkStereoRead = [&]() {
+      std::array<float, 32> left{};
+      std::array<float, 32> right{};
+      for (const int frames : {4, 32}) {
+        for (const double start : {-4.25, 0.0, 2.5, 4.0, 10.25, 15.0, 30.0,
+            std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+          capture.readStereo(start, left.data(), right.data(), frames);
+          for (int frame = 0; frame < frames; ++frame) {
+            const double position = start + static_cast<double>(frame);
+            require(left[frame] == capture.readLeft(position), "spectral block left read differs from scalar read");
+            require(right[frame] == capture.readRight(position), "spectral block right read differs from scalar read");
+          }
+        }
+      }
+    };
+    checkStereoRead();
 
     const std::array<float, 6> initial_l{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
     const std::array<float, 6> initial_r{100.0f, 101.0f, 102.0f, 103.0f, 104.0f, 105.0f};
@@ -128,6 +145,7 @@ int main() {
     requireNear(capture.readLeft(0.0), 0.0, 1.0e-7, "spectral partial pre-roll oldest sample mismatch");
     requireNear(capture.readRight(5.0), 105.0, 1.0e-7, "spectral stereo chronology mismatch");
     requireNear(capture.readLeft(2.5), 2.5, 1.0e-7, "spectral fractional capture read mismatch");
+    checkStereoRead();
 
     std::array<float, 20> wrapped_l{};
     std::array<float, 20> wrapped_r{};
@@ -139,6 +157,7 @@ int main() {
     require(capture.validSamples() == 16, "spectral capture should retain exactly its capacity");
     requireNear(capture.readLeft(0.0), 10.0, 1.0e-7, "spectral ring wrap reordered oldest sample");
     requireNear(capture.readLeft(15.0), 25.0, 1.0e-7, "spectral ring wrap reordered newest sample");
+    checkStereoRead();
     require(capture.lock(), "valid spectral capture did not lock");
 
     const std::array<float, 2> replacement_l{1000.0f, 1001.0f};
@@ -146,11 +165,13 @@ int main() {
     capture.write(replacement_l.data(), replacement_r.data(), 2);
     requireNear(capture.readLeft(0.0), 10.0, 1.0e-7, "locked spectral capture was overwritten");
     requireNear(capture.readRight(15.0), 125.0, 1.0e-7, "locked spectral stereo capture changed");
+    checkStereoRead();
 
     capture.release();
     capture.write(replacement_l.data(), replacement_r.data(), 2);
     requireNear(capture.readLeft(14.0), 1000.0, 1.0e-7, "spectral capture did not resume after release");
     requireNear(capture.readLeft(15.0), 1001.0, 1.0e-7, "spectral capture resume chronology mismatch");
+    checkStereoRead();
   }
 
   {
