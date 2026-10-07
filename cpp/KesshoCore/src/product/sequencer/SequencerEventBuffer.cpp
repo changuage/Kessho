@@ -16,18 +16,22 @@
   lane.pending_ratchet_count = 0u;
 }
 
-  void KesshoProductEngine::clearPendingArpRatchets(LaneState& lane) {
+  void KesshoProductEngine::clearPendingArpRatchets(LaneState& lane, uint64_t from_sample) {
   uint32_t write_index = 0u;
   for (uint32_t read_index = 0u; read_index < lane.pending_ratchet_count; ++read_index) {
     const PendingRatchetEvent& pending = lane.pending_ratchets[read_index];
-    if (pending.arp_step_index != UINT32_MAX) continue;
+    if (pending.arp_step_index != UINT32_MAX && pending.absolute_sample >= from_sample) continue;
     lane.pending_ratchets[write_index++] = pending;
   }
   lane.pending_ratchet_count = write_index;
 }
 
-  void KesshoProductEngine::resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary) {
+  void KesshoProductEngine::resetSequencerLaneRuntime(
+      LaneState& lane,
+      bool wait_for_join_boundary,
+      bool preserve_pending_non_arp) {
   lane.emitted_hit_count = 0u;
+  lane.audible_hit_count = 0u;
   lane.last_emitted_morph_valid = false;
   lane.last_emitted_morph = 0.0f;
   lane.last_emitted_distance_valid = false;
@@ -44,6 +48,7 @@
   lane.sequencer_start_sample_frame = 0;
   lane.sequencer_runtime_initialized = false;
   lane.sequencer_join_pending = wait_for_join_boundary;
+  lane.sequencer_variation_preactivated = false;
   lane.evolve_runtime.initialized = false;
   lane.pending_unmute_quantization = 0u;
   lane.anchor_walker.cursor_degree = 0;
@@ -76,7 +81,11 @@
     lane.orbit.notes[i].prev_angle = lane.orbit.notes[i].angle;
     lane.orbit.notes[i].flash = 0.0f;
   }
-  clearPendingRatchets(lane);
+  if (preserve_pending_non_arp) {
+    clearPendingArpRatchets(lane);
+  } else {
+    clearPendingRatchets(lane);
+  }
 }
 
   bool KesshoProductEngine::stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const {
@@ -241,19 +250,36 @@
     return trigger_step;
   }
 
-  const StepValueSubLaneConfig& config = lane.step_value_configs[field_id];
-  if (!config.enabled || config.steps == 0u || absolute_step < 0) {
+  const auto* variation = activeVariationSnapshot(lane.variation_runtime);
+  const bool variation_enabled = variation != nullptr && variationFieldEnabled(*variation, field_id);
+  const bool enabled = variation_enabled ? true : lane.step_value_configs[field_id].enabled;
+  if (!enabled || absolute_step < 0) {
     return trigger_step;
   }
 
-  const uint32_t steps = clampU32(config.steps, 1u, 64u);
-  const uint64_t phase = field == KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE && lane.midi_note_binding_mode == kSequencerPitchBindingStep
-      ? trigger_step
-      : hit_count_phase;
-  if (config.direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
+  const uint32_t steps = variation_enabled
+      ? clampU32(variation->sublane_steps[field_id], 1u, 64u)
+      : clampU32(lane.step_value_configs[field_id].steps, 1u, 64u);
+  const uint32_t direction = variation_enabled
+      ? variation->sublane_directions[field_id]
+      : lane.step_value_configs[field_id].direction;
+  bool follow_trigger_hits = true;
+  if (variation_enabled) {
+    follow_trigger_hits = (variation->sublane_follow_trigger_hits_mask & (1u << field_id)) != 0u;
+    if (field_id == 4u) {
+      // Pitch binding is a lane-level choice in the public model.  Keep it
+      // explicit in the bank so a variation never inherits a stale editor
+      // lane binding when it is replayed on the audio thread.
+      follow_trigger_hits = variation->pitch_binding_mode != kSequencerPitchBindingStep;
+    }
+  } else if (field_id == 4u) {
+    follow_trigger_hits = lane.midi_note_binding_mode != kSequencerPitchBindingStep;
+  }
+  const uint64_t phase = follow_trigger_hits ? hit_count_phase : static_cast<uint64_t>(trigger_step);
+  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
     return steps - 1u - static_cast<uint32_t>(phase % steps);
   }
-  if (config.direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG && steps > 1u) {
+  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG && steps > 1u) {
     const uint32_t period = steps * 2u - 2u;
     const uint32_t position = static_cast<uint32_t>(phase % period);
     return position < steps ? position : period - position;

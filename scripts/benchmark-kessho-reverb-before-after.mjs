@@ -5,8 +5,14 @@ import { resolve } from 'node:path';
 
 const root = process.cwd();
 const buildDir = resolve(root, 'build/kessho-reverb-before-after');
-const reportJson = resolve(root, 'docs/reports/kessho-reverb-before-after-latest.json');
-const reportMd = resolve(root, 'docs/reports/kessho-reverb-before-after-latest.md');
+const reportDir = process.env.KESSHO_REVERB_BENCH_ARTIFACT_DIR
+  ? resolve(root, process.env.KESSHO_REVERB_BENCH_ARTIFACT_DIR)
+  : resolve(root, 'docs/reports');
+const reportJson = resolve(reportDir, 'kessho-reverb-before-after-latest.json');
+const reportMd = resolve(reportDir, 'kessho-reverb-before-after-latest.md');
+const baselineSourceOverride = process.env.KESSHO_REVERB_BENCH_BASELINE_SOURCE;
+const currentSourceOverride = process.env.KESSHO_REVERB_BENCH_CURRENT_SOURCE;
+const headerSourceOverride = process.env.KESSHO_REVERB_BENCH_HEADER_SOURCE;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -32,11 +38,23 @@ function writeSources() {
   mkdirSync(buildDir, { recursive: true });
   mkdirSync(resolve(buildDir, 'current'), { recursive: true });
   mkdirSync(resolve(buildDir, 'baseline'), { recursive: true });
-  mkdirSync(resolve(root, 'docs/reports'), { recursive: true });
-  writeFileSync(resolve(buildDir, 'current/kessho_reverb.cpp'), readFileSync(resolve(root, 'wasm/reverb/kessho_reverb.cpp')));
-  writeFileSync(resolve(buildDir, 'current/kessho_reverb.h'), readFileSync(resolve(root, 'wasm/reverb/kessho_reverb.h')));
-  writeFileSync(resolve(buildDir, 'baseline/kessho_reverb.cpp'), gitShow('wasm/reverb/kessho_reverb.cpp'));
-  writeFileSync(resolve(buildDir, 'baseline/kessho_reverb.h'), gitShow('wasm/reverb/kessho_reverb.h'));
+  mkdirSync(reportDir, { recursive: true });
+  const currentSource = currentSourceOverride
+    ? readFileSync(resolve(root, currentSourceOverride))
+    : readFileSync(resolve(root, 'wasm/reverb/kessho_reverb.cpp'));
+  const baselineSource = baselineSourceOverride
+    ? readFileSync(resolve(root, baselineSourceOverride))
+    : gitShow('wasm/reverb/kessho_reverb.cpp');
+  const baselineHeaderSource = headerSourceOverride
+    ? readFileSync(resolve(root, headerSourceOverride))
+    : gitShow('wasm/reverb/kessho_reverb.h');
+  const currentHeaderSource = headerSourceOverride
+    ? baselineHeaderSource
+    : readFileSync(resolve(root, 'wasm/reverb/kessho_reverb.h'));
+  writeFileSync(resolve(buildDir, 'current/kessho_reverb.cpp'), currentSource);
+  writeFileSync(resolve(buildDir, 'current/kessho_reverb.h'), currentHeaderSource);
+  writeFileSync(resolve(buildDir, 'baseline/kessho_reverb.cpp'), baselineSource);
+  writeFileSync(resolve(buildDir, 'baseline/kessho_reverb.h'), baselineHeaderSource);
   writeFileSync(resolve(buildDir, 'bench.cpp'), benchmarkSource);
 }
 
@@ -51,7 +69,7 @@ function compileOne(label, hasBloom) {
     '-DNDEBUG',
     '-I',
     sourceDir,
-    ...(hasBloom ? ['-DHAS_BLOOM=1'] : []),
+    ...(hasBloom || process.env.KESSHO_REVERB_BENCH_HAS_BLOOM === '1' ? ['-DHAS_BLOOM=1'] : []),
     `-DKESSHO_REVERB_HEADER="${header}"`,
     resolve(buildDir, 'bench.cpp'),
     source,
@@ -92,6 +110,16 @@ function runBench(binary, label) {
   });
 }
 
+function runInterleaved(baselineBinary, currentBinary) {
+  const trials = Math.max(1, Number(process.env.KESSHO_REVERB_BENCH_INTERLEAVED_TRIALS ?? 3));
+  const results = [];
+  for (let trial = 0; trial < trials; trial += 1) {
+    results.push(...runBench(baselineBinary, 'baseline-head'));
+    results.push(...runBench(currentBinary, 'current-worktree'));
+  }
+  return results;
+}
+
 function quantile(values, q) {
   const sorted = [...values].sort((a, b) => a - b);
   if (sorted.length === 0) return 0;
@@ -123,8 +151,12 @@ function rmsToLufsEstimate(rms) {
   return rms > 0 ? 20 * Math.log10(rms) - 0.691 : -Infinity;
 }
 
+function describeSource(sourcePath, fallbackDescription) {
+  return sourcePath ? `preserved source ${sourcePath}` : fallbackDescription;
+}
+
 function makeReport(results) {
-  const scenarios = ['neutral_hall', 'blackhole_tail', 'supermassive_tail'];
+  const scenarios = ['hall_ultra', 'hall_balanced', 'blackhole_tail', 'supermassive_tail'];
   const summaries = scenarios.map((scenario) => {
     const baseline = summarize(results, 'baseline-head', scenario);
     const current = summarize(results, 'current-worktree', scenario);
@@ -147,15 +179,31 @@ function makeReport(results) {
     generatedAt: new Date().toISOString(),
     status: summaries.every((summary) => summary.passed) ? 'pass' : 'fail',
     methodology: {
-      baseline: 'git HEAD wasm/reverb/kessho_reverb.cpp and .h compiled as a native benchmark binary',
-      current: 'current worktree wasm/reverb/kessho_reverb.cpp and .h compiled as a native benchmark binary',
+      baseline: `${describeSource(
+        baselineSourceOverride,
+        'git HEAD wasm/reverb/kessho_reverb.cpp',
+      )}; header ${describeSource(
+        headerSourceOverride,
+        'git HEAD wasm/reverb/kessho_reverb.h',
+      )}; compiled as a native benchmark binary`,
+      current: `${describeSource(
+        currentSourceOverride,
+        'current worktree wasm/reverb/kessho_reverb.cpp',
+      )}; header ${describeSource(
+        headerSourceOverride,
+        'current worktree wasm/reverb/kessho_reverb.h',
+      )}; compiled as a native benchmark binary`,
       sampleRate: 48000,
       blockFrames: 128,
       durationSecondsPerRepeat: 12,
-      repeats: 9,
+      repeats: Math.max(1, Number(process.env.KESSHO_REVERB_BENCH_REPEATS ?? 9)),
+      warmupRepeats: Math.max(0, Number(process.env.KESSHO_REVERB_BENCH_WARMUP ?? 0)),
+      interleavedTrials: process.env.KESSHO_REVERB_BENCH_INTERLEAVED === '1'
+        ? Math.max(1, Number(process.env.KESSHO_REVERB_BENCH_INTERLEAVED_TRIALS ?? 3))
+        : null,
       graphTaps: 'not applicable to standalone reverb benchmark; Product Core graph taps are disabled in CPU comparison scripts',
       parityNote: 'Each variant receives the same deterministic stereo input and parameter set. RMS, peak, and an unweighted LUFS estimate from RMS are reported so CPU comparisons can be read with output-level context.',
-      timingNote: 'CPU percentage uses process CPU time. Per-block wall-time outliers are reported as scheduler diagnostics; Product Core CPU tests provide the zero missed-quantum realtime gate.',
+      timingNote: 'CPU percentage uses process CPU time. Per-block wall-time outliers are reported as scheduler diagnostics; Product Core CPU tests provide the zero missed-quantum realtime gate. Timed renders do not write output files unless an explicit output path is supplied.',
     },
     summaries,
     rawResults: results,
@@ -170,8 +218,8 @@ function writeReport(report) {
     `Generated: ${report.generatedAt}`,
     `Status: ${report.status}`,
     '',
-    'Native standalone reverb benchmark, 48 kHz, 128-frame blocks, 12 seconds per repeat, 9 repeats.',
-    'Baseline is git HEAD. Current is the worktree. Each row reports median repeat CPU and the p95 repeat CPU.',
+    `Native standalone reverb benchmark, 48 kHz, 128-frame blocks, 12 seconds per repeat, ${report.methodology.repeats} measured repeats after ${report.methodology.warmupRepeats} warmup repeats${report.methodology.interleavedTrials == null ? '' : `, ${report.methodology.interleavedTrials} interleaved trials`}.`,
+    `Baseline: ${report.methodology.baseline}. Current: ${report.methodology.current}. Each row reports median repeat CPU and the p95 repeat CPU.`,
     '',
     '| Scenario | Baseline median CPU | Current median CPU | Saved | Current p95 CPU | Scheduler outliers | RMS ratio | LUFS est delta |',
     '|---|---:|---:|---:|---:|---:|---:|---:|',
@@ -200,6 +248,7 @@ const benchmarkSource = String.raw`
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -282,25 +331,35 @@ static void configure(const Scenario& s) {
 #endif
 }
 
+static int envInt(const char* name, int fallback) {
+  const char* value = std::getenv(name);
+  if (value == nullptr || *value == '\0') return fallback;
+  const int parsed = std::atoi(value);
+  return parsed >= 0 ? parsed : fallback;
+}
+
 int main() {
   constexpr int sampleRate = 48000;
   constexpr int blockFrames = 128;
   constexpr int seconds = 12;
-  constexpr int repeats = 9;
   constexpr int frames = sampleRate * seconds;
   constexpr int blocks = frames / blockFrames;
   constexpr double audioMs = static_cast<double>(blocks * blockFrames) * 1000.0 / sampleRate;
   constexpr double quantumMs = static_cast<double>(blockFrames) * 1000.0 / sampleRate;
+  const int warmupRepeats = envInt("KESSHO_REVERB_BENCH_WARMUP", 0);
+  const int measuredRepeats = std::max(1, envInt("KESSHO_REVERB_BENCH_REPEATS", 9));
 
   const Scenario scenarios[] = {
-    {"neutral_hall", 1, 0, 0.80f, 1.50f, 0.50f, 0.80f, 0.30f, 20.0f, 0.80f, 0.0f, 12.0f, 0.05f, 0.0f, 0.0f, 2.0f, 0.50f, 12.0f, 2, 0.10f, 0.30f, 800.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.30f, 0.20f, 0, 0.0f, 2500.0f, 0.0f},
+    {"hall_ultra", 1, 0, 0.80f, 1.50f, 0.50f, 0.80f, 0.30f, 20.0f, 0.80f, 0.0f, 12.0f, 0.05f, 0.0f, 0.0f, 2.0f, 0.50f, 12.0f, 2, 0.10f, 0.30f, 800.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.30f, 0.20f, 0, 0.0f, 2500.0f, 0.0f},
+    {"hall_balanced", 1, 1, 0.80f, 1.50f, 0.50f, 0.80f, 0.30f, 20.0f, 0.80f, 0.0f, 12.0f, 0.05f, 0.0f, 0.0f, 2.0f, 0.50f, 12.0f, 2, 0.10f, 0.30f, 800.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.30f, 0.20f, 0, 0.0f, 2500.0f, 0.0f},
     {"blackhole_tail", 3, 0, 0.96f, 2.85f, 0.72f, 0.96f, 0.42f, 38.0f, 0.96f, 0.08f, 12.0f, 0.03f, 0.12f, 0.48f, 3.2f, 0.18f, 18.0f, 2, 0.45f, 0.78f, 650.0f, -0.28f, 0.03f, 0.82f, 0.62f, 0.0f, 0.55f, 1, 0.12f, 1600.0f, -0.82f},
     {"supermassive_tail", 2, 0, 0.94f, 2.65f, 0.62f, 0.94f, 0.35f, 25.0f, 0.98f, 0.05f, 12.0f, 0.025f, 0.10f, 0.15f, 2.6f, 0.12f, 16.0f, 2, 0.35f, 0.68f, 720.0f, -0.18f, 0.02f, 0.70f, 0.58f, 0.02f, 0.42f, 1, 0.08f, 1800.0f, -0.20f},
   };
 
   const std::vector<float> input = makeInput(frames);
   for (const Scenario& scenario : scenarios) {
-    for (int repeat = 0; repeat < repeats; ++repeat) {
+    for (int repeat = 0; repeat < warmupRepeats + measuredRepeats; ++repeat) {
+      const bool warmup = repeat < warmupRepeats;
       if (reverb_init(static_cast<float>(sampleRate)) != 0) return 2;
       configure(scenario);
       std::vector<double> blockMs;
@@ -333,16 +392,18 @@ int main() {
       const double p95BlockMs = blockMs[static_cast<size_t>(std::ceil(blockMs.size() * 0.95)) - 1u];
       const double rms = std::sqrt(sumSquares / static_cast<double>(blocks * blockFrames * 2));
       const double cpuPercent = processMs / audioMs * 100.0;
-      std::printf("RESULT %s %d %.6f %.6f %.6f %.6f %.9f %.9f %d\n",
-          scenario.name,
-          repeat + 1,
-          processMs,
-          cpuPercent,
-          medianBlockMs,
-          p95BlockMs,
-          rms,
-          peak,
-          missed);
+      if (!warmup) {
+        std::printf("RESULT %s %d %.6f %.6f %.6f %.6f %.9f %.9f %d\n",
+            scenario.name,
+            repeat - warmupRepeats + 1,
+            processMs,
+            cpuPercent,
+            medianBlockMs,
+            p95BlockMs,
+            rms,
+            peak,
+            missed);
+      }
       reverb_destroy();
     }
   }
@@ -353,13 +414,15 @@ int main() {
 writeSources();
 const baselineBinary = compileOne('baseline', false);
 const currentBinary = compileOne('current', true);
-const results = [
-  ...runBench(baselineBinary, 'baseline-head'),
-  ...runBench(currentBinary, 'current-worktree'),
-];
+const results = process.env.KESSHO_REVERB_BENCH_INTERLEAVED === '1'
+  ? runInterleaved(baselineBinary, currentBinary)
+  : [
+      ...runBench(baselineBinary, 'baseline-head'),
+      ...runBench(currentBinary, 'current-worktree'),
+    ];
 const report = makeReport(results);
 writeReport(report);
 console.log(`Kessho Reverb before/after benchmark ${report.status}: ${reportMd}, ${reportJson}`);
 if (report.status !== 'pass') {
-  process.exitCode = 1;
+  if (process.env.KESSHO_REVERB_BENCH_NO_GATE !== '1') process.exitCode = 1;
 }

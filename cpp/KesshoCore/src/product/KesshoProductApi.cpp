@@ -374,19 +374,6 @@ uint64_t kessho_product_get_telemetry_refresh_count(KesshoProductEngine* engine)
   return engine == nullptr ? 0u : engine->telemetry_refresh_count;
 }
 
-uint32_t kessho_product_drain_generated_sequencer_capture_events(
-    KesshoProductEngine* engine,
-    KesshoProductGeneratedSequencerCaptureEvent* out_events,
-    uint32_t max_event_count,
-    uint32_t* out_overflow_count) {
-  auto* ring = engine == nullptr ? nullptr : &engine->generated_sequencer_capture_ring;
-  if (out_overflow_count != nullptr) *out_overflow_count = ring == nullptr ? 0u : ring->overflowCount();
-  if (ring == nullptr || out_events == nullptr || max_event_count == 0u) return 0u;
-  uint32_t count = 0u;
-  while (count < max_event_count && ring->pop(out_events[count])) ++count;
-  return count;
-}
-
 int32_t kessho_product_copy_granular_waveform(
     KesshoProductEngine* engine,
     float* out_peaks,
@@ -404,16 +391,6 @@ int32_t kessho_product_copy_granular_waveform(
   return engine->granular_module->copyGranularWaveform(out_peaks, bin_count) == 1
       ? KESSHO_PRODUCT_OK
       : KESSHO_PRODUCT_ERROR_INVALID_PARAM;
-}
-
-int32_t kessho_product_copy_sequencer_ui_state(
-    KesshoProductEngine* engine,
-    KesshoProductSequencerUiState* out_state) {
-  if (engine == nullptr || out_state == nullptr) {
-    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
-  }
-  engine->copySequencerUiState(*out_state);
-  return KESSHO_PRODUCT_OK;
 }
 
 } // extern "C"

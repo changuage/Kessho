@@ -388,7 +388,7 @@ void retimeSequencerLanePreservingPhase(
               event.index < kMaxLaneCount &&
               event.param_id < kMaxLaneCount &&
               event.value >= 0.0f && event.value <= 1.0f &&
-              event.value2 >= 1.0f && event.value2 <= 2.0f
+              event.value2 >= 0.0f && event.value2 <= 2.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG:
@@ -1195,7 +1195,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       generated_sequencer_capture_config.source_mode_mask =
           kessho::product::generatedSequencerCaptureModeBit(source_mode);
       if (generated_sequencer_capture_config.enabled != 0u) {
-        generated_sequencer_capture_ring.reset();
+        generated_sequencer_capture_ring->reset();
       }
       break;
     }
@@ -1280,17 +1280,21 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_HARMONY_ROOT:
       harmony.root_midi = clampFloat(event.value, 0.0f, 127.0f);
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SCALE:
       harmony.scale_id = event.target_id;
       rebuildHarmonyAuthorityCache();
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SEED:
       rng_seed = event.target_id;
       rng_state = rng_seed;
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_EVENT_KIND_RESET_RNG:
       rng_state = rng_seed;
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_CONTROL_SET_MODE_ID:
       harmony.control_mode = static_cast<uint32_t>(std::lround(event.value));
@@ -1659,7 +1663,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         return true;
       }
       spec->apply(voice, event.value);
-      configureFxModules();
+      configureFxModules(kFxConfigurationGranular);
       telemetry.last_error_code = KESSHO_PRODUCT_OK;
       return true;
     }
@@ -1670,7 +1674,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       return true;
     }
     spec->apply(voice, event.value);
-    configureFxModules();
+    configureFxModules(kFxConfigurationGranular);
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return true;
   }
@@ -1757,7 +1761,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     default:
       return false;
   }
-  configureFxModules();
+  configureFxModules(kFxConfigurationGranular);
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
   return true;
 }
@@ -1776,7 +1780,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     return true;
   }
   fx.dynamics_mod[source][target] = clampFloat(event.value, 0.0f, 1.0f);
-  configureFxModules();
+  configureDynamicsDriftModule();
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
   return true;
 }
@@ -1922,7 +1926,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       return true;
     }
     routing.syncLegacyFxRoutes();
-    if (topology_changed) configureFxModules();
+    if (topology_changed) configureFxModulesForRoute(from, to);
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return true;
   }
@@ -1969,7 +1973,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       return true;
     }
     routing.syncLegacyFxRoutes();
-    configureFxModules();
+    configureFxModulesForRoute(legacy_from, legacy_to);
     telemetry.last_error_code = KESSHO_PRODUCT_OK;
     return true;
   }
@@ -2106,13 +2110,8 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     applySequencerLaneParamEvent(event);
     return;
   }
-  // TODO(product-core-cpp-dispatch-table): table-drive the low-risk FX families
-  // in this switch after ProductAbiLayoutTests plus web graph parity cover the
-  // exact before/after values. Start with Delay A/B and Reverb cases below:
-  // use constexpr param specs with param_id, clamp/apply function, and
-  // configureFxModules=true. Delete this TODO only after event IDs and C ABI
-  // constants are unchanged and Product Core ABI, web-host, smoke, and parity
-  // checks pass on the table-driven implementation.
+  // The scalar FX cases below retain their explicit clamps and state writes;
+  // each module-backed family explicitly requests its configuration group.
   switch (event.param_id) {
     case KESSHO_PRODUCT_PARAM_TRANSPORT_RUNNING_ID:
       transport.running = event.value >= 0.5f;
@@ -2231,10 +2230,12 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_ROOT_MIDI_ID:
       harmony.root_midi = clampFloat(event.value, 0.0f, 127.0f);
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_SCALE_ID_ID:
       harmony.scale_id = static_cast<uint32_t>(std::max(1.0f, event.value));
       rebuildHarmonyAuthorityCache();
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_PARAM_HARMONY_TENSION_ID:
       harmony.tension = clampFloat(event.value, 0.0f, 1.0f);
@@ -2352,111 +2353,111 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_GRANULAR_MIX_ID:
       fx.granular_mix = clampFloat(event.value, 0.0f, 4.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AENABLED_ID:
       fx.delay_a_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_LEFT_MS_ID:
       fx.delay_a_time_left_ms = clampFloat(event.value, 10.0f, 5000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_ATIME_RIGHT_MS_ID:
       fx.delay_a_time_right_ms = clampFloat(event.value, 10.0f, 5000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AFEEDBACK_ID:
       fx.delay_a_feedback = clampFloat(event.value, 0.0f, 0.95f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AMIX_ID:
       fx.delay_a_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AFILTER_HZ_ID:
       fx.delay_a_filter_hz = clampFloat(event.value, 200.0f, 12000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AFILTER_TYPE_ID:
       fx.delay_a_filter_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_RATE_HZ_ID:
       fx.delay_a_mod_rate_hz = clampFloat(event.value, 0.0f, 5.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AMOD_DEPTH_MS_ID:
       fx.delay_a_mod_depth_ms = clampFloat(event.value, 0.0f, 50.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_APING_PONG_ID:
       fx.delay_a_ping_pong = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_ADUCK_ID:
       fx.delay_a_duck = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_AWIDTH_ID:
       fx.delay_a_width = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_ACROSS_FEED_FILTER_HZ_ID:
       fx.delay_a_cross_feed_filter_hz = clampFloat(event.value, 200.0f, 12000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayA);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BENABLED_ID:
       fx.delay_b_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BACTIVITY_ID:
       fx.delay_b_activity = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BREPEATS_ID:
       fx.delay_b_repeats = clampFloat(event.value, 0.0f, 0.85f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BBASE_TIME_MS_ID:
       fx.delay_b_base_time_ms = clampFloat(event.value, 20.0f, 5000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BTONE_ID:
       fx.delay_b_tone = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BVIBRATO_ID:
       fx.delay_b_vibrato = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BMIX_ID:
       fx.delay_b_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BSPACE_MODE_ID:
       fx.delay_b_space_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BPATTERN_ID:
       fx.delay_b_pattern = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BWARP_ID:
       fx.delay_b_warp = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 3u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BWARP_INTENSITY_ID:
       fx.delay_b_warp_intensity = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BSPREAD_ID:
       fx.delay_b_spread = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD_MASK_ID:
       fx.delay_b_tape_head_mask = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 15u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_LEVEL_ID:
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD2_LEVEL_ID:
@@ -2466,7 +2467,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       if (index < fx.delay_b_tape_head_levels.size()) {
         fx.delay_b_tape_head_levels[index] = clampFloat(event.value, 0.0f, 1.0f);
       }
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     }
     case KESSHO_PRODUCT_PARAM_FX_DELAY_BTAPE_HEAD1_PAN_ID:
@@ -2477,7 +2478,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       if (index < fx.delay_b_tape_head_pans.size()) {
         fx.delay_b_tape_head_pans[index] = clampFloat(event.value, 0.0f, 1.0f);
       }
-      configureFxModules();
+      configureFxModules(kFxConfigurationDelayB);
       break;
     }
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MIX_ID:
@@ -2485,127 +2486,127 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_TYPE_ID:
       fx.reverb_type = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 5u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_QUALITY_ID:
       fx.reverb_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DECAY_ID:
       fx.reverb_decay = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SIZE_ID:
       fx.reverb_size = clampFloat(event.value, 0.5f, 10.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMPING_ID:
       fx.reverb_damping = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DIFFUSION_ID:
       fx.reverb_diffusion = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MODULATION_ID:
       fx.reverb_modulation = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_PREDELAY_MS_ID:
       fx.reverb_predelay_ms = clampFloat(event.value, 0.0f, 100.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_WIDTH_ID:
       fx.reverb_width = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_AMOUNT_ID:
       fx.reverb_shimmer_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_PITCH_ID:
       fx.reverb_shimmer_pitch = clampFloat(event.value, -24.0f, 24.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SLOW_RATE_HZ_ID:
       fx.reverb_slow_rate_hz = clampFloat(event.value, 0.01f, 0.2f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SLOW_DEPTH_ID:
       fx.reverb_slow_depth = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_REVERSE_AMOUNT_ID:
       fx.reverb_reverse_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_REVERSE_LENGTH_SEC_ID:
       fx.reverb_reverse_length_sec = clampFloat(event.value, 0.5f, 16.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_CHORUS_RATE_HZ_ID:
       fx.reverb_chorus_rate_hz = clampFloat(event.value, 0.05f, 2.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_CHORUS_DEPTH_ID:
       fx.reverb_chorus_depth = clampFloat(event.value, 0.0f, 40.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_MOD_CHARACTER_ID:
       fx.reverb_mod_character = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMP_LOW_ID:
       fx.reverb_damp_low = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_DAMP_HIGH_ID:
       fx.reverb_damp_high = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSSOVER_HZ_ID:
       fx.reverb_crossover_hz = clampFloat(event.value, 100.0f, 6000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_INPUT_TONE_ID:
       fx.reverb_input_tone = clampFloat(event.value, -1.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SHIMMER_FEEDBACK_ID:
       fx.reverb_shimmer_feedback = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_BLOOM_ID:
       fx.reverb_bloom = clampFloat(event.value, -1.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_WARP_ID:
       fx.reverb_warp = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_CROSS_FEED_ID:
       fx.reverb_cross_feed = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_EARLY_REFLECTIONS_ID:
       fx.reverb_early_reflections = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_AIR_ABSORPTION_ID:
       fx.reverb_air_absorption = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_SATURATION_MODE_ID:
       fx.reverb_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_TRANSIENT_SMOOTH_ID:
       fx.reverb_transient_smooth = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_ER_LP_FREQ_ID:
       fx.reverb_er_lp_freq = clampFloat(event.value, 200.0f, 12000.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationReverb);
       break;
     case KESSHO_PRODUCT_PARAM_FX_REVERB_PRE_COMP_THRESHOLD_ID:
       fx.reverb_pre_comp_threshold = clampFloat(event.value, -60.0f, 0.0f);
@@ -2703,259 +2704,253 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIVE_ID:
       fx.dynamics_drive = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_ENABLED_ID:
       fx.dynamics_master_saturation_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_MODE_ID:
       fx.dynamics_master_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_QUALITY_ID:
       fx.dynamics_master_saturation_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_TONE_ID:
       fx.dynamics_master_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_MASTER_SATURATION_BIAS_ID:
       fx.dynamics_master_saturation_bias = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_ENABLED_ID:
       fx.dynamics_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ENABLED_ID:
       fx.dynamics_drift_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MODE_ID:
       fx.dynamics_drift_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_QUALITY_ID:
       fx.dynamics_drift_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ANTI_COMB_ID:
       fx.dynamics_drift_anti_comb = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DIFFUSION_ID:
       fx.dynamics_drift_diffusion = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_MIX_ID:
       fx.dynamics_drift_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_AGE_ID:
       fx.dynamics_drift_age = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_BIAS_ID:
       fx.dynamics_drift_bias = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_LPG_AMOUNT_ID:
       fx.dynamics_drift_lpg_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RESONANCE_ID:
       fx.dynamics_drift_resonance = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_STEREO_ID:
       fx.dynamics_drift_stereo = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_ENV_FOLLOW_ID:
       fx.dynamics_drift_env_follow = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DEPTH_ID:
       fx.dynamics_drift_depth = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_RATE_ID:
       fx.dynamics_drift_rate = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DRIFT_DAMP_ID:
       fx.dynamics_drift_damp = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ENABLED_ID:
       fx.dynamics_erosion_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_QUALITY_ID:
       fx.dynamics_erosion_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_EVENT_AMOUNT_ID:
       fx.dynamics_erosion_event_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_PROFILE_AMOUNT_ID:
       fx.dynamics_erosion_profile_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_DITHER_AMOUNT_ID:
       fx.dynamics_erosion_dither_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_MIX_ID:
       fx.dynamics_erosion_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_AGE_ID:
       fx.dynamics_erosion_age = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_GENERATION_ID:
       fx.dynamics_erosion_generation = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_ALIAS_ID:
       fx.dynamics_erosion_alias = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOW_ID:
       fx.dynamics_erosion_wow = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_FLUTTER_ID:
       fx.dynamics_erosion_flutter = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_DRIFT_ID:
       fx.dynamics_erosion_drift = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_WOBBLE_SPEED_ID:
       fx.dynamics_erosion_wobble_speed = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_TONE_ID:
       fx.dynamics_erosion_tone = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_HP_ID:
       fx.dynamics_degrade_hp = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_DEGRADE_LP_ID:
       fx.dynamics_degrade_lp = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_NOISE_ID:
       fx.dynamics_erosion_noise = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_SATURATION_ID:
       fx.dynamics_erosion_saturation = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_EROSION_CORROSION_ID:
       fx.dynamics_erosion_corrosion = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationWetDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_ENABLED_ID:
       fx.dynamics_saturation_enabled = event.value >= 0.5f;
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_MODE_ID:
       fx.dynamics_saturation_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_QUALITY_ID:
       fx.dynamics_saturation_quality = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 2u);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_DRIVE_ID:
       fx.dynamics_saturation_drive = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_TONE_ID:
       fx.dynamics_saturation_tone = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_SATURATION_BIAS_ID:
       fx.dynamics_saturation_bias = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ENABLED_ID:
       fx.dynamics_end_comp_enabled = event.value >= 0.5f;
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MODE_ID:
       fx.dynamics_end_comp_mode = clampU32(static_cast<uint32_t>(std::lround(event.value)), 0u, 4u);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_THRESHOLD_ID:
       fx.dynamics_end_comp_threshold = clampFloat(event.value, -60.0f, 0.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_KNEE_ID:
       fx.dynamics_end_comp_knee = clampFloat(event.value, 0.0f, 40.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RATIO_ID:
       fx.dynamics_end_comp_ratio = clampFloat(event.value, 1.0f, 20.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_ATTACK_MS_ID:
       fx.dynamics_end_comp_attack_ms = clampFloat(event.value, 0.1f, 100.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_RELEASE_MS_ID:
       fx.dynamics_end_comp_release_ms = clampFloat(event.value, 20.0f, 1500.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MAKEUP_ID:
       fx.dynamics_end_comp_makeup = clampFloat(event.value, 0.25f, 4.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_MIX_ID:
       fx.dynamics_end_comp_mix = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_HP_ID:
       fx.dynamics_end_comp_detector_hp = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_DETECTOR_TILT_ID:
       fx.dynamics_end_comp_detector_tilt = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_AUTO_MAKEUP_ID:
       fx.dynamics_end_comp_auto_makeup = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PROGRAM_RELEASE_ID:
       fx.dynamics_end_comp_program_release = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_PEAK_BLEND_ID:
       fx.dynamics_end_comp_peak_blend = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_CLARITY_ID:
       fx.dynamics_end_comp_clarity = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_TWO_BAND_AMOUNT_ID:
       fx.dynamics_end_comp_two_band_amount = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_DYNAMICS_END_COMP_BAND_SPLIT_ID:
       fx.dynamics_end_comp_band_split = clampFloat(event.value, 0.0f, 1.0f);
-      configureFxModules();
+      configureFxModules(kFxConfigurationMasterDynamics);
       break;
     case KESSHO_PRODUCT_PARAM_FX_SIDECHAIN_ENABLED_ID:
       fx.sidechain_enabled = event.value >= 0.5f;
@@ -3044,9 +3039,11 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
     case KESSHO_PRODUCT_PARAM_RNG_SEED_ID:
       rng_seed = static_cast<uint32_t>(std::max(1.0f, event.value));
       rng_state = rng_seed;
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_PARAM_RNG_STATE_ID:
       rng_state = static_cast<uint32_t>(std::max(1.0f, event.value));
+      configureFxModules(kFxConfigurationGranular);
       break;
     case KESSHO_PRODUCT_PARAM_EVOLUTION_AMOUNT_ID:
       evolution_amount = clampFloat(event.value, 0.0f, 1.0f);

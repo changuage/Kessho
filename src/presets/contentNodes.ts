@@ -15,6 +15,7 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'sequencerTrigger',
   'sequencerSubLane',
   'sequencerLaneControl',
+  'sequencerVariation',
   'granularVoice',
   'granularSelection',
   'padVoice',

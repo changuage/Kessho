@@ -66,7 +66,8 @@ assert(
 
 assert(
   keyboardTargets.includes('button, a[href], summary') &&
-    keyboardTargets.includes('[role="button"], [role="slider"]') &&
+    keyboardTargets.includes('[role="button"]') &&
+    keyboardTargets.includes('[role="slider"]') &&
     keyboardTargets.includes('target instanceof Element'),
   'Global shortcut target guard must defer to native and established interactive controls'
 );

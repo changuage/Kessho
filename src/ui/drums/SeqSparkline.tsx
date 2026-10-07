@@ -27,12 +27,12 @@ interface SeqSparklineProps {
 const SeqSparkline: React.FC<SeqSparklineProps> = ({ values, color, label, steps, playhead = -1, hitCount = 0, direction = 'forward', playheadMode = 'hit', bipolar = false, invertFill = false, enabled = true, onClick, onToggleEnabled, expanded = false, selectedStep = null, mode = 'default' }) => {
   const width = 200;
   const height = 20;
-  const count = 16; // always 16 slots
+  const count = Math.max(1, Math.round(steps));
   const barW = width / count;
 
   // Sub-lane sparkline playhead: either hit-linked or step-linked, depending on mode.
   const subPlayhead = (() => {
-    if (playhead < 0 || steps <= 0) return -1;
+    if (playhead < 0 || steps <= 0 || (playheadMode === 'hit' && hitCount <= 0)) return -1;
     const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);
     const cursorSteps = playheadMode === 'step' ? Math.max(2, steps) : steps;
     return seqLaneIndex({ enabled: true, steps: cursorSteps, direction, _ppForward: true }, basis);

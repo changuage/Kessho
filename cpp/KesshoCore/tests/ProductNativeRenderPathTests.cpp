@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <atomic>
+#include <thread>
 
 #include "KesshoCore/KesshoProductCore.h"
 #include "KesshoNativeProductRuntime.h"
@@ -222,6 +224,221 @@ void runNativeRuntimeAdapterSmoke() {
   require(runtime.queuedEventCount() == 0, "native runtime adapter reset left queued events");
 }
 
+void runNativeCaptureClockConcurrencySmoke() {
+  kessho::product::native::NativeProductRuntime runtime({48000.0, kBlockFrames, 0});
+  require(runtime.valid(), "native capture clock runtime failed to create Product Core engine");
+  KesshoProductCaptureClock initial{};
+  require(runtime.copyCaptureClock(initial) == KESSHO_PRODUCT_OK,
+      "native capture clock did not publish its initial snapshot");
+  require(initial.schema_version == KESSHO_PRODUCT_CAPTURE_CLOCK_SCHEMA_VERSION,
+      "native capture clock schema mismatch");
+  require(initial.reserved == 0u && std::isfinite(initial.current_bpm) && initial.current_bpm > 0.0,
+      "native capture clock initial BPM is invalid");
+  KesshoProductSnapshotV2 snapshot = makeNativeSmokeSnapshot();
+  snapshot.transport.running = 1u;
+  require(runtime.loadSnapshot(snapshot) == KESSHO_PRODUCT_OK,
+      "native capture clock tempo snapshot failed");
+
+  std::atomic<bool> stop_reader{false};
+  std::atomic<bool> reader_failed{false};
+  std::thread reader([&]() {
+    while (!stop_reader.load(std::memory_order_acquire)) {
+      KesshoProductCaptureClock clock{};
+      const int32_t result = runtime.copyCaptureClock(clock);
+      if (result == KESSHO_PRODUCT_OK) {
+        if (clock.schema_version != KESSHO_PRODUCT_CAPTURE_CLOCK_SCHEMA_VERSION ||
+            clock.reserved != 0u ||
+            !std::isfinite(clock.current_beat) ||
+            !std::isfinite(clock.current_bpm) ||
+            clock.current_bpm <= 0.0 ||
+            (std::fabs(clock.current_bpm - 120.0) > 0.001 &&
+             std::fabs(clock.current_bpm - 60.0) > 0.001)) {
+          reader_failed.store(true, std::memory_order_release);
+          return;
+        }
+      } else if (result != KESSHO_PRODUCT_ERROR_EVENT_QUEUE_FULL) {
+        reader_failed.store(true, std::memory_order_release);
+        return;
+      }
+    }
+  });
+  for (uint32_t block = 0u; block < 256u; ++block) {
+    if (block == 64u) {
+      KesshoProductEvent tempo{};
+      tempo.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+      tempo.value = 60.0f;
+      require(runtime.enqueueEvent(tempo) == KESSHO_PRODUCT_OK,
+          "native capture clock tempo change enqueue failed");
+    }
+    require(runtime.renderIntoPreallocatedBuffers(kBlockFrames) == KESSHO_PRODUCT_OK,
+        "native capture clock concurrent render failed");
+  }
+  stop_reader.store(true, std::memory_order_release);
+  reader.join();
+  require(!reader_failed.load(std::memory_order_acquire),
+      "native capture clock reader observed a torn publication");
+  KesshoProductCaptureClock final{};
+  require(runtime.copyCaptureClock(final) == KESSHO_PRODUCT_OK &&
+          std::fabs(final.current_bpm - 60.0) <= 0.001,
+      "native capture clock did not publish the tempo change");
+}
+
+KesshoProductSequencerVariationBank makeNativeVariationBank() {
+  KesshoProductSequencerVariationBank bank{};
+  bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+  bank.enabled = 1u;
+  bank.chain_length = 1u;
+  bank.chain[0] = 0u;
+  bank.play_variation = 0u;
+  auto& variation = bank.variations[0];
+  variation.step_count = 2u;
+  variation.clock_division = 64u;
+  variation.trigger_mask = 0x3u;
+  variation.pitch_root = 60.0f;
+  variation.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+  variation.steps[0].note_count = 1u;
+  variation.steps[0].gate_beats = 0.5f;
+  variation.steps[0].notes[0].midi_note = 0.0f;
+  variation.steps[0].notes[0].velocity = 1.0f;
+  variation.steps[1] = variation.steps[0];
+  return bank;
+}
+
+void runNativeRecordedCaptureSmoke() {
+  kessho::product::native::NativeProductRuntime runtime({48000.0, kBlockFrames, 0});
+  KesshoProductSnapshotV2 snapshot = makeNativeSmokeSnapshot();
+  snapshot.transport.running = 1u;
+  require(runtime.loadSnapshot(snapshot) == KESSHO_PRODUCT_OK,
+      "native recording snapshot failed");
+  uint64_t origin_sample = 0u;
+  double origin_beat = 0.0;
+  require(runtime.setRecordedCapture(true, 0u, 0u, 0u, 4.0) == KESSHO_PRODUCT_OK,
+      "native manual recording arm failed");
+  require(!runtime.copyRecordedCaptureOrigin(origin_sample, origin_beat),
+      "native recording must await render-thread origin acknowledgement");
+  float left[kBlockFrames]{};
+  float right[kBlockFrames]{};
+  require(runtime.renderCallback(left, right, kBlockFrames) == KESSHO_PRODUCT_OK,
+      "native recording arm render failed");
+  require(runtime.copyRecordedCaptureOrigin(origin_sample, origin_beat),
+      "native recording origin was not published");
+  KesshoProductEvent note{};
+  note.event_kind = KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON;
+  note.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  note.value = 60.0f;
+  note.value2 = 0.75f;
+  note.value3 = 0.25f;
+  require(runtime.enqueueEvent(note) == KESSHO_PRODUCT_OK, "native recording note enqueue failed");
+  require(runtime.renderCallback(left, right, kBlockFrames) == KESSHO_PRODUCT_OK,
+      "native recording note render failed");
+  KesshoProductGeneratedSequencerCaptureEvent events[4]{};
+  uint32_t overflow = 0u;
+  require(runtime.drainRecordedCaptureEvents(events, 4u, &overflow) == 1u && overflow == 0u,
+      "native recording should drain its captured manual attack");
+  require(events[0].midi_note == 60.0f && events[0].velocity == 0.75f,
+      "native recording should preserve captured note payload");
+  KesshoProductEvent tempo{};
+  tempo.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT;
+  tempo.value = 60.0f;
+  require(runtime.enqueueEvent(tempo) == KESSHO_PRODUCT_OK,
+      "native recording tempo change enqueue failed");
+  require(runtime.renderCallback(left, right, kBlockFrames) == KESSHO_PRODUCT_OK,
+      "native recording tempo render failed");
+  KesshoProductCaptureClock tempo_clock{};
+  require(runtime.copyCaptureClock(tempo_clock) == KESSHO_PRODUCT_OK &&
+          std::fabs(tempo_clock.current_bpm - 60.0) <= 0.001,
+      "native recording did not consume the authoritative tempo clock");
+  require(runtime.setRecordedCapture(false, 0u, 0u, 0u, 0.0) == KESSHO_PRODUCT_OK,
+      "native recording stop should accept the bridge zero duration");
+  require(runtime.renderCallback(left, right, kBlockFrames) == KESSHO_PRODUCT_OK,
+      "native recording stop render failed");
+  require(!runtime.recordedCaptureActive(), "native recording should stop on the render thread");
+  require(runtime.setRecordedCapture(true, 0u, 0u, 0u, 4.0) == KESSHO_PRODUCT_OK,
+      "native recording rearm failed");
+  require(!runtime.copyRecordedCaptureOrigin(origin_sample, origin_beat),
+      "native rearm must not expose the prior session origin");
+}
+
+void runNativeVariationMailboxSmoke() {
+  kessho::product::native::NativeProductRuntime runtime({48000.0, kBlockFrames, 0});
+  require(runtime.valid(), "native variation runtime failed to create Product Core engine");
+  KesshoProductSnapshotV2 snapshot = makeNativeSmokeSnapshot();
+  snapshot.synth_euclid.lane_count = 1u;
+  auto& lane = snapshot.synth_euclid.lanes[0];
+  lane.enabled = 1u;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.step_count = 2u;
+  lane.fill_count = 2u;
+  lane.clock_division = 16u;
+  lane.probability = 1.0f;
+  lane.ratchet = 1u;
+  lane.midi_note = 60.0f;
+  lane.velocity = 1.0f;
+  lane.hold_seconds = 0.1f;
+  lane.expression = 1.0f;
+  lane.seed = 1u;
+  require(runtime.loadSnapshot(snapshot) == KESSHO_PRODUCT_OK,
+      "native variation runtime failed to load snapshot");
+
+  KesshoProductSequencerVariationBank invalid{};
+  invalid.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+  invalid.enabled = 1u;
+  invalid.chain_length = 1u;
+  invalid.chain[0] = 0u;
+  require(runtime.setSequencerVariationBank(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, invalid, nullptr) == KESSHO_PRODUCT_ERROR_INVALID_PARAM,
+      "native variation runtime accepted an empty enabled bank");
+  require(runtime.selectSequencerVariation(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u) == KESSHO_PRODUCT_ERROR_INVALID_PARAM,
+      "native variation runtime accepted selection before a bank");
+
+  const KesshoProductSequencerVariationBank bank = makeNativeVariationBank();
+  uint64_t native_revision = 0u;
+  require(runtime.setSequencerVariationBank(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, bank, &native_revision) == KESSHO_PRODUCT_OK,
+      "native variation runtime rejected a valid bank");
+  require(native_revision == 1u, "native variation runtime assigned an unexpected revision");
+  require(runtime.selectSequencerVariation(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 1u) == KESSHO_PRODUCT_ERROR_INVALID_PARAM,
+      "native variation runtime accepted an empty variation selection");
+  require(runtime.selectSequencerVariation(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u) == KESSHO_PRODUCT_OK,
+      "native variation runtime rejected a populated variation selection");
+
+  require(runtime.renderIntoPreallocatedBuffers(kBlockFrames) == KESSHO_PRODUCT_OK,
+      "native variation runtime failed to drain the bank mailbox");
+  KesshoProductSequencerVariationRuntime published{};
+  require(runtime.copySequencerVariationRuntime(
+      KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, published) == KESSHO_PRODUCT_OK,
+      "native variation runtime failed to copy its published state");
+  require(published.revision == native_revision,
+      "native variation runtime did not publish the accepted revision");
+
+  std::atomic<bool> stop_reader{false};
+  std::atomic<bool> reader_failed{false};
+  std::thread reader([&]() {
+    while (!stop_reader.load(std::memory_order_acquire)) {
+      KesshoProductSequencerVariationRuntime value{};
+      if (runtime.copySequencerVariationRuntime(
+              KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, value) == KESSHO_PRODUCT_OK &&
+          (value.schema_version != KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION ||
+           value.active_variation >= KESSHO_PRODUCT_SEQUENCER_VARIATION_COUNT ||
+           value.active_step >= KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS)) {
+        reader_failed.store(true, std::memory_order_release);
+        return;
+      }
+    }
+  });
+  for (uint32_t block = 0u; block < 256u; ++block) {
+    require(runtime.renderIntoPreallocatedBuffers(kBlockFrames) == KESSHO_PRODUCT_OK,
+        "native variation runtime concurrent render failed");
+  }
+  stop_reader.store(true, std::memory_order_release);
+  reader.join();
+  require(!reader_failed.load(std::memory_order_acquire),
+      "native variation runtime reader observed a torn publication");
+}
+
 } // namespace
 
 int main() {
@@ -230,6 +447,9 @@ int main() {
   runNativeRenderSmoke();
   runNativeAssetSmoke();
   runNativeRuntimeAdapterSmoke();
+  runNativeCaptureClockConcurrencySmoke();
+  runNativeVariationMailboxSmoke();
+  runNativeRecordedCaptureSmoke();
   std::cout << "Kessho Product native render path tests passed\n";
   return 0;
 }

@@ -24,6 +24,7 @@ void dynamics_drift_commit_params(void);
 void dynamics_drift_process_block(int block_size);
 
 KesshoDynamicsDriftInstance* dynamics_drift_instance_create(float sample_rate);
+KesshoDynamicsDriftInstance* dynamics_drift_instance_create_with_role(float sample_rate, int master_only);
 void dynamics_drift_instance_destroy(KesshoDynamicsDriftInstance* instance);
 int dynamics_drift_instance_reset(KesshoDynamicsDriftInstance* instance, float sample_rate);
 
@@ -34,6 +35,13 @@ float* dynamics_drift_instance_get_telemetry_ptr(KesshoDynamicsDriftInstance* in
 
 void dynamics_drift_instance_commit_params(KesshoDynamicsDriftInstance* instance);
 void dynamics_drift_instance_process_block(KesshoDynamicsDriftInstance* instance, int block_size);
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+unsigned long long dynamics_drift_instance_get_test_wet_work_frames(
+    const KesshoDynamicsDriftInstance* instance);
+unsigned long long dynamics_drift_instance_get_test_master_skipped_wet_frames(
+    const KesshoDynamicsDriftInstance* instance);
+#endif
 
 #ifdef __cplusplus
 }

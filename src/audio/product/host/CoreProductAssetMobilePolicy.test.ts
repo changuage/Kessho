@@ -96,6 +96,66 @@ const sceneResult = await sceneRegistrar.ensureSceneAssets([
 assert.equal(sceneResult.status, 'ready', 'scene endpoint asset union did not become ready');
 assert.ok(sceneRegistrar.backgroundAssetClosure().requiredAssetIds.length > 0, 'scene endpoint union was not retained');
 assert.equal(sceneRegistrar.backgroundAssetClosure().ready, true, 'scene endpoint union did not close');
+
+const installedSceneStates = [
+  { sample1Enabled: true, sample1LibraryKey: 'piano' },
+  { sample2Enabled: true, sample2LibraryKey: 'soft-string-spurs' },
+];
+const candidateSceneStates = [
+  { sample1Enabled: true, sample1LibraryKey: 'pneuma-eleni-teaser' },
+  { sample2Enabled: true, sample2LibraryKey: 'array-mbira' },
+];
+const unionRuntime = {
+  ...runtime,
+} as unknown as CoreProductRuntime;
+const installedRegistrar = new CoreProductAssetRegistrar(unionRuntime, () => ({}), true, decode, () => true);
+await installedRegistrar.ensureSceneAssets(installedSceneStates);
+const installedAssetIds = new Set(installedRegistrar.backgroundAssetClosure().requiredAssetIds);
+const candidateRegistrar = new CoreProductAssetRegistrar(unionRuntime, () => ({}), true, decode, () => true);
+await candidateRegistrar.ensureSceneAssets(candidateSceneStates);
+const candidateAssetIds = new Set(candidateRegistrar.backgroundAssetClosure().requiredAssetIds);
+const oldOnlyAssetIds = new Set([...installedAssetIds].filter((assetId) => !candidateAssetIds.has(assetId)));
+const unionRegistrar = new CoreProductAssetRegistrar(unionRuntime, () => ({}), true, decode, () => true);
+const unionResult = await unionRegistrar.ensureSceneAssets([...installedSceneStates, ...candidateSceneStates]);
+assert.equal(unionResult.status, 'ready', 'installed and candidate endpoint union was not ready');
+const unionRequiredIds = new Set(unionRegistrar.backgroundAssetClosure().requiredAssetIds);
+for (const assetId of [...installedAssetIds, ...candidateAssetIds]) {
+  assert.ok(unionRequiredIds.has(assetId), 'endpoint replacement dropped an asset before adoption');
+}
+await unionRegistrar.ensureSceneAssets(candidateSceneStates);
+unionRegistrar.updateRequiredAssetsForState();
+const narrowedRequiredIds = new Set(unionRegistrar.backgroundAssetClosure().requiredAssetIds);
+for (const assetId of oldOnlyAssetIds) {
+  assert.equal(narrowedRequiredIds.has(assetId), false, 'adopted replacement kept an obsolete requirement');
+}
+for (const assetId of candidateAssetIds) {
+  assert.ok(narrowedRequiredIds.has(assetId), 'adopted replacement dropped a current requirement');
+}
+
+let notReadyVisible = true;
+const notReadyRegisteredIds = new Set<number>();
+const notReadyReleasedIds = new Set<number>();
+const notReadyRuntime = {
+  ...runtime,
+  registerAsset: async (asset: DecodedCoreProductAsset) => {
+    notReadyRegisteredIds.add(asset.assetId);
+  },
+  requestAssetRelease: (assetId: number) => {
+    notReadyReleasedIds.add(assetId);
+  },
+} as unknown as CoreProductRuntime;
+const notReadyRegistrar = new CoreProductAssetRegistrar(notReadyRuntime, () => ({}), true, decode, () => notReadyVisible);
+await notReadyRegistrar.ensureSceneAssets(installedSceneStates);
+const installedBeforeNotReady = new Set(notReadyRegistrar.backgroundAssetClosure().requiredAssetIds);
+notReadyVisible = false;
+const notReadyUnionResult = await notReadyRegistrar.ensureSceneAssets([...installedSceneStates, ...candidateSceneStates]);
+assert.equal(notReadyUnionResult.status, 'not-ready', 'hidden candidate preparation did not report not-ready');
+const notReadyRequiredIds = new Set(notReadyRegistrar.backgroundAssetClosure().requiredAssetIds);
+for (const assetId of installedBeforeNotReady) {
+  assert.ok(notReadyRequiredIds.has(assetId), 'not-ready replacement evicted an installed requirement');
+  assert.ok(notReadyRegisteredIds.has(assetId), 'not-ready replacement lost an installed registration');
+  assert.equal(notReadyReleasedIds.has(assetId), false, 'not-ready replacement released an installed asset');
+}
 sceneRegistrar.clearSceneAssets();
 assert.equal(sceneRegistrar.backgroundAssetClosure().requiredAssetIds.length, 0, 'scene asset requirements survived clear');
 

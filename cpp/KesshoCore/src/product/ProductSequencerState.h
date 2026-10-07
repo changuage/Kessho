@@ -7,6 +7,7 @@
 #include "ProductSequencerEvolveState.h"
 #include "ProductSequencerRuntimeState.h"
 #include "ProductSequencerChainState.h"
+#include "ProductSequencerVariationState.h"
 #include "kessho_drum.h"
 #include <cstdint>
 
@@ -49,20 +50,14 @@ struct LaneState {
   float tempo_multiplier = 1.0f;
   float initial_start_delay_seconds =
       kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS;
-  uint32_t manual_step_mask_low = 0;
-  uint32_t manual_step_mask_high = 0;
-  uint32_t step_override_set_low = 0;
-  uint32_t step_override_set_high = 0;
-  uint32_t step_override_value_low = 0;
-  uint32_t step_override_value_high = 0;
-  uint32_t probability_override_set_low = 0;
-  uint32_t probability_override_set_high = 0;
+  uint32_t manual_step_mask_low = 0, manual_step_mask_high = 0;
+  uint32_t step_override_set_low = 0, step_override_set_high = 0;
+  uint32_t step_override_value_low = 0, step_override_value_high = 0;
+  uint32_t probability_override_set_low = 0, probability_override_set_high = 0;
   float probability_overrides[64]{};
-  uint32_t ratchet_override_set_low = 0;
-  uint32_t ratchet_override_set_high = 0;
+  uint32_t ratchet_override_set_low = 0, ratchet_override_set_high = 0;
   uint32_t ratchet_overrides[64]{};
-  uint32_t trig_condition_override_set_low = 0;
-  uint32_t trig_condition_override_set_high = 0;
+  uint32_t trig_condition_override_set_low = 0, trig_condition_override_set_high = 0;
   uint32_t trig_condition_numerators[64]{};
   uint32_t trig_condition_denominators[64]{};
   uint32_t midi_note_override_set_low = 0;
@@ -96,6 +91,7 @@ struct LaneState {
   LaneEvolveHomeState evolve_home{};
   LaneEvolveRuntimeConfig evolve_runtime{};
   uint64_t emitted_hit_count = 0;
+  uint64_t audible_hit_count = 0;
   bool last_emitted_morph_valid = false;
   float last_emitted_morph = 0.0f;
   bool last_emitted_distance_valid = false;
@@ -109,11 +105,15 @@ struct LaneState {
   int64_t sequencer_start_sample_frame = 0;
   bool sequencer_runtime_initialized = false;
   bool sequencer_join_pending = true;
+  bool sequencer_variation_preactivated = false;
   PendingRatchetEvent pending_ratchets[kMaxPendingRatchetsPerLane]{};
   uint32_t pending_ratchet_count = 0;
   uint32_t pending_ratchet_drop_count = 0;
   AnchorWalkerState anchor_walker{};
   OrbitSequencerState orbit{};
+  // Audio-owned variation bank.  Editor step overrides continue to live in
+  // the fields above and are not allowed to replace an active bank.
+  SequencerVariationRuntime variation_runtime{};
 };
 
 } // namespace kessho::product::internal

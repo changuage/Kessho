@@ -16,15 +16,28 @@
 
   bool KesshoProductEngine::stepTrigConditionPass(const LaneState& lane, uint32_t step, int64_t absolute_step) const {
   if (!stepMaskHas(lane.trig_condition_override_set_low, lane.trig_condition_override_set_high, step)) {
-    return true;
+    const auto* variation = activeVariationSnapshot(lane.variation_runtime);
+    if (variation == nullptr || !variationMaskHas(variation->trig_condition_mask, step)) return true;
   }
-  const uint32_t denominator = std::max(1u, lane.trig_condition_denominators[step]);
-  const uint32_t numerator = clampU32(lane.trig_condition_numerators[step], 1u, denominator);
-  const uint64_t visit = static_cast<uint64_t>(absolute_step / std::max<int64_t>(1, static_cast<int64_t>(lane.step_count))) + 1u;
+  const auto* variation = activeVariationSnapshot(lane.variation_runtime);
+  const bool variation_value = variation != nullptr && variationMaskHas(variation->trig_condition_mask, step);
+  const uint32_t denominator = std::max(
+      1u,
+      variation_value ? variation->trig_condition_denominators[step] : lane.trig_condition_denominators[step]);
+  const uint32_t numerator = clampU32(
+      variation_value ? variation->trig_condition_numerators[step] : lane.trig_condition_numerators[step],
+      1u,
+      denominator);
+  const uint32_t step_count = variationStepCount(lane.variation_runtime, lane.step_count);
+  const uint64_t visit = static_cast<uint64_t>(absolute_step / std::max<int64_t>(1, static_cast<int64_t>(step_count))) + 1u;
   return ((visit - 1u) % denominator) + 1u == numerator;
 }
 
-  bool KesshoProductEngine::manualMaskHit(const LaneState& lane, uint32_t step) const {
+bool KesshoProductEngine::manualMaskHit(const LaneState& lane, uint32_t step) const {
+  if (const auto* variation = activeVariationSnapshot(lane.variation_runtime);
+      variation != nullptr && step < variation->step_count) {
+    return (variation->trigger_mask & (1u << step)) != 0u;
+  }
   if (step < 32u) {
     const uint32_t bit = 1u << step;
     if ((lane.step_override_set_low & bit) != 0u) {

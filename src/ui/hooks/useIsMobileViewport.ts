@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-
-const MOBILE_VISUAL_QUERY = '(max-width: 767px), (pointer: coarse)';
+import {
+  getMobileVisualMediaQuery,
+  isMobileVisualViewport,
+} from './mobileVisualPolicy';
 
 function readQuery(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false;
   }
-  return window.matchMedia(MOBILE_VISUAL_QUERY).matches;
+  return isMobileVisualViewport();
 }
 
 export function useIsMobileViewport(): boolean {
@@ -17,8 +19,9 @@ export function useIsMobileViewport(): boolean {
       return;
     }
 
-    const media = window.matchMedia(MOBILE_VISUAL_QUERY);
-    const update = () => setIsMobile(media.matches);
+    const media = getMobileVisualMediaQuery();
+    if (!media) return;
+    const update = () => setIsMobile(isMobileVisualViewport());
     update();
 
     if (typeof media.addEventListener === 'function') {

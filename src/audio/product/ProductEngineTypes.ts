@@ -8,6 +8,11 @@ import type {
 import type { HarmonyState } from '../harmony';
 import type { TransportDebugSnapshot } from '../transport';
 import type { ProductRuntimeLifecycleState } from './lifecycle/ProductRuntimeLifecycleState';
+import type {
+  RecordedNoteCaptureBatch,
+  RecordedNoteCaptureStartRequest,
+  RecordedNoteCaptureSubscription,
+} from '../../ui/sequencer/recordedNoteCaptureTypes';
 
 export type ProductStateRecord = Readonly<Record<string, unknown>>;
 
@@ -248,6 +253,10 @@ export type ProductEvolveOverridesCallback = (laneIndex: number, overrides: Prod
 export type ProductSynthNoteRangeEvolvedCallback = (laneIndex: number, noteMin: number, noteMax: number) => void;
 
 export type ProductEvent = CoreProductEvent;
+
+export type ProductRecordedNoteCaptureBatch = RecordedNoteCaptureBatch;
+export type ProductRecordedNoteCaptureRequest = RecordedNoteCaptureStartRequest;
+export type ProductRecordedNoteCaptureSubscription = RecordedNoteCaptureSubscription;
 
 export type ProductAssetRegistration = DecodedCoreProductAsset;
 

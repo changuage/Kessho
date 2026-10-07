@@ -21,6 +21,7 @@ const prerequisiteSteps = [
   'architecture:runtime-scheduler',
   'test:preset-current-schema',
   'test:preset-manager-query-ownership',
+  'test:preset-cloud-list-recovery',
   'test:document-visibility',
   'test:live-note-input',
   'core:product:live-note-contract',

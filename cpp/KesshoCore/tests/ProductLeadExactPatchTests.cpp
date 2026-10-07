@@ -382,6 +382,68 @@ void triggerLeadAndExpectParams(
   requireLeadModuleParamsEqual(engine, source_id == KESSHO_PRODUCT_SOURCE_LEAD2 ? 1u : 0u, expected, context);
 }
 
+void requireRunningEditedLeadEndpointRoundTrips(uint32_t source_id) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
+  require(engine != nullptr, "running edited Lead endpoint engine create failed");
+
+  LeadParams endpoint_a = makeSentinelLeadParams();
+  endpoint_a[1] = 2.31f;
+  endpoint_a[43] = 0.037f;
+  endpoint_a[44] = 1.27f;
+  endpoint_a[45] = 0.43f;
+  endpoint_a[46] = 4.75f;
+  LeadParams endpoint_b = makeSentinelLeadParams();
+  endpoint_b[1] = -1.83f;
+  endpoint_b[43] = 0.19f;
+  endpoint_b[44] = 2.43f;
+  endpoint_b[45] = 0.21f;
+  endpoint_b[46] = 8.75f;
+
+  const auto apply_endpoint = [&](const LeadParams& expected, float morph, const char* context) {
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.transport.running = 1u;
+    KesshoProductSourceSnapshot& source = snapshot.sources[source_id - 1u];
+    configureStressLeadSource(source, source_id, expected);
+    source.preset_id = morph < 0.5f
+        ? kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_SOFT_RHODES
+        : kessho::product::generated::KESSHO_PRODUCT_SOURCE_PRESET_LEAD_GAMELAN;
+    source.morph = morph;
+    source.distance = 0.0f;
+    source.lead_envelope_override_enabled = 1u;
+    source.attack_seconds = expected[43];
+    source.decay_seconds = expected[44];
+    source.sustain = expected[45];
+    source.release_seconds = expected[46];
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "running edited Lead endpoint snapshot load failed");
+    require(engine->transport.running, "running edited Lead endpoint load stopped transport");
+
+    const auto& loaded = engine->sources[source_id - 1u];
+    require(loaded.lead_override_count == kessho::product::generated::KESSHO_PRODUCT_GENERATED_LEAD_PARAM_COUNT,
+            "running edited Lead endpoint lost sparse endpoint overrides");
+    require(loaded.lead_envelope_override_enabled, "running edited Lead endpoint lost structured ADSR override");
+    requireParamClose(context, 43u, loaded.attack_seconds, expected[43]);
+    requireParamClose(context, 44u, loaded.decay_seconds, expected[44]);
+    requireParamClose(context, 45u, loaded.sustain, expected[45]);
+    requireParamClose(context, 46u, loaded.release_seconds, expected[46]);
+    triggerLeadAndExpectParams(engine, source_id, -1.0f, 0.0f, 1.0f, 1.0f, expected, context);
+    require(engine->transport.running, "running edited Lead endpoint trigger stopped transport");
+  };
+
+  // Exercise both direct endpoint arrival and each round-trip direction while
+  // every full snapshot carries the live transport state.
+  apply_endpoint(endpoint_a, 0.0f, "running Lead A direct endpoint");
+  apply_endpoint(endpoint_b, 1.0f, "running Lead B direct endpoint");
+  apply_endpoint(endpoint_a, 0.0f, "running Lead B-to-A-to-B return A");
+  apply_endpoint(endpoint_b, 1.0f, "running Lead B-to-A-to-B return B");
+  apply_endpoint(endpoint_b, 1.0f, "running Lead B direct endpoint (reverse)");
+  apply_endpoint(endpoint_a, 0.0f, "running Lead A in B-to-A-to-B");
+  apply_endpoint(endpoint_b, 1.0f, "running Lead B restored in B-to-A-to-B");
+
+  kessho_product_destroy(engine);
+}
+
 void applyLeadExpressionSampleHoldRange(
     KesshoProductEngine* engine,
     uint32_t source_id,
@@ -913,6 +975,8 @@ int main() {
   requireLeadEnvelopeOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLongLeadEnvelopeOverrideSurvivesSnapshotAndLiveEvents(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLongLeadEnvelopeOverrideSurvivesSnapshotAndLiveEvents(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
+  requireRunningEditedLeadEndpointRoundTrips(KESSHO_PRODUCT_SOURCE_LEAD1);
+  requireRunningEditedLeadEndpointRoundTrips(KESSHO_PRODUCT_SOURCE_LEAD2);
   requireLeadAlgorithmOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);
   requireLeadAlgorithmOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD2, 0.65f);
   requireLeadSparseOverrideDoesNotNeedSnapshotExact(KESSHO_PRODUCT_SOURCE_LEAD1, 0.35f);

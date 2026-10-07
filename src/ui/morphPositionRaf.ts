@@ -6,10 +6,15 @@ export type MorphPositionSchedulerMetrics = {
   duplicatePositions: number;
 };
 
+export type MorphPositionCommitOptions = {
+  flush?: boolean;
+};
+
 export type MorphPositionScheduler = {
   schedule(position: number): void;
   flush(position?: number): void;
   cancel(): void;
+  reset(): void;
   metrics(): MorphPositionSchedulerMetrics;
 };
 
@@ -22,11 +27,13 @@ type CancelFrame = (frameId: number) => void;
  * committed synchronously. Duplicate positions are discarded before interpolation.
  */
 export function createMorphPositionScheduler(
-  commit: (position: number) => void,
+  commit: (position: number, options?: MorphPositionCommitOptions) => void,
   requestFrame: RequestFrame,
   cancelFrame: CancelFrame,
 ): MorphPositionScheduler {
   let lastCommitted: number | null = null;
+  let commitOptions: MorphPositionCommitOptions | undefined;
+  let cancellationGeneration = 0;
   const counters: MorphPositionSchedulerMetrics = {
     frameRequests: 0,
     commits: 0,
@@ -35,17 +42,23 @@ export function createMorphPositionScheduler(
   let emitter: RafCoalescedEmitter<number>;
   emitter = createRafCoalescedEmitter(
     (position) => {
-      if (lastCommitted === position) {
+      const options = commitOptions;
+      commitOptions = undefined;
+      if (lastCommitted === position && !options?.flush) {
         counters.duplicatePositions += 1;
         return;
       }
       lastCommitted = position;
       counters.commits += 1;
-      commit(position);
+      commit(position, options);
     },
     (callback) => {
       counters.frameRequests += 1;
-      return requestFrame(callback);
+      const generation = cancellationGeneration;
+      return requestFrame((timestamp) => {
+        if (generation !== cancellationGeneration) return;
+        callback(timestamp);
+      });
     },
     cancelFrame,
   );
@@ -53,10 +66,22 @@ export function createMorphPositionScheduler(
   return {
     schedule: (position) => emitter.schedule(position),
     flush: (position?: number) => {
+      cancellationGeneration += 1;
+      commitOptions = { flush: true };
       if (position === undefined) emitter.flush();
       else emitter.flush(position);
+      commitOptions = undefined;
     },
-    cancel: () => emitter.cancel(),
+    cancel: () => {
+      cancellationGeneration += 1;
+      emitter.cancel();
+    },
+    reset: () => {
+      cancellationGeneration += 1;
+      emitter.cancel();
+      commitOptions = undefined;
+      lastCommitted = null;
+    },
     metrics: () => ({ ...counters }),
   };
 }

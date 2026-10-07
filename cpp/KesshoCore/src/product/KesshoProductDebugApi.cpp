@@ -23,37 +23,36 @@ int32_t kessho_product_debug_render_events(
     engine->endFxConfigurationBatch();
     engine->applyPendingTransportTransition();
     engine->applyPendingSequencerAudibilityTransitions();
+    engine->applyPendingSequencerVariationBanks();
+    engine->advanceSequencerVariationBanks(0u);
+    const float harmony_root_before_clock = engine->harmony.root_midi;
+    const uint32_t harmony_scale_before_clock = engine->harmony.scale_id;
+    const uint32_t harmony_pool_count_before_clock = engine->harmony.note_pool_count;
+    float harmony_chord_before_clock[4];
+    std::copy(engine->harmony.chord_midi, engine->harmony.chord_midi + 4, harmony_chord_before_clock);
     engine->advanceHarmonyClock();
+    const bool harmony_granular_config_changed =
+        engine->harmony.root_midi != harmony_root_before_clock ||
+        engine->harmony.scale_id != harmony_scale_before_clock ||
+        engine->harmony.note_pool_count != harmony_pool_count_before_clock ||
+        !std::equal(harmony_chord_before_clock, harmony_chord_before_clock + 4, engine->harmony.chord_midi);
+    if (harmony_granular_config_changed) engine->configureFxModules(kFxConfigurationGranular);
     uint32_t control_segment_end = frames;
-    if (control_index < engine->control_event_count) {
+    if (control_index < engine->control_event_count)
       control_segment_end = std::min(control_segment_end, engine->control_events[control_index].event.sample_offset);
-    }
-    if (engine->transport.transition_pending &&
-        engine->transport.pending_apply_frame > engine->transport.sample_frame) {
-      const uint64_t frames_until_transition =
-          engine->transport.pending_apply_frame - engine->transport.sample_frame;
+    const auto limit_segment = [&](uint64_t apply_frame) {
+      if (apply_frame <= engine->transport.sample_frame) return;
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
-          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_transition, frames - cursor)));
-    }
-    if (engine->pending_phrase_timing_event_count > 0u &&
-        engine->pending_phrase_timing_apply_frame > engine->transport.sample_frame) {
-      const uint64_t frames_until_timing =
-          engine->pending_phrase_timing_apply_frame - engine->transport.sample_frame;
-      control_segment_end = std::min<uint32_t>(
-          control_segment_end,
-          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_timing, frames - cursor)));
-    }
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(apply_frame - engine->transport.sample_frame, frames - cursor)));
+    };
+    if (engine->transport.transition_pending) limit_segment(engine->transport.pending_apply_frame);
+    if (engine->pending_phrase_timing_event_count > 0u) limit_segment(engine->pending_phrase_timing_apply_frame);
     const uint64_t next_audibility_frame = engine->nextPendingSequencerAudibilityFrame();
-    if (next_audibility_frame != UINT64_MAX && next_audibility_frame > engine->transport.sample_frame) {
-      const uint64_t frames_until_audibility = next_audibility_frame - engine->transport.sample_frame;
-      control_segment_end = std::min<uint32_t>(
-          control_segment_end,
-          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_audibility, frames - cursor)));
-    }
-    if (control_segment_end <= cursor) {
-      control_segment_end = cursor + 1u;
-    }
+    if (next_audibility_frame != UINT64_MAX) limit_segment(next_audibility_frame);
+    const uint64_t next_variation_frame = engine->nextSequencerVariationBoundaryFrame();
+    if (next_variation_frame != UINT64_MAX) limit_segment(next_variation_frame);
+    if (control_segment_end <= cursor) control_segment_end = cursor + 1u;
     const uint32_t control_segment_frames = control_segment_end - cursor;
     engine->generateSequencerEvents(control_segment_frames, true);
     generated_count += engine->sequencer_events.count;

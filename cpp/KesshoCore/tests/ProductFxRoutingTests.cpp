@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -163,6 +164,227 @@ void requireFxRouteModulationRunsInAudioGraph() {
   require(first_hold >= 0.2f && first_hold <= 0.8f, "sample-and-hold route escaped its range");
   require(std::fabs(render_at(128u) - first_hold) < 0.000001f, "sample-and-hold changed inside one beat");
   require(std::fabs(render_at(48000u) - first_hold) > 0.000001f, "sample-and-hold did not advance on the next beat");
+}
+
+constexpr uint32_t kStage10RouteCapacity = 1408u;
+constexpr uint32_t kStage10RouteFrames = 1024u;
+
+struct Stage10RouteCapture {
+  uint32_t phase_count = 0u;
+  float pcm_peak = 0.0f;
+  std::vector<float> values;
+};
+
+void clearStage10RouteState(KesshoProductEngine& engine) {
+  float* bus_l[] = {
+      engine.creative_saturation_bus_l,
+      engine.delay_a_bus_l,
+      engine.delay_b_bus_l,
+      engine.granular_bus_l,
+      engine.degrade_bus_l,
+      engine.spectral_freeze_bus_l,
+      engine.reverb_bus_l,
+      engine.dynamics_eq1_bus_l,
+      engine.dynamics_eq2_bus_l,
+      engine.dynamics_sidechain_bus_l};
+  float* bus_r[] = {
+      engine.creative_saturation_bus_r,
+      engine.delay_a_bus_r,
+      engine.delay_b_bus_r,
+      engine.granular_bus_r,
+      engine.degrade_bus_r,
+      engine.spectral_freeze_bus_r,
+      engine.reverb_bus_r,
+      engine.dynamics_eq1_bus_r,
+      engine.dynamics_eq2_bus_r,
+      engine.dynamics_sidechain_bus_r};
+  for (uint32_t index = 0u; index < sizeof(bus_l) / sizeof(bus_l[0]); ++index) {
+    std::fill(bus_l[index], bus_l[index] + kStage10RouteCapacity, 0.0f);
+    std::fill(bus_r[index], bus_r[index] + kStage10RouteCapacity, 0.0f);
+  }
+  for (uint32_t node = 0u; node < kFxNodeCount; ++node) {
+    std::fill(
+        engine.fx_node_output_l[node],
+        engine.fx_node_output_l[node] + kStage10RouteCapacity,
+        0.0f);
+    std::fill(
+        engine.fx_node_output_r[node],
+        engine.fx_node_output_r[node] + kStage10RouteCapacity,
+        0.0f);
+  }
+}
+
+void fillStage10RouteInputs(KesshoProductEngine& engine, uint32_t start, uint32_t frames, float phase_seed) {
+  for (uint32_t i = 0u; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    const float phase = static_cast<float>(i) + phase_seed;
+    engine.creative_saturation_bus_l[frame] = 0.23f + 0.03f * std::sin(phase * 0.021f);
+    engine.creative_saturation_bus_r[frame] = -0.17f + 0.025f * std::cos(phase * 0.017f);
+    engine.delay_a_bus_l[frame] = 0.19f + 0.035f * std::sin(phase * 0.013f + 0.4f);
+    engine.delay_a_bus_r[frame] = -0.11f + 0.03f * std::cos(phase * 0.019f + 0.1f);
+  }
+}
+
+void captureStage10RoutePhase(
+    KesshoProductEngine& engine,
+    Stage10RouteCapture& capture,
+    uint32_t phase,
+    uint32_t start,
+    uint64_t sample_frame,
+    bool graph_taps_enabled) {
+  clearStage10RouteState(engine);
+  fillStage10RouteInputs(engine, start, kStage10RouteFrames, static_cast<float>(phase * 29u));
+  const float graph_tap_sentinel = 5000.0f + static_cast<float>(phase) * 100.0f;
+  std::fill(
+      engine.graph_delay_a_reverb_send_l,
+      engine.graph_delay_a_reverb_send_l + kStage10RouteCapacity,
+      graph_tap_sentinel);
+  std::fill(
+      engine.graph_delay_a_reverb_send_r,
+      engine.graph_delay_a_reverb_send_r + kStage10RouteCapacity,
+      graph_tap_sentinel);
+  engine.graph_taps_enabled = graph_taps_enabled;
+  engine.transport.sample_frame = sample_frame;
+  std::vector<float> output_l(kStage10RouteCapacity, 0.0f);
+  std::vector<float> output_r(kStage10RouteCapacity, 0.0f);
+  engine.renderFxGraph(
+      output_l.data(),
+      output_r.data(),
+      start,
+      kStage10RouteFrames);
+
+  const uint32_t route_eq1 = kFxNodeCreativeSaturation * kFxNodeCount + kFxNodeEq1;
+  const uint32_t route_eq2 = kFxNodeCreativeSaturation * kFxNodeCount + kFxNodeEq2;
+  const uint32_t route_delay = kFxNodeDelayA * kFxNodeCount + kFxNodeReverb;
+  const float effective_eq1 = engine.routing.fx_route_effective_amount[kFxNodeCreativeSaturation][kFxNodeEq1];
+  const float effective_eq2 = engine.routing.fx_route_effective_amount[kFxNodeCreativeSaturation][kFxNodeEq2];
+  const float effective_delay = engine.routing.fx_route_effective_amount[kFxNodeDelayA][kFxNodeReverb];
+  require(
+      std::fabs(engine.telemetry.fx_route_effective_amounts[route_eq1] - effective_eq1) < 0.000001f &&
+          std::fabs(engine.telemetry.fx_route_effective_amounts[route_eq2] - effective_eq2) < 0.000001f &&
+          std::fabs(engine.telemetry.fx_route_effective_amounts[route_delay] - effective_delay) < 0.000001f,
+      "Stage 10 route telemetry diverged from effective audio-graph amounts");
+  if (phase == 0u) {
+    require(std::fabs(effective_eq1 - 0.2f) < 0.000001f, "settled route did not preserve its exact plateau");
+    require(std::fabs(effective_eq2 - 0.4f) < 0.000001f, "second settled route did not preserve its exact plateau");
+    require(std::fabs(effective_delay - 0.2f) < 0.000001f, "specialized delay route did not start at its minimum");
+  } else if (phase == 1u) {
+    require(effective_eq1 > 0.799f, "changing route did not reach its maximum");
+    require(std::fabs(effective_eq2 - 0.4f) < 0.000001f, "unmodulated route changed during a neighboring ramp");
+    require(effective_delay > 0.799f, "specialized delay route did not reach its maximum");
+  } else if (phase == 2u || phase == 3u) {
+    require(
+        effective_eq1 == 0.0f && effective_eq2 == 0.0f && effective_delay == 0.0f,
+        "multiple route fades did not settle exactly at zero");
+  }
+
+  for (uint32_t i = 0u; i < kStage10RouteCapacity; ++i) {
+    if (i < start || i >= start + kStage10RouteFrames) {
+      require(output_l[i] == 0.0f && output_r[i] == 0.0f, "route graph wrote outside its requested offset");
+    }
+  }
+  for (uint32_t i = 0u; i < kStage10RouteFrames; ++i) {
+    const uint32_t frame = start + i;
+    require(std::isfinite(output_l[frame]) && std::isfinite(output_r[frame]), "Stage 10 PCM was non-finite");
+    capture.pcm_peak = std::max(
+        capture.pcm_peak,
+        std::max(std::fabs(output_l[frame]), std::fabs(output_r[frame])));
+  }
+  for (uint32_t i = 0u; i < kStage10RouteFrames; ++i) {
+    const uint32_t frame = start + i;
+    if (graph_taps_enabled) {
+      require(
+          std::isfinite(engine.graph_delay_a_reverb_send_l[frame]) &&
+              engine.graph_delay_a_reverb_send_l[frame] != graph_tap_sentinel &&
+              std::isfinite(engine.graph_delay_a_reverb_send_r[frame]) &&
+              engine.graph_delay_a_reverb_send_r[frame] != graph_tap_sentinel,
+          "specialized delay graph tap was not written");
+    } else {
+      require(
+          engine.graph_delay_a_reverb_send_l[frame] == graph_tap_sentinel &&
+              engine.graph_delay_a_reverb_send_r[frame] == graph_tap_sentinel,
+          "graph tap was written while graph taps were disabled");
+    }
+  }
+
+  capture.values.push_back(static_cast<float>(phase));
+  capture.values.push_back(static_cast<float>(start));
+  capture.values.push_back(static_cast<float>(kStage10RouteFrames));
+  capture.values.push_back(graph_taps_enabled ? 1.0f : 0.0f);
+  capture.values.push_back(effective_eq1);
+  capture.values.push_back(effective_eq2);
+  capture.values.push_back(effective_delay);
+  for (uint32_t i = 0u; i < kStage10RouteFrames; ++i) {
+    const uint32_t frame = start + i;
+    capture.values.push_back(output_l[frame]);
+    capture.values.push_back(output_r[frame]);
+    capture.values.push_back(engine.graph_delay_a_reverb_send_l[frame]);
+    capture.values.push_back(engine.graph_delay_a_reverb_send_r[frame]);
+  }
+  ++capture.phase_count;
+}
+
+void writeStage10RouteCapture(const Stage10RouteCapture& capture) {
+  const char* output_path = std::getenv("KESSHO_STAGE10_OUTPUT");
+  if (output_path == nullptr || *output_path == '\0') return;
+  std::ofstream output(output_path, std::ios::binary);
+  require(output.good(), "could not open requested Stage 10 route capture output");
+  const uint32_t header[4] = {
+      0x30314753u,
+      1u,
+      capture.phase_count,
+      static_cast<uint32_t>(capture.values.size())};
+  output.write(reinterpret_cast<const char*>(header), sizeof(header));
+  output.write(
+      reinterpret_cast<const char*>(capture.values.data()),
+      static_cast<std::streamsize>(capture.values.size() * sizeof(float)));
+  require(output.good(), "could not write requested Stage 10 route capture output");
+  std::cout << "Stage10 capture written: " << output_path
+            << " (phases=" << capture.phase_count
+            << ", float_values=" << capture.values.size() << ")\n";
+}
+
+void requireSettledFxRouteBatchFixture() {
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kStage10RouteCapacity, 0);
+  engine->routing.clearFxGraph();
+  require(
+      engine->routing.setFxRoute(kFxNodeCreativeSaturation, kFxNodeEq1, 0.2f, true),
+      "Stage 10 Creative Saturation to EQ 1 route setup failed");
+  require(
+      engine->routing.setFxRoute(kFxNodeCreativeSaturation, kFxNodeEq2, 0.4f, true),
+      "Stage 10 Creative Saturation to EQ 2 route setup failed");
+  require(
+      engine->routing.setFxRoute(kFxNodeDelayA, kFxNodeReverb, 0.2f, true),
+      "Stage 10 Delay A to Reverb route setup failed");
+  engine->routing.setFxRouteModulation(kFxNodeCreativeSaturation, kFxNodeEq1, 1u, 0.2f, 0.8f);
+  engine->routing.setFxRouteModulation(kFxNodeDelayA, kFxNodeReverb, 1u, 0.2f, 0.8f);
+  engine->transport.bpm = 60.0f;
+  engine->transport.beats_per_bar = 4u;
+  engine->fx.delay_a_enabled = true;
+  engine->fx.delay_a_mix = 0.0f;
+  engine->fx.delay_a_time_left_ms = 10.0f;
+  engine->fx.delay_a_time_right_ms = 10.0f;
+  engine->fx.reverb_mix = 0.0f;
+  engine->configureFxModules();
+
+  Stage10RouteCapture capture;
+  capture.values.reserve(4u * (7u + kStage10RouteFrames * 4u));
+  captureStage10RoutePhase(*engine, capture, 0u, 7u, 0u, false);
+  captureStage10RoutePhase(*engine, capture, 1u, 11u, 8u * 48000u, true);
+
+  engine->routing.fx_route_min[kFxNodeCreativeSaturation][kFxNodeEq1] = 0.0f;
+  engine->routing.fx_route_max[kFxNodeCreativeSaturation][kFxNodeEq1] = 0.0f;
+  engine->routing.fx_route_amount[kFxNodeCreativeSaturation][kFxNodeEq2] = 0.0f;
+  engine->routing.fx_route_min[kFxNodeDelayA][kFxNodeReverb] = 0.0f;
+  engine->routing.fx_route_max[kFxNodeDelayA][kFxNodeReverb] = 0.0f;
+  captureStage10RoutePhase(*engine, capture, 2u, 13u, 8u * 48000u, true);
+  captureStage10RoutePhase(*engine, capture, 3u, 17u, 8u * 48000u, false);
+
+  for (float value : capture.values) {
+    require(std::isfinite(value), "Stage 10 route capture contained a non-finite value");
+  }
+  require(capture.pcm_peak > 0.0001f, "Stage 10 route capture remained silent");
+  writeStage10RouteCapture(capture);
 }
 
 float peak(const std::vector<float>& left, const std::vector<float>& right) {
@@ -1869,6 +2091,217 @@ void clearFxBus(float* left, float* right, uint32_t frames) {
   std::fill(right, right + frames, 0.0f);
 }
 
+constexpr uint32_t kStage9DelayCapacity = 1088u;
+constexpr uint32_t kStage9DelayFrames = 1024u;
+constexpr uint32_t kStage9DelayTapCount = KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT;
+
+struct Stage9DelayCapture {
+  uint32_t phase_count = 0u;
+  float pcm_peak = 0.0f;
+  std::vector<float> values;
+};
+
+void fillStage9DelayInputs(
+    KesshoProductEngine& engine,
+    uint32_t start,
+    uint32_t frames,
+    bool delay_a_active,
+    bool delay_b_active,
+    float phase_seed) {
+  std::fill(engine.delay_a_bus_l, engine.delay_a_bus_l + kStage9DelayCapacity, 0.0f);
+  std::fill(engine.delay_a_bus_r, engine.delay_a_bus_r + kStage9DelayCapacity, 0.0f);
+  std::fill(engine.delay_b_bus_l, engine.delay_b_bus_l + kStage9DelayCapacity, 0.0f);
+  std::fill(engine.delay_b_bus_r, engine.delay_b_bus_r + kStage9DelayCapacity, 0.0f);
+  for (uint32_t i = 0u; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    const float phase = static_cast<float>(i) + phase_seed;
+    const float a_left = 0.18f + 0.04f * std::sin(phase * 0.013f);
+    const float a_right = -0.13f + 0.03f * std::cos(phase * 0.017f);
+    const float b_left = 0.11f + 0.05f * std::sin(phase * 0.019f + 0.2f);
+    const float b_right = -0.09f + 0.035f * std::cos(phase * 0.023f + 0.4f);
+    if (delay_a_active) {
+      engine.delay_a_bus_l[frame] = a_left;
+      engine.delay_a_bus_r[frame] = a_right;
+    }
+    if (delay_b_active) {
+      engine.delay_b_bus_l[frame] = b_left;
+      engine.delay_b_bus_r[frame] = b_right;
+    }
+  }
+}
+
+void fillStage9DelayScratch(KesshoProductEngine& engine, float sentinel) {
+  for (uint32_t bus = 0u; bus < kStage9DelayTapCount; ++bus) {
+    for (uint32_t i = 0u; i < kStage9DelayCapacity; ++i) {
+      engine.module_tap_l[bus][i] = sentinel + static_cast<float>(bus * 10000u + i);
+      engine.module_tap_r[bus][i] = sentinel + static_cast<float>(bus * 20000u + i);
+    }
+  }
+}
+
+void appendStage9DelayPhase(
+    Stage9DelayCapture& capture,
+    const KesshoProductEngine& engine,
+    const float* output_l,
+    const float* output_r,
+    uint32_t phase,
+    uint32_t start,
+    uint32_t frames,
+    bool delay_a_enabled,
+    bool delay_b_enabled,
+    bool capture_taps) {
+  capture.values.push_back(static_cast<float>(phase));
+  capture.values.push_back(static_cast<float>(start));
+  capture.values.push_back(static_cast<float>(frames));
+  capture.values.push_back(delay_a_enabled ? 1.0f : 0.0f);
+  capture.values.push_back(delay_b_enabled ? 1.0f : 0.0f);
+  for (uint32_t i = 0u; i < frames; ++i) {
+    const uint32_t frame = start + i;
+    capture.values.push_back(output_l[frame]);
+    capture.values.push_back(output_r[frame]);
+    capture.pcm_peak = std::max(
+        capture.pcm_peak,
+        std::max(std::fabs(output_l[frame]), std::fabs(output_r[frame])));
+  }
+  if (capture_taps) {
+    for (uint32_t bus = 0u; bus < kStage9DelayTapCount; ++bus) {
+      for (uint32_t i = 0u; i < frames; ++i) {
+        capture.values.push_back(engine.module_tap_l[bus][i]);
+        capture.values.push_back(engine.module_tap_r[bus][i]);
+      }
+    }
+  }
+  ++capture.phase_count;
+}
+
+void writeStage9DelayCapture(const Stage9DelayCapture& capture) {
+  const char* output_path = std::getenv("KESSHO_STAGE9_OUTPUT");
+  if (output_path == nullptr || *output_path == '\0') return;
+  std::ofstream output(output_path, std::ios::binary);
+  require(output.good(), "could not open requested Stage 9 delay capture output");
+  const uint32_t header[4] = {
+      0x39544753u,
+      1u,
+      capture.phase_count,
+      static_cast<uint32_t>(capture.values.size())};
+  output.write(reinterpret_cast<const char*>(header), sizeof(header));
+  output.write(
+      reinterpret_cast<const char*>(capture.values.data()),
+      static_cast<std::streamsize>(capture.values.size() * sizeof(float)));
+  require(output.good(), "could not write requested Stage 9 delay capture output");
+  std::cout << "Stage9 capture written: " << output_path
+            << " (phases=" << capture.phase_count
+            << ", float_values=" << capture.values.size() << ")\n";
+}
+
+void renderStage9DelayPhase(
+    KesshoProductEngine& engine,
+    Stage9DelayCapture& capture,
+    uint32_t phase,
+    uint32_t start,
+    bool delay_a_enabled,
+    bool delay_b_enabled,
+    bool delay_a_input,
+    bool delay_b_input,
+    bool capture_taps) {
+  engine.fx.delay_a_enabled = delay_a_enabled;
+  engine.fx.delay_b_enabled = delay_b_enabled;
+  engine.configureFxModules();
+  fillStage9DelayInputs(
+      engine,
+      start,
+      kStage9DelayFrames,
+      delay_a_input,
+      delay_b_input,
+      static_cast<float>(phase * 37u));
+  const float sentinel = 7000.0f + static_cast<float>(phase) * 100.0f;
+  fillStage9DelayScratch(engine, sentinel);
+  std::vector<float> output_l(kStage9DelayCapacity, 0.0f);
+  std::vector<float> output_r(kStage9DelayCapacity, 0.0f);
+  engine.renderFxGraph(
+      output_l.data(),
+      output_r.data(),
+      start,
+      kStage9DelayFrames);
+
+  for (uint32_t i = 0u; i < kStage9DelayCapacity; ++i) {
+    if (i < start || i >= start + kStage9DelayFrames) {
+      require(output_l[i] == 0.0f && output_r[i] == 0.0f, "delay render wrote outside its requested offset");
+    }
+  }
+
+  if (capture_taps) {
+    for (uint32_t bus = 0u; bus < kStage9DelayTapCount; ++bus) {
+      for (uint32_t i = 0u; i < kStage9DelayFrames; ++i) {
+        require(
+            std::isfinite(engine.module_tap_l[bus][i]) &&
+                engine.module_tap_l[bus][i] != sentinel + static_cast<float>(bus * 10000u + i),
+            "Delay left tap did not assign every requested sample");
+        require(
+            std::isfinite(engine.module_tap_r[bus][i]) &&
+                engine.module_tap_r[bus][i] != sentinel + static_cast<float>(bus * 20000u + i),
+            "Delay right tap did not assign every requested sample");
+      }
+    }
+  } else {
+    for (uint32_t bus = 0u; bus < kStage9DelayTapCount; ++bus) {
+      require(
+          engine.module_tap_l[bus][0] == sentinel + static_cast<float>(bus * 10000u) &&
+              engine.module_tap_r[bus][0] == sentinel + static_cast<float>(bus * 20000u),
+          "disabled delay touched shared tap scratch");
+    }
+    for (uint32_t i = 0u; i < kStage9DelayFrames; ++i) {
+      const uint32_t frame = start + i;
+      require(
+          output_l[frame] == 0.0f && output_r[frame] == 0.0f,
+          "disabled delays leaked stale output through shared scratch");
+    }
+  }
+
+  appendStage9DelayPhase(
+      capture,
+      engine,
+      output_l.data(),
+      output_r.data(),
+      phase,
+      start,
+      kStage9DelayFrames,
+      delay_a_enabled,
+      delay_b_enabled,
+      capture_taps);
+}
+
+void requireDelayScratchInitializationIsRedundant() {
+  constexpr uint32_t kFrames = kStage9DelayFrames;
+  auto engine = std::make_unique<KesshoProductEngine>(48000.0, kStage9DelayCapacity, 0);
+  engine->graph_taps_enabled = true;
+  engine->routing.clearFxGraph();
+  engine->routing.delay_a_to_delay_b_feedback = 0.25f;
+  engine->routing.delay_b_to_delay_a_feedback = 0.25f;
+  engine->fx.delay_a_time_left_ms = 10.0f;
+  engine->fx.delay_a_time_right_ms = 10.0f;
+  engine->fx.delay_a_mix = 1.0f;
+  engine->fx.delay_b_base_time_ms = 20.0f;
+  engine->fx.delay_b_mix = 1.0f;
+  engine->configureFxModules();
+
+  Stage9DelayCapture capture;
+  capture.values.reserve(7u * (5u + kFrames * 2u + kStage9DelayTapCount * kFrames * 2u));
+  renderStage9DelayPhase(*engine, capture, 0u, 17u, true, false, true, false, true);
+  renderStage9DelayPhase(*engine, capture, 1u, 9u, false, false, true, false, false);
+  renderStage9DelayPhase(*engine, capture, 2u, 23u, true, false, true, false, true);
+  renderStage9DelayPhase(*engine, capture, 3u, 31u, false, true, false, true, true);
+  renderStage9DelayPhase(*engine, capture, 4u, 11u, false, false, false, true, false);
+  renderStage9DelayPhase(*engine, capture, 5u, 27u, false, true, false, true, true);
+  renderStage9DelayPhase(*engine, capture, 6u, 19u, true, true, true, true, true);
+
+  for (float value : capture.values) {
+    require(std::isfinite(value), "Stage 9 delay capture contained a non-finite value");
+  }
+  require(capture.pcm_peak > 0.0001f, "Stage 9 delay capture remained silent");
+  writeStage9DelayCapture(capture);
+}
+
 void requireReverbTrimAppliedOnce() {
   constexpr uint32_t kFrames = 128u;
   auto engine = std::make_unique<KesshoProductEngine>(48000.0, kFrames, 0);
@@ -2206,11 +2639,13 @@ int main() {
   requireMasterAndModularSaturationShareKernel();
   requireModularFxMuteRowsGateGraphOutputs();
   requireFxRouteModulationRunsInAudioGraph();
+  requireSettledFxRouteBatchFixture();
   requireFxGraphSnapshotAndRuntimeEvents();
   requireDirectFxCoverage();
   requireReverbTrimAppliedOnce();
   requireNeutralEqUnity();
   requireEqPassFiltersRejectOutOfBandSignal();
+  requireDelayScratchInitializationIsRedundant();
   requireDisabledDelayDoesNotLeakSpecializedTap();
   requireDelayFeedbackStaysPreLevel();
   requireReverbCanFeedFreezeAtZeroLevel();

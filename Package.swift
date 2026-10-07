@@ -24,6 +24,7 @@ let package = Package(
             exclude: [
                 "build",
                 "cpp/KesshoCore/src/product/KesshoProductDebugApi.cpp",
+                "cpp/KesshoCore/src/product/ProductInteractionMethods.inc",
                 "cpp/KesshoCore/src/product/ProductSonicRuntimeMethods.inc",
                 "cpp/KesshoCore/src/product/ProductSoundscapeMethods.inc",
                 "cpp/KesshoCore/src/product/ProductSourceAuditionMethods.inc",

@@ -1,5 +1,15 @@
 import type { CoreProductEvent } from '../../coreProductEvents';
 import type { DecodedCoreProductAsset } from '../../coreProductAssets';
+import { encodeSynthSequenceVariationBank } from '../synthSequenceVariationEncoder';
+import type { SynthSequenceVariationBank } from '../../../ui/sequencer/synthSequenceVariations';
+import type {
+  RecordedNoteCaptureBatch,
+  RecordedNoteCaptureStartRequest,
+} from '../../../ui/sequencer/recordedNoteCaptureTypes';
+import type {
+  ProductRuntimeSnapshotMetadata,
+  ProductSnapshotAppliedReceipt,
+} from '../ProductEngineTypes';
 import type { CoreProductTelemetrySnapshot } from '../../coreProductTelemetry';
 import {
   PRODUCT_INTERACTION_SOURCE_COUNT,
@@ -17,6 +27,14 @@ const EVENT_BYTES = 40;
 const TELEMETRY_BYTES = 14912;
 const INTERACTION_SIGNAL_BYTES = 192;
 const INTERACTION_EVENT_BYTES = 40;
+const SYNTH_SEQUENCE_VARIATION_RUNTIME_BYTES = 32;
+const SYNTH_SEQUENCE_VARIATION_LANE_COUNT = 4;
+const SYNTH_SEQUENCE_VARIATION_COMMIT_POLL_MS = 50;
+// Core accepts low-BPM test/session states below the normal UI slider floor.
+// Eight minutes covers a 32-step 1/4 variation at 20 BPM, including the
+// slowest supported lane tempo multiplier, while lifecycle changes cancel
+// immediately instead of waiting for this bound.
+const SYNTH_SEQUENCE_VARIATION_COMMIT_TIMEOUT_MS = 8 * 60_000;
 const FX_ROUTE_COUNT = 100;
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -32,6 +50,40 @@ function base64ToBytes(encoded: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
+}
+
+function waitNativeControlBoundary(delayMs = 10): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+export type MacNativeSynthSequenceVariationRuntime = {
+  schemaVersion: number;
+  activeVariation: number;
+  chainPosition: number;
+  activeStep: number;
+  revision: number;
+  nextBoundaryFrame: number;
+};
+
+export function decodeMacNativeSynthSequenceVariationRuntime(
+  encoded: string,
+): MacNativeSynthSequenceVariationRuntime {
+  const bytes = base64ToBytes(encoded);
+  if (bytes.byteLength !== SYNTH_SEQUENCE_VARIATION_RUNTIME_BYTES) {
+    throw new Error(
+      `Native Product Core synth variation runtime is ${bytes.byteLength} bytes; ` +
+      `expected ${SYNTH_SEQUENCE_VARIATION_RUNTIME_BYTES}`,
+    );
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    schemaVersion: view.getUint32(0, true),
+    activeVariation: view.getUint32(4, true),
+    chainPosition: view.getUint32(8, true),
+    activeStep: view.getUint32(12, true),
+    revision: Number(view.getBigUint64(16, true)),
+    nextBoundaryFrame: Number(view.getBigUint64(24, true)),
+  };
 }
 
 export function encodeMacNativeProductEvents(events: readonly CoreProductEvent[]): Uint8Array {
@@ -248,6 +300,21 @@ export class MacNativeProductRuntime {
   private prepared = false;
   private snapshotExpected = false;
   private readonly stagedEvents: CoreProductEvent[] = [];
+  private readonly captureListeners = new Set<(batch: RecordedNoteCaptureBatch) => void>();
+  private nativeCaptureClockBeat: number | null = null;
+  private nativeCaptureClockBpm: number | null = null;
+  private nativeCaptureClockPerformanceMs: number | null = null;
+  private nativeCaptureListenerInstall: Promise<void> | null = null;
+  private nativeCaptureListenerHandle: { remove: () => Promise<void> | void } | null = null;
+  private activeSynthSequenceVariationIndices: readonly (number | null)[] =
+    Array.from({ length: SYNTH_SEQUENCE_VARIATION_LANE_COUNT }, () => null);
+  private readonly synthSequenceVariationRuntimeListeners = new Set<
+    (indices: readonly (number | null)[]) => void
+  >();
+  private synthSequenceVariationRuntimeTimer: ReturnType<typeof setInterval> | null = null;
+  private synthSequenceVariationRuntimePollInFlight = false;
+  private running = false;
+  private lifecycleGeneration = 0;
 
   static createIfAvailable(): MacNativeProductRuntime | null {
     const plugin = getMacNativeProductRuntimePlugin();
@@ -271,20 +338,37 @@ export class MacNativeProductRuntime {
   async resume(): Promise<void> {
     await this.prepare();
     await this.enqueue(() => this.plugin.startNativeProductRuntime());
+    this.running = true;
+    this.lifecycleGeneration += 1;
+    this.syncSynthSequenceVariationRuntimePolling();
   }
 
   suspend(): Promise<unknown> {
-    return this.enqueue(() => this.plugin.stopNativeProductRuntime());
+    this.running = false;
+    this.lifecycleGeneration += 1;
+    return this.enqueue(() => this.plugin.stopNativeProductRuntime()).finally(async () => {
+      this.stopSynthSequenceVariationRuntimePolling();
+      this.publishSynthSequenceVariationRuntime([null, null, null, null]);
+      this.nativeCaptureClockBeat = null;
+      this.nativeCaptureClockBpm = null;
+      this.nativeCaptureClockPerformanceMs = null;
+      await this.disposeCaptureListener();
+    });
   }
 
   expectSnapshot(): void {
     this.snapshotExpected = true;
   }
 
-  loadSnapshot(snapshot: ArrayBuffer): Promise<unknown> {
+  loadSnapshot(
+    snapshot: ArrayBuffer,
+    metadata?: ProductRuntimeSnapshotMetadata,
+  ): Promise<ProductSnapshotAppliedReceipt> {
     const snapshotBase64 = bytesToBase64(new Uint8Array(snapshot));
     return this.enqueue(async () => {
-      const result = await this.plugin.loadNativeProductSnapshot({ snapshotBase64 });
+      await this.plugin.loadNativeProductSnapshot({
+        snapshotBase64,
+      });
       this.snapshotExpected = false;
       const staged = this.stagedEvents.splice(0);
       if (staged.length > 0) {
@@ -292,7 +376,11 @@ export class MacNativeProductRuntime {
           eventsBase64: bytesToBase64(encodeMacNativeProductEvents(staged)),
         });
       }
-      return result;
+      return {
+        revision: metadata?.revision ?? 0,
+        applied: true,
+        encodedSnapshotHash: metadata?.encodedSnapshotHash ?? '',
+      };
     });
   }
 
@@ -306,6 +394,198 @@ export class MacNativeProductRuntime {
     void this.enqueue(() => this.plugin.enqueueNativeProductEvents({ eventsBase64 })).catch((error) => {
       console.error('Native Product Core event delivery failed:', error);
     });
+  }
+
+  async commitSynthSequenceVariationBank(
+    laneIndex: number,
+    bank: SynthSequenceVariationBank | null,
+  ): Promise<boolean> {
+    if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= SYNTH_SEQUENCE_VARIATION_LANE_COUNT) {
+      throw new RangeError(`Invalid synth variation lane: ${laneIndex}`);
+    }
+    if (!this.running) {
+      throw new Error('Native synth variation bank transaction requires a running audio runtime');
+    }
+    const lifecycleGeneration = this.lifecycleGeneration;
+    await this.prepare();
+    if (lifecycleGeneration !== this.lifecycleGeneration || !this.running) {
+      throw new Error('Native synth variation bank transaction cancelled by the audio lifecycle');
+    }
+    const payload = encodeSynthSequenceVariationBank(bank);
+    const staged = await this.enqueue(() => this.plugin.setNativeSynthSequenceVariationBank({
+      laneIndex,
+      bankBase64: bytesToBase64(new Uint8Array(payload)),
+    }));
+    if (staged.result !== 1) {
+      throw new Error(`Native synth variation bank transaction failed: ${staged.result}`);
+    }
+    const expectedNativeRevision = Number(staged.nativeRevision);
+    if (!Number.isSafeInteger(expectedNativeRevision) || expectedNativeRevision <= 0) {
+      throw new Error(`Native synth variation bank transaction returned invalid revision: ${String(staged.nativeRevision)}`);
+    }
+    let lastRuntimeReadError: unknown = null;
+    const deadline = Date.now() + SYNTH_SEQUENCE_VARIATION_COMMIT_TIMEOUT_MS;
+    for (;;) {
+      if (lifecycleGeneration !== this.lifecycleGeneration || !this.running) {
+        throw new Error('Native synth variation bank transaction cancelled by the audio lifecycle');
+      }
+      try {
+        const runtime = decodeMacNativeSynthSequenceVariationRuntime(
+          (await this.enqueue(() => this.plugin.getNativeSynthSequenceVariationRuntime({ laneIndex }))).runtimeBase64,
+        );
+        if (runtime.revision === expectedNativeRevision) return true;
+        if (runtime.revision > expectedNativeRevision) {
+          throw new Error(
+            `Native synth variation bank transaction superseded by revision ${runtime.revision}`,
+          );
+        }
+        lastRuntimeReadError = null;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('superseded by revision')) throw error;
+        // Native runtime publication may report an unavailable read while the
+        // render thread swaps its compact telemetry buffer. Retry that bounded
+        // read just like a bank that has not reached its next boundary yet.
+        lastRuntimeReadError = error;
+      }
+      if (Date.now() >= deadline) break;
+      await waitNativeControlBoundary(SYNTH_SEQUENCE_VARIATION_COMMIT_POLL_MS);
+    }
+    const readError = lastRuntimeReadError
+      ? `: ${lastRuntimeReadError instanceof Error ? lastRuntimeReadError.message : String(lastRuntimeReadError)}`
+      : '';
+    throw new Error(
+      `Native synth variation bank transaction did not reach revision ${expectedNativeRevision} before timeout${readError}`,
+    );
+  }
+
+  getActiveSynthSequenceVariationIndices(): readonly (number | null)[] {
+    return this.activeSynthSequenceVariationIndices;
+  }
+
+  private publishSynthSequenceVariationRuntime(next: readonly (number | null)[]): void {
+    if (next.every((value, index) => value === this.activeSynthSequenceVariationIndices[index])) return;
+    this.activeSynthSequenceVariationIndices = next;
+    for (const listener of this.synthSequenceVariationRuntimeListeners) listener(next);
+  }
+
+  subscribeSynthSequenceVariationRuntime(
+    listener: (indices: readonly (number | null)[]) => void,
+  ): () => void {
+    this.synthSequenceVariationRuntimeListeners.add(listener);
+    listener(this.activeSynthSequenceVariationIndices);
+    this.syncSynthSequenceVariationRuntimePolling();
+    return () => {
+      this.synthSequenceVariationRuntimeListeners.delete(listener);
+      this.syncSynthSequenceVariationRuntimePolling();
+    };
+  }
+
+  private syncSynthSequenceVariationRuntimePolling(): void {
+    if (!this.running || this.synthSequenceVariationRuntimeListeners.size === 0 || this.synthSequenceVariationRuntimeTimer !== null) return;
+    // Runtime telemetry is a compact 32-byte read per lane; poll at the same
+    // coarse cadence as native Product telemetry instead of serializing state.
+    this.synthSequenceVariationRuntimeTimer = setInterval(() => {
+      void this.pollSynthSequenceVariationRuntime();
+    }, 250);
+    void this.pollSynthSequenceVariationRuntime();
+  }
+
+  private stopSynthSequenceVariationRuntimePolling(): void {
+    if (this.synthSequenceVariationRuntimeTimer === null) return;
+    clearInterval(this.synthSequenceVariationRuntimeTimer);
+    this.synthSequenceVariationRuntimeTimer = null;
+  }
+
+  private async pollSynthSequenceVariationRuntime(): Promise<void> {
+    if (!this.running || this.synthSequenceVariationRuntimeListeners.size === 0 || this.synthSequenceVariationRuntimePollInFlight) return;
+    this.synthSequenceVariationRuntimePollInFlight = true;
+    try {
+      const runtimes = await Promise.all(Array.from(
+        { length: SYNTH_SEQUENCE_VARIATION_LANE_COUNT },
+        async (_, laneIndex) => decodeMacNativeSynthSequenceVariationRuntime(
+          (await this.enqueue(() => this.plugin.getNativeSynthSequenceVariationRuntime({ laneIndex }))).runtimeBase64,
+        ),
+      ));
+      const next = runtimes.map((runtime) => (
+        runtime.schemaVersion === 1 && runtime.activeVariation < SYNTH_SEQUENCE_VARIATION_LANE_COUNT
+          ? runtime.activeVariation
+          : null
+      ));
+      if (!this.running) return;
+      this.publishSynthSequenceVariationRuntime(next);
+    } catch (error) {
+      console.warn('Native synth variation runtime telemetry failed:', error);
+    } finally {
+      this.synthSequenceVariationRuntimePollInFlight = false;
+    }
+  }
+
+  subscribeRecordedNoteCapture(listener: (batch: RecordedNoteCaptureBatch) => void): () => void {
+    void this.ensureCaptureListener().catch(() => undefined);
+    this.captureListeners.add(listener);
+    return () => this.captureListeners.delete(listener);
+  }
+
+  setRecordedNoteCapture(request: RecordedNoteCaptureStartRequest): void {
+    // The native bridge owns the same generated capture control event and
+    // clocked ring.  It is intentionally explicit so a missing bridge cannot
+    // report a browser-only success on macOS.
+    void this.ensureCaptureListener().then(() => this.enqueue(
+      () => this.plugin.setNativeProductCapture({ requestJson: JSON.stringify(request) }),
+    )).catch((error) => {
+      const batch: RecordedNoteCaptureBatch = {
+        sessionToken: request.sessionToken,
+        originBeat: request.originBeat ?? 0,
+        clockBeat: request.originBeat ?? 0,
+        events: [],
+        phase: 'error',
+        finalEventId: null,
+        overflowCount: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      for (const listener of this.captureListeners) listener(batch);
+    });
+  }
+
+  getRecordedNoteCaptureClockBeat(): number | null {
+    if (this.nativeCaptureClockBeat === null) return null;
+    const now = typeof performance !== 'undefined' ? performance.now() : null;
+    const elapsedSeconds = now !== null && this.nativeCaptureClockPerformanceMs !== null
+      ? Math.max(0, (now - this.nativeCaptureClockPerformanceMs) / 1000)
+      : 0;
+    const bpm = this.nativeCaptureClockBpm;
+    return bpm !== null && Number.isFinite(bpm)
+      ? this.nativeCaptureClockBeat + elapsedSeconds * bpm / 60
+      : this.nativeCaptureClockBeat;
+  }
+
+  private ensureCaptureListener(): Promise<void> {
+    if (this.nativeCaptureListenerInstall) return this.nativeCaptureListenerInstall;
+    this.nativeCaptureListenerInstall = this.plugin.addListener(
+      'recordedCaptureBatch',
+      (batch) => {
+        if (Number.isFinite(batch.clockBeat)) {
+          this.nativeCaptureClockBeat = batch.clockBeat;
+          this.nativeCaptureClockBpm = Number.isFinite(batch.clockBpm ?? NaN) ? batch.clockBpm ?? null : null;
+          this.nativeCaptureClockPerformanceMs = typeof performance !== 'undefined' ? performance.now() : null;
+        }
+        for (const listener of this.captureListeners) listener(batch);
+      },
+    ).then((handle) => {
+      this.nativeCaptureListenerHandle = handle;
+    }).catch((error) => {
+      this.nativeCaptureListenerInstall = null;
+      console.error('Native Product Core capture listener failed:', error);
+      throw error;
+    });
+    return this.nativeCaptureListenerInstall;
+  }
+
+  private async disposeCaptureListener(): Promise<void> {
+    const handle = this.nativeCaptureListenerHandle;
+    this.nativeCaptureListenerHandle = null;
+    this.nativeCaptureListenerInstall = null;
+    if (handle) await handle.remove();
   }
 
   registerAsset(asset: DecodedCoreProductAsset): Promise<unknown> {

@@ -16,6 +16,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)resetRenderer;
 - (BOOL)loadSnapshotData:(NSData*)data;
 - (BOOL)enqueueEventsData:(NSData*)data;
+- (NSData* _Nullable)copyCaptureClockData;
+- (NSDictionary<NSString*, NSNumber*>*)setSynthSequenceVariationBankData:(NSData*)data
+                                                                  laneIndex:(uint32_t)laneIndex;
+- (BOOL)selectSynthSequenceVariation:(uint32_t)variationIndex
+                            laneIndex:(uint32_t)laneIndex;
+- (NSData* _Nullable)copySynthSequenceVariationRuntimeDataForLane:(uint32_t)laneIndex;
+- (BOOL)setRecordedCaptureEnabled:(BOOL)enabled
+                 sourceLaneIndex:(uint32_t)sourceLaneIndex
+                 targetLaneIndex:(uint32_t)targetLaneIndex
+                       sourceMode:(uint32_t)sourceMode
+                    durationBeats:(double)durationBeats;
+- (NSData* _Nullable)copyRecordedCaptureEventsDataWithOverflowCount:(uint32_t*)overflowCount;
+- (BOOL)isRecordedCaptureActive;
+- (BOOL)copyRecordedCaptureOriginSample:(uint64_t*)sample beat:(double*)beat;
 - (BOOL)registerAudioFileAssetWithId:(uint32_t)assetId
                                   URL:(NSURL*)url
                                 flags:(uint32_t)flags

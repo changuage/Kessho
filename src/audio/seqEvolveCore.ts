@@ -297,6 +297,10 @@ export function clampSequencerRatchet(
   return Math.max(SEQUENCER_RATCHET_MIN, Math.min(max, Math.round(finite)));
 }
 
+export function cycleSequencerRatchet(value: number | null | undefined): number {
+  return clampSequencerRatchet(value, 1, SEQUENCER_RATCHET_CONTROL_MAX) % SEQUENCER_RATCHET_CONTROL_MAX + 1;
+}
+
 export function ratchetSubLaneStepIndex(triggerStep: number, subLaneSteps: number): number {
   const steps = Math.max(1, Math.min(64, Math.floor(subLaneSteps)));
   const step = Math.floor(triggerStep);

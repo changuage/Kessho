@@ -1,17 +1,25 @@
 #include "../KesshoProductEngineInternal.h"
 
 void KesshoProductEngine::configureDynamicsDriftModule() {
+  configureDynamicsDriftModule(kFxConfigurationMasterDynamics | kFxConfigurationWetDynamics);
+}
+
+void KesshoProductEngine::configureDynamicsDriftModule(uint32_t group_mask) {
+  group_mask &= kFxConfigurationMasterDynamics | kFxConfigurationWetDynamics;
+  if (group_mask == 0u) return;
+  if (fx_configuration_batch_depth > 0u) {
+    fx_configuration_pending_mask |= group_mask;
+    return;
+  }
   const auto configure_module = [this](
       kessho::core::IKesshoModule* module,
       bool include_drift_degrade,
-      bool include_master_chain) {
-    if (module == nullptr) {
-      return;
-    }
+      bool include_master_chain,
+      uint32_t debug_index) {
+    (void)debug_index;
+    if (module == nullptr) return;
     float* params = module->params();
-    if (params == nullptr || static_cast<uint32_t>(module->paramCount()) < kDynamicsDriftParamCount) {
-      return;
-    }
+    if (params == nullptr || static_cast<uint32_t>(module->paramCount()) < kDynamicsDriftParamCount) return;
     std::fill(params, params + module->paramCount(), 0.0f);
       const auto unit = [](float value) { return clampFloat(value, 0.0f, 1.0f); };
       const auto water_bias_floor = [](float value, float min_hz, float pedal_max_hz, float creative_max_hz) {
@@ -58,7 +66,6 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       const float erosion_color_influence = std::sqrt(erosion_mix);
       const float erosion_motion_influence = erosion_mix * (0.65f + 0.35f * erosion_mix);
       const float erosion_failure_influence = smoothstep01((erosion_mix - 0.25f) / 0.75f);
-      const float erosion_influence = erosion_color_influence;
       const float base_dry = 1.0f - base_wet;
       const float raw_drift_age = drift_enabled ? unit(fx.dynamics_drift_age) : 0.0f;
       const float raw_erosion_age = erosion_enabled ? unit(fx.dynamics_erosion_age) : 0.0f;
@@ -68,9 +75,9 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       const float base_erosion_flutter = erosion_enabled ? unit(fx.dynamics_erosion_flutter) : 0.0f;
       const float base_erosion_drift = erosion_enabled ? unit(fx.dynamics_erosion_drift) : 0.0f;
       const float erosion_wobble_speed = erosion_enabled ? unit(fx.dynamics_erosion_wobble_speed) : 0.35f;
-      const float erosion_age = raw_erosion_age * erosion_influence;
-      const float erosion_generation = raw_erosion_generation * erosion_influence;
-      const float erosion_alias = raw_erosion_alias * erosion_influence;
+      const float erosion_age = raw_erosion_age * erosion_color_influence;
+      const float erosion_generation = raw_erosion_generation * erosion_color_influence;
+      const float erosion_alias = raw_erosion_alias * erosion_color_influence;
       const float raw_media_wear = unit(raw_erosion_age + raw_erosion_generation * 0.42f);
       const float media_wear = unit(erosion_age + erosion_generation * 0.42f);
       const float raw_corrosion = erosion_enabled ? unit(fx.dynamics_erosion_corrosion) : 0.0f;
@@ -120,27 +127,19 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       const float env_follow = drift_enabled ? unit(fx.dynamics_drift_env_follow) : 0.0f;
       float mod_sources[kDynamicsModSourceCount]{};
       if (erosion_enabled) {
-        mod_sources[kDynamicsModSourceSlow] = erosion_motion_influence * clampFloat(
+        mod_sources[kDynamicsModSourceSlow] = erosion_motion_influence * unit(
             base_erosion_wow * 0.22f +
                 base_erosion_drift * 0.34f +
                 raw_erosion_age * 0.2f +
                 raw_erosion_generation * 0.18f +
-                contribution_smooth_drift * 0.18f,
-            0.0f,
-            1.0f);
-        mod_sources[kDynamicsModSourceFlutter] = erosion_motion_influence * clampFloat(
-            base_erosion_flutter * 0.55f + contribution_flutter_jitter * 0.24f + raw_erosion_generation * 0.08f,
-            0.0f,
-            1.0f);
-        mod_sources[kDynamicsModSourceRandom] = erosion_motion_influence * clampFloat(
-            base_erosion_drift * 0.3f + contribution_random_hold * 0.44f + raw_media_wear * 0.22f,
-            0.0f,
-            1.0f);
+                contribution_smooth_drift * 0.18f);
+        mod_sources[kDynamicsModSourceFlutter] = erosion_motion_influence * unit(
+            base_erosion_flutter * 0.55f + contribution_flutter_jitter * 0.24f + raw_erosion_generation * 0.08f);
+        mod_sources[kDynamicsModSourceRandom] = erosion_motion_influence * unit(
+            base_erosion_drift * 0.3f + contribution_random_hold * 0.44f + raw_media_wear * 0.22f);
         mod_sources[kDynamicsModSourceEnv] = erosion_motion_influence * env_follow;
-        mod_sources[kDynamicsModSourceNoise] = erosion_failure_influence * clampFloat(
-            unit(fx.dynamics_erosion_noise) * 0.64f + raw_corrosion * 0.18f + raw_erosion_alias * 0.12f,
-            0.0f,
-            1.0f);
+        mod_sources[kDynamicsModSourceNoise] = erosion_failure_influence * unit(
+            unit(fx.dynamics_erosion_noise) * 0.64f + raw_corrosion * 0.18f + raw_erosion_alias * 0.12f);
       }
       const float mod_wow = dynamicsModRoute(mod_sources, kDynamicsModTargetWow);
       const float mod_flutter = dynamicsModRoute(mod_sources, kDynamicsModTargetFlutter);
@@ -241,7 +240,7 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
           ? unit(raw_erosion_age + raw_erosion_generation + raw_erosion_alias + raw_corrosion + unit(fx.dynamics_erosion_noise) + unit(fx.dynamics_erosion_saturation))
           : 0.0f;
       const float noise = erosion_enabled
-          ? unit(unit(fx.dynamics_erosion_noise) * erosion_influence * 0.55f + erosion_mix * (media_wear * 0.025f + digital_damage * 0.012f))
+          ? unit(unit(fx.dynamics_erosion_noise) * erosion_color_influence * 0.55f + erosion_mix * (media_wear * 0.025f + digital_damage * 0.012f))
           : 0.0f;
       const float drift_drive = drift_enabled
           ? drift_mix * (shallow_flavor * 0.07f + abyss_flavor * (0.06f + env_follow * 0.04f) + drift_age * 0.06f)
@@ -250,9 +249,9 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
           ? unit(erosion_generation * 0.015f + shaped_alias * 0.012f + corrosion * 0.018f)
           : 0.0f;
       const float saturation = unit(
-          (erosion_enabled ? unit(fx.dynamics_erosion_saturation) * erosion_influence * 0.55f + erosion_nonlinear_color : 0.0f) +
+          (erosion_enabled ? unit(fx.dynamics_erosion_saturation) * erosion_color_influence * 0.55f + erosion_nonlinear_color : 0.0f) +
           drift_drive);
-      const float tone = 0.5f + ((erosion_enabled ? unit(fx.dynamics_erosion_tone) : 0.5f) - 0.5f) * erosion_influence;
+      const float tone = 0.5f + ((erosion_enabled ? unit(fx.dynamics_erosion_tone) : 0.5f) - 0.5f) * erosion_color_influence;
       const float dropout = damage_activity > 0.0001f
           ? unit(
                 erosion_failure_influence *
@@ -363,8 +362,7 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
           : 0.018f + erosion_wobble_speed * 0.36f + drift * 0.12f + contribution_material_wear * 0.05f + mod_wow * 0.04f;
       const float wow_frequency =
           drift_wow_frequency + (erosion_wow_frequency - drift_wow_frequency) * erosion_motion_weight;
-      const bool master_sat_active = saturation_enabled;
-      const float master_sat_drive = master_sat_active ? unit(fx.dynamics_drive) : 0.0f;
+      const float master_sat_drive = saturation_enabled ? unit(fx.dynamics_drive) : 0.0f;
       const float master_sat_quality = static_cast<float>(clampU32(fx.dynamics_master_saturation_quality, 0u, 2u));
       const float end_wet = end_comp_enabled ? unit(fx.dynamics_end_comp_mix) : 0.0f;
       const float end_comp_mode = static_cast<float>(clampU32(fx.dynamics_end_comp_mode, 0u, 4u));
@@ -495,7 +493,7 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       params[kDynCompressorMakeup] = 1.0f + drift_mix * (shallow_flavor * 0.05f + abyss_flavor * 0.16f);
       params[kDynSaturation] = saturation;
       params[kDynCorrosion] = corrosion;
-      params[kDynMasterSatActive] = master_sat_active ? 1.0f : 0.0f;
+      params[kDynMasterSatActive] = saturation_enabled ? 1.0f : 0.0f;
       params[kDynMasterSatMode] = static_cast<float>(clampU32(fx.dynamics_master_saturation_mode, 0u, 4u));
       params[kDynMasterSatDrive] = master_sat_drive;
       params[kDynMasterSatTone] = unit(fx.dynamics_master_saturation_tone);
@@ -530,7 +528,12 @@ void KesshoProductEngine::configureDynamicsDriftModule() {
       params[kDynEndCompBandSplitHz] = end_comp_band_split_hz;
       params[kDynMasterSatQuality] = master_sat_quality;
       module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++fx_configuration_debug_counts[debug_index];
+#endif
   };
-  configure_module(dynamics_drift_module.get(), false, true);
-  configure_module(dynamics_degrade_send_module.get(), true, false);
+  if ((group_mask & kFxConfigurationMasterDynamics) != 0u)
+    configure_module(dynamics_drift_module.get(), false, true, 5u);
+  if ((group_mask & kFxConfigurationWetDynamics) != 0u)
+    configure_module(dynamics_degrade_send_module.get(), true, false, 6u);
 }

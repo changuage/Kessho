@@ -1,4 +1,5 @@
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
+import type { RecordedNoteCaptureBatch } from '../ui/sequencer/recordedNoteCaptureTypes';
 
 export type NativeDualRange = {
   min: number;
@@ -102,6 +103,12 @@ export type KesshoNativeProductRendererStopStatus = {
   nativeProductRendererStopCount: number;
 };
 
+export type KesshoNativeProductSynthSequenceVariationCommitStatus = {
+  result: number;
+  nativeRevision: number;
+};
+
+
 type KesshoAudioSessionPlugin = {
   getStatus: () => Promise<KesshoAudioSessionStatus>;
   syncState: (options: { stateJson: string; dualRangesJson?: string }) => Promise<void>;
@@ -111,7 +118,9 @@ type KesshoAudioSessionPlugin = {
   stopNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererStopStatus>;
   probeNativeRendererForDiagnostics?: () => Promise<KesshoNativeProductRendererProbeStatus>;
   prepareNativeProductRuntime?: () => Promise<KesshoAudioSessionStatus>;
-  loadNativeProductSnapshot?: (options: { snapshotBase64: string }) => Promise<KesshoAudioSessionStatus>;
+  loadNativeProductSnapshot?: (options: {
+    snapshotBase64: string;
+  }) => Promise<KesshoAudioSessionStatus>;
   enqueueNativeProductEvents?: (options: { eventsBase64: string }) => Promise<KesshoAudioSessionStatus>;
   registerNativeProductFileAsset?: (options: { assetId: number; assetPath: string; flags: number }) => Promise<KesshoAudioSessionStatus>;
   registerNativeProductDecodedAsset?: (options: { assetId: number; sampleRate: number; flags: number; channelsBase64: string[] }) => Promise<KesshoAudioSessionStatus>;
@@ -126,6 +135,9 @@ type KesshoAudioSessionPlugin = {
     interactionEventOverflowCount: number;
   }>;
   setNativeProductInteractionDemand?: (options: { demandMask: number; sourceMask: number }) => Promise<KesshoAudioSessionStatus>;
+  setNativeSynthSequenceVariationBank?: (options: { laneIndex: number; bankBase64: string }) => Promise<KesshoNativeProductSynthSequenceVariationCommitStatus>;
+  getNativeSynthSequenceVariationRuntime?: (options: { laneIndex: number }) => Promise<{ runtimeBase64: string }>;
+  setNativeProductCapture?: (options: { requestJson: string }) => Promise<KesshoAudioSessionStatus>;
   getIOSAudioSessionTelemetry?: () => Promise<KesshoIOSAudioSessionTelemetry>;
   setNowPlaying: (options: KesshoNowPlayingPayload) => Promise<void>;
   setPlaybackState: (options: { isPlaying: boolean }) => Promise<void>;
@@ -137,6 +149,10 @@ type KesshoAudioSessionPlugin = {
     (
       eventName: 'audioSessionEvent',
       listener: (event: KesshoAudioSessionEventPayload) => void,
+    ): Promise<CapacitorListenerHandle>;
+    (
+      eventName: 'recordedCaptureBatch',
+      listener: (event: RecordedNoteCaptureBatch) => void,
     ): Promise<CapacitorListenerHandle>;
   };
 };
@@ -154,6 +170,10 @@ export type KesshoNativeProductRuntimePlugin = Required<Pick<
   | 'stopNativeProductRuntime'
   | 'getNativeProductTelemetry'
   | 'setNativeProductInteractionDemand'
+  | 'setNativeSynthSequenceVariationBank'
+  | 'getNativeSynthSequenceVariationRuntime'
+  | 'setNativeProductCapture'
+  | 'addListener'
 >>;
 
 type CapacitorRuntime = {
@@ -329,7 +349,10 @@ export function getMacNativeProductRuntimePlugin(): KesshoNativeProductRuntimePl
       !plugin.registerNativeProductDecodedAsset || !plugin.unregisterNativeProductAsset ||
       !plugin.resetNativeProductRuntime || !plugin.startNativeProductRuntime ||
       !plugin.stopNativeProductRuntime || !plugin.getNativeProductTelemetry ||
-      !plugin.setNativeProductInteractionDemand) return null;
+      !plugin.setNativeProductInteractionDemand ||
+      !plugin.setNativeSynthSequenceVariationBank ||
+      !plugin.getNativeSynthSequenceVariationRuntime ||
+      !plugin.setNativeProductCapture || !plugin.addListener) return null;
   return plugin as KesshoNativeProductRuntimePlugin;
 }
 

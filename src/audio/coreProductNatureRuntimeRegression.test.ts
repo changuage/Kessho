@@ -19,12 +19,19 @@ import {
 } from './coreProductEvents';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { KESSHO_PRODUCT_DRUM_PARAM_SPECS, KESSHO_PRODUCT_PAD_PARAM_SPECS } from './generated/kesshoProductSchema';
-import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
+import {
+  KESSHO_PRODUCT_DRUM_PARAM_SPECS,
+  KESSHO_PRODUCT_PAD_PARAM_SPECS,
+  KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT,
+} from './generated/kesshoProductSchema';
+import { CORE_PRODUCT_SOUNDSCAPE_ASSETS, type DecodedCoreProductAsset } from './coreProductAssets';
 import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE } from './coreProductSoundscapesSnapshot';
 import { createCoreProductEarthTextureDebugState } from './product/host/CoreProductEarthTextureDebug';
 import type { SliderState } from '../ui/state';
 import { DEFAULT_STATE } from '../ui/state';
+import type { CoreProductRuntime } from './coreProductRuntime';
+import { CoreProductAssetRegistrar } from './product/host/CoreProductAssetRegistrar';
+import { collectMorphEndpointStates } from '../ui/morphEndpointAssets';
 import { createCoreProductSnapshot } from './coreProductSnapshot';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 
@@ -103,6 +110,10 @@ function natureSlotParamTarget(slotIndex: number, paramIndex: number): number {
     SOUNDSCAPE_TEXTURE_PARAM_START + slotIndex * SOUNDSCAPE_TEXTURE_PARAM_STRIDE + paramIndex;
 }
 
+function natureMasterParamTarget(): number {
+  return CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE + KESSHO_PRODUCT_SOUNDSCAPE_MODULE_PARAM_COUNT + 7;
+}
+
 function drumRuntimeParamId(key: string): number {
   const spec = KESSHO_PRODUCT_DRUM_PARAM_SPECS.find((candidate) => candidate.key === key);
   assert(spec, `Missing generated drum param spec for ${key}`);
@@ -177,6 +188,110 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
       (event.targetId === CORE_PRODUCT_SOURCE_IDS.pad1 || event.targetId === CORE_PRODUCT_SOURCE_IDS.pad2) &&
       event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel
     )), 'Nature level edits must not touch synth source levels');
+  }
+}
+
+{
+  // Morph endpoint loading must make the endpoint asset closure ready before
+  // publishing a state which can select that endpoint. This uses the real
+  // host registrar with a decoder/runtime fake, rather than checking only the
+  // routing table.
+  const disabledState: SliderState = {
+    ...DEFAULT_STATE,
+    natureMasterEnabled: false,
+    nature1Enabled: false,
+    nature1SampleId: 'birds-alps',
+    nature1Level: 0.65,
+  };
+  const enabledState: SliderState = {
+    ...disabledState,
+    natureMasterEnabled: true,
+    nature1Enabled: true,
+  };
+  const endpointStates = collectMorphEndpointStates(
+    { name: 'Nature A', timestamp: '', state: disabledState },
+    { name: 'Nature B', timestamp: '', state: enabledState },
+  );
+  const decodedAssetIds: number[] = [];
+  const registeredAssetIds: number[] = [];
+  const runtime = {
+    audioContext: {} as BaseAudioContext,
+    registerAsset: async (asset: DecodedCoreProductAsset) => {
+      registeredAssetIds.push(asset.assetId);
+    },
+    requestAssetRelease: () => {},
+    setAssetReleaseCallback: () => {},
+    setAssetReleaseFailureCallback: () => {},
+  } as unknown as CoreProductRuntime;
+  const decodeAsset = async (
+    _context: BaseAudioContext,
+    assetId: number,
+    url: string,
+    flags: number,
+  ): Promise<DecodedCoreProductAsset> => {
+    decodedAssetIds.push(assetId);
+    return {
+      assetId,
+      sampleRate: 48_000,
+      channels: [new Float32Array([0.1, 0.1])],
+      flags,
+      sourceUrl: url,
+    };
+  };
+  const registrar = new CoreProductAssetRegistrar(
+    runtime,
+    () => disabledState as unknown as Record<string, unknown>,
+    false,
+    decodeAsset,
+  );
+
+  await registrar.ensureSceneAssets(endpointStates);
+  assert.deepEqual(decodedAssetIds, [CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId], 'Nature B assets must decode during endpoint preparation');
+  assert.deepEqual(registeredAssetIds, [CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId], 'Nature B assets must register before endpoint state publication');
+
+  // Rechecking the same scene while morph ticks continue must reuse the
+  // registered asset and avoid repeated decode/registration work.
+  await registrar.ensureSceneAssets(endpointStates);
+  assert.deepEqual(decodedAssetIds, [CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId], 'later morph ticks must not decode Nature assets again');
+  assert.deepEqual(registeredAssetIds, [CORE_PRODUCT_SOUNDSCAPE_ASSETS.birds.assetId], 'later morph ticks must not register Nature assets again');
+
+  const runningSnapshot = (state: SliderState) => {
+    const snapshot = createCoreProductSnapshot({ ...state });
+    snapshot.transport.running = true;
+    return snapshot;
+  };
+  const midState = { ...enabledState, nature1Level: enabledState.nature1Level * 0.5 };
+  const runningSnapshots = [
+    runningSnapshot(disabledState),
+    runningSnapshot(midState),
+    runningSnapshot(enabledState),
+    runningSnapshot({ ...enabledState, nature1Level: 0.3 }),
+  ];
+  for (let index = 1; index < runningSnapshots.length; index += 1) {
+    const previous = runningSnapshots[index - 1]!;
+    const next = runningSnapshots[index]!;
+    const diff = buildCoreProductSnapshotDiff(previous, next);
+    assert.equal(diff.applied, true, 'running Nature morph updates must stay on the live Product event path');
+    if (!diff.applied) continue;
+    if (index === 1) {
+      assert(diff.events.some((event) => (
+        event.targetId === natureMasterParamTarget() &&
+        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel &&
+        event.value === 1
+      )), 'the first running Nature morph tick must enable the canonical Nature master gate');
+      assert(diff.events.some((event) => (
+        event.targetId === natureSlotParamTarget(0, 6) &&
+        event.paramId === KESSHO_PRODUCT_PARAM_IDS.SourceLevel &&
+        event.value === 1
+      )), 'the first running Nature morph tick must enable the canonical Nature slot gate');
+    }
+    assert(
+      !diff.events.some((event) => (
+        event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetTransport ||
+        event.eventKind === KESSHO_PRODUCT_EVENT_IDS.ResetTransport
+      )),
+      'running Nature morph updates must not stop/restart transport',
+    );
   }
 }
 

@@ -89,6 +89,13 @@ export interface DelayRhythmMapProps {
 
 const ECHO_COLOR = 'rgba(185, 201, 255, 1)';
 const CLOCKED_COLOR = 'rgba(159, 229, 240, 1)';
+export const DELAY_RHYTHM_MAP_TARGET_FPS = 30;
+export const DELAY_RHYTHM_MAP_FRAME_MS = 1000 / DELAY_RHYTHM_MAP_TARGET_FPS;
+const DELAY_RHYTHM_MAP_TIMER_ALIGNMENT_MS = 4;
+
+export function shouldDrawDelayRhythmMapFrame(lastDrawTime: number, frameTime: number): boolean {
+  return !Number.isFinite(lastDrawTime) || frameTime - lastDrawTime >= DELAY_RHYTHM_MAP_FRAME_MS;
+}
 
 const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -299,27 +306,60 @@ const DelayRhythmMap: React.FC<DelayRhythmMapProps> = (props) => {
   }, [props]);
 
   useEffect(() => {
-    let frame = 0;
     let running = true;
+    let timerId: number | null = null;
+    let scheduled = false;
+    let lastDrawTime = Number.NEGATIVE_INFINITY;
+
     const cancelLoop = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
       if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
+        window.cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
+      scheduled = false;
     };
-    const loop = () => {
+
+    // Match TransportVisualizerPage's timer-then-rAF shape. That scheduler
+    // subtracts 8 ms before rAF; target + this 4 ms alignment therefore
+    // fires the timer 4 ms early, putting rAF near 30 FPS at 60–144 Hz.
+    const scheduleFrame = (delayMs = 0) => {
+      if (!running || scheduled) return;
+      scheduled = true;
+      const request = () => {
+        timerId = null;
+        if (!running) {
+          scheduled = false;
+          return;
+        }
+        rafRef.current = window.requestAnimationFrame(loop);
+      };
+      if (delayMs > 18) timerId = window.setTimeout(request, Math.max(0, delayMs - 8));
+      else request();
+    };
+
+    const loop = (frameTime: number) => {
+      scheduled = false;
+      rafRef.current = 0;
       if (!running) return;
-      frame++;
-      if (frame % 2 === 0) draw(); // 30fps cap
+      if (!shouldDrawDelayRhythmMapFrame(lastDrawTime, frameTime)) {
+        if (shouldAnimate) scheduleFrame(0);
+        return;
+      }
+      lastDrawTime = frameTime;
+      draw();
       if (shouldAnimate) {
-        rafRef.current = requestAnimationFrame(loop);
-      } else {
-        rafRef.current = 0;
+        scheduleFrame(DELAY_RHYTHM_MAP_FRAME_MS + DELAY_RHYTHM_MAP_TIMER_ALIGNMENT_MS);
       }
     };
+
     draw();
+    lastDrawTime = performance.now();
     if (shouldAnimate) {
-      rafRef.current = requestAnimationFrame(loop);
+      scheduleFrame(DELAY_RHYTHM_MAP_FRAME_MS + DELAY_RHYTHM_MAP_TIMER_ALIGNMENT_MS);
     }
     return () => {
       running = false;

@@ -85,6 +85,8 @@ const concurrentAsset = { ...asset, assetId: 79 };
 const firstRegistration = concurrentRegistrar.registerAsset(concurrentAsset);
 const secondRegistration = concurrentRegistrar.registerAsset(concurrentAsset);
 assert.deepEqual(concurrentRegistrations, [79], 'concurrent registration should coalesce duplicate asset ids');
+concurrentRegistrar.unregisterAsset(79);
+assert.equal(releaseRequests[releaseRequests.length - 1], 79, 'release must reach the worklet while registration is copying');
 completeRegistration?.();
 await Promise.all([firstRegistration, secondRegistration]);
 assert.equal(concurrentRegistrar.registeredDecodedAssetByteLength(), 256);

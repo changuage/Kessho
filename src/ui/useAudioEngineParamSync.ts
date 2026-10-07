@@ -12,6 +12,10 @@ import {
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
 
+function reportProductResolvedStateCommitFailure(error: unknown): void {
+  console.warn('Product resolved-state commit failed:', error);
+}
+
 export type AudioEngineParamUpdateOptions = {
   immediate?: boolean;
   reason?: ProductSnapshotPatchReason;
@@ -266,14 +270,14 @@ function shouldFlushImmediatelyForResolvedCommit(
 export function useAudioEngineParamSync(): ((
   nextState: SliderState,
   options?: AudioEngineParamUpdateOptions,
-) => void) {
+) => Promise<void>) {
   const pendingAudioEngineStateRef = useRef<SliderState | null>(null);
   const pendingAudioEngineUpdateOptionsRef = useRef<AudioEngineParamUpdateOptions | undefined>(undefined);
   const lastAppliedAudioEngineStateRef = useRef<SliderState | null>(null);
   const audioEngineUpdateTimerRef = useRef<number | null>(null);
   const lastAudioEngineUpdateMsRef = useRef(0);
 
-  const applyAudioEngineStateUpdate = useCallback((nextState: SliderState, options?: AudioEngineParamUpdateOptions) => {
+  const applyAudioEngineStateUpdate = useCallback(async (nextState: SliderState, options?: AudioEngineParamUpdateOptions): Promise<void> => {
     const previousState = lastAppliedAudioEngineStateRef.current;
     const patch = previousState && !options?.forceFullSnapshot
       ? collectChangedStatePatch(previousState, nextState)
@@ -286,7 +290,7 @@ export function useAudioEngineParamSync(): ((
     if (spectralFreezeGesture || requiresResolvedCommit(reason, patch, options)) {
       const triggerCritical = (spectralFreezeGesture || resolvedCommitTriggerCritical(reason, forceFullSnapshot, patch, options)) &&
         canWaitForProductSnapshotAck();
-      void commitProductControlPatchForProduct(productEngine, nextState, patch, {
+      await commitProductControlPatchForProduct(productEngine, nextState, patch, {
         reason,
         triggerCritical,
         forceFullSnapshot,
@@ -296,15 +300,13 @@ export function useAudioEngineParamSync(): ((
               productEvents: createSpectralFreezeGestureEvents(nextState, patch),
             }
           : {}),
-      }).catch((error) => {
-        console.warn('Product resolved-state commit failed:', error);
       });
       return;
     }
     productEngine.updateSnapshotPatch(reason, patch);
   }, []);
 
-  const flushAudioEngineParamUpdate = useCallback(() => {
+  const flushAudioEngineParamUpdate = useCallback(async (): Promise<void> => {
     audioEngineUpdateTimerRef.current = null;
     const nextState = pendingAudioEngineStateRef.current;
     const options = pendingAudioEngineUpdateOptionsRef.current;
@@ -312,13 +314,13 @@ export function useAudioEngineParamSync(): ((
     pendingAudioEngineUpdateOptionsRef.current = undefined;
     if (!nextState) return;
     lastAudioEngineUpdateMsRef.current = performance.now();
-    applyAudioEngineStateUpdate(nextState, options);
+    await applyAudioEngineStateUpdate(nextState, options);
   }, [applyAudioEngineStateUpdate]);
 
   const scheduleAudioEngineParamUpdate = useCallback((
     nextState: SliderState,
     options?: AudioEngineParamUpdateOptions,
-  ) => {
+  ): Promise<void> => {
     if (options?.immediate || shouldFlushImmediatelyForResolvedCommit(lastAppliedAudioEngineStateRef.current, nextState, options)) {
       pendingAudioEngineStateRef.current = null;
       pendingAudioEngineUpdateOptionsRef.current = undefined;
@@ -327,18 +329,20 @@ export function useAudioEngineParamSync(): ((
         audioEngineUpdateTimerRef.current = null;
       }
       lastAudioEngineUpdateMsRef.current = performance.now();
-      applyAudioEngineStateUpdate(nextState, options);
-      return;
+      return applyAudioEngineStateUpdate(nextState, options);
     }
 
     pendingAudioEngineStateRef.current = nextState;
     pendingAudioEngineUpdateOptionsRef.current = options;
-    if (audioEngineUpdateTimerRef.current !== null) return;
+    if (audioEngineUpdateTimerRef.current !== null) return Promise.resolve();
 
     const now = performance.now();
     const elapsedMs = now - lastAudioEngineUpdateMsRef.current;
     const delayMs = Math.max(0, CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS - elapsedMs);
-    audioEngineUpdateTimerRef.current = window.setTimeout(flushAudioEngineParamUpdate, delayMs);
+    audioEngineUpdateTimerRef.current = window.setTimeout(() => {
+      void flushAudioEngineParamUpdate().catch(reportProductResolvedStateCommitFailure);
+    }, delayMs);
+    return Promise.resolve();
   }, [applyAudioEngineStateUpdate, flushAudioEngineParamUpdate]);
 
   useEffect(() => () => {

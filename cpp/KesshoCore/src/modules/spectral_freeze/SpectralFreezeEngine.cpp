@@ -34,6 +34,7 @@ bool SpectralFreezeEngine::prepare(double sample_rate) {
   sample_rate_ = std::isfinite(sample_rate) && sample_rate > 1000.0
       ? sample_rate
       : 48000.0;
+  invalidateCaptureAnalysisCache();
   if (
       !capture_.prepare(sample_rate_, 16.0) ||
       !stft_.prepare() ||
@@ -49,6 +50,8 @@ void SpectralFreezeEngine::reset() noexcept {
   capture_.reset();
   memory_.reset();
   stft_.reset();
+  ++capture_generation_;
+  capture_analysis_cache_ = CaptureAnalysisCache{};
   live_ring_l_.fill(0.0f);
   live_ring_r_.fill(0.0f);
   analysis_frame_mid_.fill(0.0f);
@@ -179,6 +182,7 @@ void SpectralFreezeEngine::requestCapture(uint32_t capture_serial) noexcept {
     return;
   }
   last_capture_serial_ = capture_serial;
+  invalidateCaptureAnalysisCache();
   if (runtime_state_ == SpectralFreezeRuntimeState::Recording) {
     pending_capture_ = true;
     if (hasMinimumCapture()) {
@@ -189,6 +193,7 @@ void SpectralFreezeEngine::requestCapture(uint32_t capture_serial) noexcept {
 
 void SpectralFreezeEngine::requestRelease() noexcept {
   pending_capture_ = false;
+  invalidateCaptureAnalysisCache();
   if (runtime_state_ != SpectralFreezeRuntimeState::Recording) {
     runtime_state_ = SpectralFreezeRuntimeState::Releasing;
   }
@@ -227,7 +232,32 @@ void SpectralFreezeEngine::analyzeLiveFrames(bool include_phase) noexcept {
 }
 
 void SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept {
+  const bool locked_capture = capture_.isLocked();
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  const bool cache_enabled = capture_analysis_cache_enabled_;
+#else
+  constexpr bool cache_enabled = true;
+#endif
+  if (locked_capture && cache_enabled && captureAnalysisCacheMatches(center_position)) {
+    source_magnitude_ = capture_analysis_cache_.magnitude;
+    source_phase_ = capture_analysis_cache_.phase;
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+    ++capture_analysis_cache_hit_count_;
+#endif
+    return;
+  }
+
   analyzeCaptureFramesInto(center_position, source_magnitude_, source_phase_);
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  ++capture_forward_analysis_count_;
+#endif
+  if (locked_capture) {
+    capture_analysis_cache_.magnitude = source_magnitude_;
+    capture_analysis_cache_.phase = source_phase_;
+    capture_analysis_cache_.capture_generation = capture_generation_;
+    capture_analysis_cache_.center_position = center_position;
+    capture_analysis_cache_.valid = true;
+  }
 }
 
 void SpectralFreezeEngine::analyzeCaptureMagnitudes(
@@ -273,6 +303,7 @@ void SpectralFreezeEngine::extractCaptureMidSideFrames(double center_position) n
 
 void SpectralFreezeEngine::beginCaptureAtHop() noexcept {
   pending_capture_ = false;
+  invalidateCaptureAnalysisCache();
   if (!capture_.lock()) {
     runtime_state_ = SpectralFreezeRuntimeState::Recording;
     return;
@@ -286,15 +317,18 @@ void SpectralFreezeEngine::beginCaptureAtHop() noexcept {
             SpectralFreezeStft::kFftSize,
             SpectralFreezeStft::kHopSize)) {
       capture_.release();
+      invalidateCaptureAnalysisCache();
       runtime_state_ = SpectralFreezeRuntimeState::Recording;
       return;
     }
+    ++capture_generation_;
     scan_head_.setDirection(params_.direction);
     smoothed_position_ = clampUnit(params_.position);
     scan_head_.setNormalizedPosition(smoothed_position_);
     previous_scan_position_ = scan_head_.positionSamples();
     analyzeCaptureFrames(previous_scan_position_);
   } else {
+    ++capture_generation_;
     source_magnitude_ = live_magnitude_;
     source_phase_ = live_phase_;
   }
@@ -507,6 +541,7 @@ void SpectralFreezeEngine::finishReleaseIfSilent() noexcept {
     return;
   }
   capture_.release();
+  invalidateCaptureAnalysisCache();
   memory_.reset();
   for (auto& channel : smoothed_log_magnitude_) channel.fill(0.0f);
   for (auto& channel : output_ring_) channel.fill(0.0f);
@@ -562,6 +597,16 @@ float SpectralFreezeEngine::decayGainPerHop() const noexcept {
   const float hops_per_second = static_cast<float>(sample_rate_) /
       static_cast<float>(SpectralFreezeStft::kHopSize);
   return std::pow(10.0f, -db_per_second / (20.0f * hops_per_second));
+}
+
+void SpectralFreezeEngine::invalidateCaptureAnalysisCache() noexcept {
+  capture_analysis_cache_.valid = false;
+}
+
+bool SpectralFreezeEngine::captureAnalysisCacheMatches(double center_position) const noexcept {
+  return capture_analysis_cache_.valid &&
+      capture_analysis_cache_.capture_generation == capture_generation_ &&
+      capture_analysis_cache_.center_position == center_position;
 }
 
 bool SpectralFreezeEngine::hasMinimumCapture() const noexcept {

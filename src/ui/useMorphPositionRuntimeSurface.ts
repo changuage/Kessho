@@ -6,8 +6,16 @@ import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
-import type { ProductAutoCycleRuntimeSurface } from './useProductRuntimeAutoCycleSurface';
-import { createMorphPositionScheduler, type MorphPositionScheduler } from './morphPositionRaf';
+import type {
+  ProductAutoCycleEndpointPair,
+  ProductAutoCycleProjection,
+  ProductAutoCycleRuntimeSurface,
+} from './useProductRuntimeAutoCycleSurface';
+import {
+  createMorphPositionScheduler,
+  type MorphPositionCommitOptions,
+  type MorphPositionScheduler,
+} from './morphPositionRaf';
 
 type MorphCoFViz = {
   isMorphing: boolean;
@@ -27,8 +35,15 @@ type MorphRuntimePreset = {
   dualSliderConfigs?: Partial<Record<string, DualSliderConfig>>;
 };
 
+type ProductAutoModulationEndpointPair = {
+  endpointA: MorphRuntimePreset;
+  endpointB: MorphRuntimePreset;
+};
+
 type MorphRuntimeResult = {
   state: SliderState;
+  endpointStateA: SliderState;
+  endpointStateB: SliderState;
   dualRanges: Partial<Record<keyof SliderState, DualSliderRange>>;
   dualModes: Record<string, SliderMode>;
   dualConfigs: Record<string, DualSliderConfig>;
@@ -39,6 +54,78 @@ type MorphManualOverrides = Record<string, { value: number; morphPosition: numbe
 type MorphCountdown = { phase: string; phrasesLeft: number } | null;
 type MorphMode = 'manual' | 'auto';
 type MorphPhase = 'hold' | 'entry' | 'playA' | 'morphAB' | 'playB' | 'morphBA';
+type MorphEndpointContentRefs = Pick<MorphRuntimePreset, 'state' | 'dualRanges' | 'sliderModes' | 'dualSliderConfigs'>;
+type MorphResolvedInputs = {
+  endpointA: MorphEndpointContentRefs;
+  endpointB: MorphEndpointContentRefs;
+  overrides: MorphManualOverrides;
+  liveStateValues: unknown[];
+  currentCofStep: number;
+  capturedStartRoot: number | null;
+  direction: 'toA' | 'toB';
+};
+type LastResolvedMorph = {
+  position: number;
+  inputs: MorphResolvedInputs;
+  state: SliderState;
+  result: MorphRuntimeResult;
+};
+
+function endpointContentRefs(preset: MorphRuntimePreset): MorphEndpointContentRefs {
+  return {
+    state: preset.state,
+    dualRanges: preset.dualRanges,
+    sliderModes: preset.sliderModes,
+    dualSliderConfigs: preset.dualSliderConfigs,
+  };
+}
+
+function sameEndpointContentRefs(left: MorphEndpointContentRefs, right: MorphEndpointContentRefs): boolean {
+  return left.state === right.state
+    && left.dualRanges === right.dualRanges
+    && left.sliderModes === right.sliderModes
+    && left.dualSliderConfigs === right.dualSliderConfigs;
+}
+
+function sameMorphOverrides(left: MorphManualOverrides, right: MorphManualOverrides): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => {
+    const leftOverride = left[key];
+    const rightOverride = right[key];
+    return rightOverride !== undefined
+      && Object.is(leftOverride?.value, rightOverride.value)
+      && Object.is(leftOverride?.morphPosition, rightOverride.morphPosition);
+  });
+}
+
+function cloneMorphOverrides(overrides: MorphManualOverrides): MorphManualOverrides {
+  return Object.fromEntries(
+    Object.entries(overrides).map(([key, override]) => [key, { ...override }]),
+  );
+}
+
+function sameMorphResolvedInputs(left: MorphResolvedInputs, right: MorphResolvedInputs): boolean {
+  return sameEndpointContentRefs(left.endpointA, right.endpointA)
+    && sameEndpointContentRefs(left.endpointB, right.endpointB)
+    && sameMorphOverrides(left.overrides, right.overrides)
+    && left.liveStateValues.length === right.liveStateValues.length
+    && left.liveStateValues.every((value, index) => Object.is(value, right.liveStateValues[index]))
+    && Object.is(left.currentCofStep, right.currentCofStep)
+    && Object.is(left.capturedStartRoot, right.capturedStartRoot)
+    && left.direction === right.direction;
+}
+
+function captureMorphLiveStateValues(state: SliderState, stateRef: SliderState): unknown[] {
+  return [
+    ...USER_PREFERENCE_KEYS.map((key) => state[key]),
+    stateRef.synthChordGeneratorEnabled,
+    stateRef.synthChordGeneratorSource,
+    stateRef.leadRandomEnabled,
+    stateRef.leadRandomSource,
+  ];
+}
 
 type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> = {
   morphPresetA: TPreset | null;
@@ -84,6 +171,7 @@ type UseMorphPositionRuntimeSurfaceOptions<TPreset extends MorphRuntimePreset> =
 
 type MorphPositionRuntimeSurface = {
   handleMorphPositionChange: (newPosition: number, options?: { flush?: boolean }) => void;
+  invalidateMorphInputs: () => void;
 };
 
 export function preserveRunningSimpleSequencers(next: SliderState, current: SliderState): SliderState {
@@ -151,9 +239,38 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   const phaseDurationRef = useRef<number>(0);
   const productAutoCycleInitialPositionRef = useRef(morphPosition);
   const productAutoModulationSideRef = useRef<-1 | 0 | 1>(-1);
+  const productAutoConfirmedEndpointPairRef = useRef<ProductAutoModulationEndpointPair | null>(null);
+  const productAutoEndpointSnapshotsRef = useRef(new WeakMap<object, ProductAutoModulationEndpointPair>());
+  const productAutoLifecycleGenerationRef = useRef(0);
+  const productAutoEndpointGenerationRef = useRef(0);
+  const applyProductAutoModulationSideRef = useRef<(
+    position: number,
+    endpointPair: ProductAutoModulationEndpointPair | null,
+  ) => void>(() => undefined);
   const lastAppliedManualPositionRef = useRef<number | null>(null);
   const morphInputEmitterRef = useRef<MorphPositionScheduler | null>(null);
-  const morphApplyRef = useRef<(position: number) => void>(() => undefined);
+  const morphApplyRef = useRef<(position: number, options?: MorphPositionCommitOptions) => void>(() => undefined);
+  const lastResolvedMorphRef = useRef<LastResolvedMorph | null>(null);
+  const invalidateMorphInputs = useCallback((): void => {
+    lastAppliedManualPositionRef.current = null;
+    lastResolvedMorphRef.current = null;
+    morphInputEmitterRef.current?.reset();
+  }, []);
+  const previousMorphInputsRef = useRef<{
+    presetA: TPreset | null;
+    presetB: TPreset | null;
+    fallbackState: SliderState | null;
+    fallbackDualRanges: Record<string, { min: number; max: number }> | null;
+    fallbackSliderModes: Record<string, SliderMode> | null;
+    fallbackDualConfigs: Record<string, DualSliderConfig> | null;
+  }>({
+    presetA: morphPresetA,
+    presetB: morphPresetB,
+    fallbackState: morphCapturedStateRef.current,
+    fallbackDualRanges: morphCapturedDualRangesRef.current,
+    fallbackSliderModes: morphCapturedSliderModesRef.current,
+    fallbackDualConfigs: morphCapturedDualConfigsRef.current,
+  });
 
   useEffect(() => {
     currentCofStepRef.current = currentCofStep;
@@ -182,6 +299,29 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     Object.assign(next, morphResult.dualConfigs);
     setDualSliderConfigs(next);
   }, [dualConfigs, setDualSliderConfigs]);
+
+  useEffect(() => {
+    const nextInputs = {
+      presetA: morphPresetA,
+      presetB: morphPresetB,
+      fallbackState: morphCapturedStateRef.current,
+      fallbackDualRanges: morphCapturedDualRangesRef.current,
+      fallbackSliderModes: morphCapturedSliderModesRef.current,
+      fallbackDualConfigs: morphCapturedDualConfigsRef.current,
+    };
+    const previous = previousMorphInputsRef.current;
+    if (
+      previous.presetA !== nextInputs.presetA
+      || previous.presetB !== nextInputs.presetB
+      || previous.fallbackState !== nextInputs.fallbackState
+      || previous.fallbackDualRanges !== nextInputs.fallbackDualRanges
+      || previous.fallbackSliderModes !== nextInputs.fallbackSliderModes
+      || previous.fallbackDualConfigs !== nextInputs.fallbackDualConfigs
+    ) {
+      invalidateMorphInputs();
+    }
+    previousMorphInputsRef.current = nextInputs;
+  }, [invalidateMorphInputs, morphCapturedDualConfigsRef.current, morphCapturedDualRangesRef.current, morphCapturedSliderModesRef.current, morphCapturedStateRef.current, morphPresetA, morphPresetB]);
 
   useEffect(() => {
     const presetAChanged = morphPresetA !== prevMorphPresetARef.current;
@@ -227,24 +367,48 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
   ]);
 
   const applyMorphPositionChange = useCallback(
-    (newPosition: number) => {
+    (newPosition: number, options?: { flush?: boolean }) => {
       const nextMorphPosition = clampMorphPosition(newPosition, true);
-      if (lastAppliedManualPositionRef.current === nextMorphPosition) return;
-      lastAppliedManualPositionRef.current = nextMorphPosition;
-      setMorphPosition(nextMorphPosition);
-
-      if (!morphPresetA && !morphPresetB) return;
+      const isFlush = options?.flush === true;
+      if (!morphPresetA && !morphPresetB) {
+        if (!isFlush && lastAppliedManualPositionRef.current === nextMorphPosition) return;
+        lastAppliedManualPositionRef.current = nextMorphPosition;
+        setMorphPosition(nextMorphPosition);
+        return;
+      }
 
       const fallbackPreset = buildFallbackPreset();
       const effectiveA = morphPresetA || fallbackPreset;
       const effectiveB = morphPresetB || fallbackPreset;
-
-      if (morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name) return;
-
       const wasAtA = lastMorphEndpointRef.current === 0;
       const wasAtB = lastMorphEndpointRef.current === 100;
       const leavingA = wasAtA && nextMorphPosition > 0;
       const leavingB = wasAtB && nextMorphPosition < 100;
+      const direction = morphDirectionRef.current || (leavingB ? 'toA' : 'toB');
+      const capturedStartRoot = morphCapturedStartRootRef.current;
+      const liveInputs: MorphResolvedInputs = {
+        endpointA: endpointContentRefs(effectiveA),
+        endpointB: endpointContentRefs(effectiveB),
+        overrides: morphManualOverridesRef.current,
+        liveStateValues: captureMorphLiveStateValues(state, stateRef.current),
+        currentCofStep,
+        capturedStartRoot,
+        direction,
+      };
+      const cached = lastResolvedMorphRef.current;
+      if (cached && cached.position === nextMorphPosition && sameMorphResolvedInputs(cached.inputs, liveInputs)) {
+        if (!isFlush && lastAppliedManualPositionRef.current === nextMorphPosition) return;
+        if (isFlush) {
+          scheduleProductRuntimeParamUpdate(cached.state, {
+            reason: 'morph-control-change',
+            immediate: true,
+          });
+          return;
+        }
+      }
+
+      lastAppliedManualPositionRef.current = nextMorphPosition;
+      setMorphPosition(nextMorphPosition);
 
       if (isAtEndpoint0(nextMorphPosition, true)) {
         lastMorphEndpointRef.current = 0;
@@ -266,11 +430,12 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
         morphCapturedStartRootRef.current = stateB.cofDriftEnabled ? calculateDriftedRoot(stateB.rootNote, currentCofStep) : stateB.rootNote;
       }
 
-      const direction = morphDirectionRef.current || 'toB';
       const morphResult = lerpPresets(effectiveA, effectiveB, nextMorphPosition, currentCofStep, morphCapturedStartRootRef.current ?? undefined, direction);
 
       const overrides = morphManualOverridesRef.current;
       let finalState = { ...morphResult.state };
+      const endpointStateA = { ...DEFAULT_STATE, ...effectiveA.state };
+      const endpointStateB = { ...DEFAULT_STATE, ...effectiveB.state };
 
       for (const key of USER_PREFERENCE_KEYS) {
         (finalState as unknown as Record<string, unknown>)[key] = state[key];
@@ -281,9 +446,9 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
         const lerpedValue = morphResult.state[typedKey];
         if (typeof lerpedValue !== 'number') continue;
 
-        const stateA = { ...DEFAULT_STATE, ...effectiveA.state };
-        const stateB = { ...DEFAULT_STATE, ...effectiveB.state };
-        const destValue = direction === 'toB' ? (stateB[typedKey] as number) : (stateA[typedKey] as number);
+        const destValue = direction === 'toB'
+          ? (endpointStateB[typedKey] as number)
+          : (endpointStateA[typedKey] as number);
         const destPosition = direction === 'toB' ? 100 : 0;
 
         const overridePos = override.morphPosition;
@@ -306,7 +471,12 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       finalState = preserveRunningSimpleSequencers(finalState, stateRef.current);
 
       setState(finalState);
-      scheduleProductRuntimeParamUpdate(finalState, { reason: 'morph-control-change' });
+      scheduleProductRuntimeParamUpdate(
+        finalState,
+        isFlush
+          ? { reason: 'morph-control-change', immediate: true }
+          : { reason: 'morph-control-change' },
+      );
 
       const atEndpoint = isAtEndpoint0(nextMorphPosition, true) || isAtEndpoint1(nextMorphPosition, true);
       setMorphCoFViz(atEndpoint ? null : morphResult.morphCoFInfo || null);
@@ -322,6 +492,20 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
 
       mergeMorphDualRuntime(morphResult);
       resetRuntimeWalkPositionsForModes(morphResult.dualModes);
+      lastResolvedMorphRef.current = {
+        position: nextMorphPosition,
+        inputs: {
+          endpointA: endpointContentRefs(effectiveA),
+          endpointB: endpointContentRefs(effectiveB),
+          overrides: cloneMorphOverrides(morphManualOverridesRef.current),
+          liveStateValues: captureMorphLiveStateValues(state, stateRef.current),
+          currentCofStep,
+          capturedStartRoot: morphCapturedStartRootRef.current,
+          direction: morphDirectionRef.current || 'toB',
+        },
+        state: finalState,
+        result: morphResult,
+      };
     },
     [
       buildFallbackPreset,
@@ -348,7 +532,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
 
   if (!morphInputEmitterRef.current) {
     morphInputEmitterRef.current = createMorphPositionScheduler(
-      (position) => morphApplyRef.current(position),
+      (position, options) => morphApplyRef.current(position, options),
       (callback) => requestAnimationFrame(callback),
       (frameId) => cancelAnimationFrame(frameId),
     );
@@ -373,17 +557,17 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     [],
   );
 
-  const applyProductAutoModulationSide = useCallback((position: number): void => {
+  const applyProductAutoModulationSide = useCallback((
+    position: number,
+    endpointPair: ProductAutoModulationEndpointPair | null,
+  ): void => {
     const side: 0 | 1 = position < 0.5 ? 0 : 1;
-    if (productAutoModulationSideRef.current === side || (!morphPresetA && !morphPresetB)) return;
+    if (!endpointPair || productAutoModulationSideRef.current === side) return;
     productAutoModulationSideRef.current = side;
 
-    const fallbackPreset = buildFallbackPreset();
-    const effectiveA = morphPresetA || fallbackPreset;
-    const effectiveB = morphPresetB || fallbackPreset;
     const endpointResult = lerpPresets(
-      effectiveA,
-      effectiveB,
+      endpointPair.endpointA as TPreset,
+      endpointPair.endpointB as TPreset,
       side === 0 ? 0 : 100,
       currentCofStepRef.current,
     );
@@ -399,31 +583,21 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     mergeMorphDualRuntime(endpointResult);
     resetRuntimeWalkPositionsForModes(endpointResult.dualModes);
   }, [
-    buildFallbackPreset,
     lerpPresets,
     mergeMorphDualRuntime,
-    morphPresetA,
-    morphPresetB,
     resetRuntimeWalkPositionsForModes,
     setState,
   ]);
+  applyProductAutoModulationSideRef.current = applyProductAutoModulationSide;
 
   useEffect(() => {
     if (morphMode !== 'auto') productAutoCycleInitialPositionRef.current = morphPosition;
   }, [morphMode, morphPosition]);
 
-  useEffect(() => {
-    if (!productRuntimeActive) return undefined;
-    const enabled = morphMode === 'auto' && isEngineRunning && !!(morphPresetA || morphPresetB);
-    if (!enabled) {
-      productAutoCycleRuntime.stop(true);
-      setMorphCountdown(null);
-      return undefined;
-    }
-
+  const buildProductAutoEndpointSnapshotPair = useCallback((presetA: TPreset | null, presetB: TPreset | null): ProductAutoModulationEndpointPair => {
     const fallbackPreset = buildFallbackPreset();
-    const effectiveA = morphPresetA || fallbackPreset;
-    const effectiveB = morphPresetB || fallbackPreset;
+    const effectiveA = presetA || fallbackPreset;
+    const effectiveB = presetB || fallbackPreset;
     const currentState = stateRef.current;
     const endpointState = (preset: TPreset): SliderState & Record<string, unknown> => {
       const next = { ...DEFAULT_STATE, ...preset.state } as SliderState & Record<string, unknown>;
@@ -432,37 +606,153 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
       return next;
     };
-    const endpointA = endpointState(effectiveA);
-    const endpointB = endpointState(effectiveB);
+    return {
+      endpointA: { ...effectiveA, state: endpointState(effectiveA) },
+      endpointB: { ...effectiveB, state: endpointState(effectiveB) },
+    };
+  }, [buildFallbackPreset, stateRef]);
+  const rememberProductAutoEndpointSnapshot = useCallback((endpointPair: ProductAutoModulationEndpointPair): ProductAutoCycleEndpointPair => {
+    productAutoEndpointSnapshotsRef.current.set(endpointPair.endpointA.state, endpointPair);
+    productAutoEndpointSnapshotsRef.current.set(endpointPair.endpointB.state, endpointPair);
+    return {
+      endpointA: endpointPair.endpointA.state as unknown as ProductAutoCycleEndpointPair['endpointA'],
+      endpointB: endpointPair.endpointB.state as unknown as ProductAutoCycleEndpointPair['endpointB'],
+    };
+  }, []);
+  const adoptProductAutoProjection = useCallback((projection: ProductAutoCycleProjection | null): ProductAutoModulationEndpointPair | null => {
+    if (!projection?.confirmedEndpointA || !projection.confirmedEndpointB) {
+      return productAutoConfirmedEndpointPairRef.current;
+    }
+    const endpointPair = productAutoEndpointSnapshotsRef.current.get(projection.confirmedEndpointA)
+      || productAutoEndpointSnapshotsRef.current.get(projection.confirmedEndpointB);
+    if (!endpointPair) return productAutoConfirmedEndpointPairRef.current;
+    if (productAutoConfirmedEndpointPairRef.current !== endpointPair) {
+      productAutoConfirmedEndpointPairRef.current = endpointPair;
+      productAutoModulationSideRef.current = -1;
+    }
+    return endpointPair;
+  }, []);
+  const productAutoCycleEnabled = productRuntimeActive &&
+    morphMode === 'auto' &&
+    isEngineRunning &&
+    !!(morphPresetA || morphPresetB);
+
+  useEffect(() => {
+    if (!productRuntimeActive) return undefined;
+    if (!productAutoCycleEnabled) {
+      productAutoConfirmedEndpointPairRef.current = null;
+      productAutoLifecycleGenerationRef.current += 1;
+      productAutoModulationSideRef.current = -1;
+      productAutoCycleRuntime.stop(true);
+      setMorphCountdown(null);
+      return undefined;
+    }
+
+    const endpointSnapshot = buildProductAutoEndpointSnapshotPair(morphPresetA, morphPresetB);
+    const endpointPair = rememberProductAutoEndpointSnapshot(endpointSnapshot);
     const abortController = new AbortController();
+    const lifecycleGeneration = productAutoLifecycleGenerationRef.current + 1;
+    productAutoLifecycleGenerationRef.current = lifecycleGeneration;
+    productAutoConfirmedEndpointPairRef.current = null;
     productAutoModulationSideRef.current = -1;
     void productAutoCycleRuntime.start({
-      endpointA,
-      endpointB,
+      ...endpointPair,
       initialPosition: productAutoCycleInitialPositionRef.current / 100,
       playPhrases: morphPlayPhrasesRef.current,
       transitionPhrases: morphTransitionPhrasesRef.current,
       signal: abortController.signal,
+    }).then(() => {
+      if (abortController.signal.aborted || productAutoLifecycleGenerationRef.current !== lifecycleGeneration) return;
+      const projection = productAutoCycleRuntime.readProjection();
+      const confirmedPair = adoptProductAutoProjection(projection);
+      if (projection && confirmedPair) applyProductAutoModulationSideRef.current(projection.position, confirmedPair);
     }).catch((error) => {
       if (!abortController.signal.aborted) console.warn('Product auto-cycle assets are not ready:', error);
     });
 
     return () => {
       abortController.abort();
-      productAutoCycleRuntime.stop(false);
+      productAutoConfirmedEndpointPairRef.current = null;
+      productAutoLifecycleGenerationRef.current += 1;
+      productAutoCycleRuntime.stop(true);
     };
   }, [
-    buildFallbackPreset,
+    adoptProductAutoProjection,
+    buildProductAutoEndpointSnapshotPair,
     isEngineRunning,
-    morphMode,
     morphPlayPhrasesRef,
-    morphPresetA,
-    morphPresetB,
     morphTransitionPhrasesRef,
+    productAutoCycleEnabled,
     productAutoCycleRuntime,
     productRuntimeActive,
+    rememberProductAutoEndpointSnapshot,
     setMorphCountdown,
-    stateRef,
+  ]);
+
+  const previousProductAutoEndpointRefs = useRef<{
+    presetA: TPreset | null;
+    presetB: TPreset | null;
+    fallbackState: SliderState | null;
+    fallbackDualRanges: Record<string, { min: number; max: number }> | null;
+    fallbackSliderModes: Record<string, SliderMode> | null;
+    fallbackDualConfigs: Record<string, DualSliderConfig> | null;
+  }>({
+    presetA: morphPresetA,
+    presetB: morphPresetB,
+    fallbackState: morphCapturedStateRef.current,
+    fallbackDualRanges: morphCapturedDualRangesRef.current,
+    fallbackSliderModes: morphCapturedSliderModesRef.current,
+    fallbackDualConfigs: morphCapturedDualConfigsRef.current,
+  });
+  useEffect(() => {
+    const previous = previousProductAutoEndpointRefs.current;
+    const next = {
+      presetA: morphPresetA,
+      presetB: morphPresetB,
+      fallbackState: morphCapturedStateRef.current,
+      fallbackDualRanges: morphCapturedDualRangesRef.current,
+      fallbackSliderModes: morphCapturedSliderModesRef.current,
+      fallbackDualConfigs: morphCapturedDualConfigsRef.current,
+    };
+    const changed = previous.presetA !== next.presetA
+      || previous.presetB !== next.presetB
+      || previous.fallbackState !== next.fallbackState
+      || previous.fallbackDualRanges !== next.fallbackDualRanges
+      || previous.fallbackSliderModes !== next.fallbackSliderModes
+      || previous.fallbackDualConfigs !== next.fallbackDualConfigs;
+    previousProductAutoEndpointRefs.current = next;
+    if (!changed || !productAutoCycleEnabled) return;
+    const endpointSnapshot = buildProductAutoEndpointSnapshotPair(morphPresetA, morphPresetB);
+    const endpointPair = rememberProductAutoEndpointSnapshot(endpointSnapshot);
+    const endpointGeneration = productAutoEndpointGenerationRef.current + 1;
+    productAutoEndpointGenerationRef.current = endpointGeneration;
+    const lifecycleGeneration = productAutoLifecycleGenerationRef.current;
+    // Endpoint content can change while the cycle remains on the same side.
+    // Keep the installed metadata until the replacement is confirmed, then
+    // refresh from the authoritative native projection without writing UI
+    // position back to the native clock.
+    void productAutoCycleRuntime.replace(endpointPair).then(() => {
+      if (!productAutoCycleEnabled
+        || productAutoLifecycleGenerationRef.current !== lifecycleGeneration
+        || productAutoEndpointGenerationRef.current !== endpointGeneration) return;
+      const projection = productAutoCycleRuntime.readProjection();
+      const confirmedPair = adoptProductAutoProjection(projection);
+      if (projection && confirmedPair) applyProductAutoModulationSideRef.current(projection.position, confirmedPair);
+    }).catch((error) => {
+      console.warn('Product auto-cycle endpoint replacement is not ready:', error);
+    });
+  }, [
+    adoptProductAutoProjection,
+    buildProductAutoEndpointSnapshotPair,
+    morphCapturedDualConfigsRef.current,
+    morphCapturedDualRangesRef.current,
+    morphCapturedSliderModesRef.current,
+    morphCapturedStateRef.current,
+    morphPresetA,
+    morphPresetB,
+    productAutoCycleEnabled,
+    productAutoCycleRuntime,
+    rememberProductAutoEndpointSnapshot,
   ]);
 
   useEffect(() => {
@@ -491,7 +781,8 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       if (!telemetry?.enabled) return;
       const position = Math.round(telemetry.position * 100);
       setMorphPosition(position);
-      applyProductAutoModulationSide(telemetry.position);
+      const confirmedPair = adoptProductAutoProjection(telemetry);
+      if (confirmedPair) applyProductAutoModulationSideRef.current(telemetry.position, confirmedPair);
       if (telemetry.sampleRate === null) {
         setMorphCountdown(null);
         return;
@@ -511,7 +802,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
   }, [
-    applyProductAutoModulationSide,
+    adoptProductAutoProjection,
     isEngineRunning,
     morphMode,
     productAutoCycleRuntime,
@@ -541,7 +832,6 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     const fallbackPreset = buildFallbackPreset();
     const effectiveA = morphPresetA || fallbackPreset;
     const effectiveB = morphPresetB || fallbackPreset;
-    const samePreset = morphPresetA && morphPresetB && morphPresetA.name === morphPresetB.name;
     const startPos = manualPositionOnEnterRef.current;
     const targetAfterHold = startPos <= 50 ? 0 : 100;
     const alreadyAtTarget = (targetAfterHold === 0 && startPos <= 5) || (targetAfterHold === 100 && startPos >= 95);
@@ -674,7 +964,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
 
       let morphResult: MorphRuntimeResult | null = null;
       let stateWithPrefs: SliderState | null = null;
-      if (!samePreset && (positionChanged || shouldSyncUi)) {
+      if (positionChanged || shouldSyncUi) {
         const direction = morphDirectionRef.current || 'toB';
         morphResult = lerpPresets(effectiveA, effectiveB, newPos, currentCofStepRef.current, morphCapturedStartRootRef.current ?? undefined, direction);
         stateWithPrefs = { ...morphResult.state };
@@ -772,5 +1062,5 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     productRuntimeActive,
   ]);
 
-  return { handleMorphPositionChange };
+  return { handleMorphPositionChange, invalidateMorphInputs };
 }

@@ -21,8 +21,7 @@ import {
   DRUM_EUCLID_PRESET_DATA,
 } from '../../audio/drumSequencer';
 import {
-  SEQUENCER_RATCHET_CONTROL_MAX,
-  clampSequencerRatchet,
+  cycleSequencerRatchet,
   ratchetSubLaneStepIndex,
 } from '../../audio/seqEvolveCore';
 import { normalizeSequencerClockDivisions } from '../../audio/sequencerClockDivisions';
@@ -1676,8 +1675,7 @@ export function useEuclideanSequencer(opts: UseEuclideanSequencerOptions): UseEu
         while (arr.length < exprSteps) arr.push(1);
         if (arr.length > exprSteps) arr.length = exprSteps;
         const ratchetStep = ratchetSubLaneStepIndex(step, exprSteps);
-        const current = clampSequencerRatchet(arr[ratchetStep], 1, SEQUENCER_RATCHET_CONTROL_MAX);
-        arr[ratchetStep] = current >= SEQUENCER_RATCHET_CONTROL_MAX ? 1 : current + 1;
+        arr[ratchetStep] = cycleSequencerRatchet(arr[ratchetStep]);
         next.ratchet[laneIdx] = arr;
         return next;
       });

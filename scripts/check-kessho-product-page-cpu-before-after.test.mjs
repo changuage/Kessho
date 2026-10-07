@@ -16,14 +16,31 @@ import {
 } from './lib/kesshoProductPageCpuBeforeAfter.mjs';
 import {
   PAGE_CPU_MAX_TRANSIENT_RETRIES,
+  PAGE_CPU_BROWSER_PROFILES,
+  PAGE_CPU_DEFAULT_BROWSER_PROFILE,
   PAGE_CPU_LEGACY_VITE_DISABLE_HMR_ENV,
   PAGE_CPU_VITE_CACHE_DIR_ENV,
   PAGE_CPU_VITE_DISABLE_HMR_ENV,
   classifyPageCpuTransientError,
   createPageCpuViteEnv,
   createPageCpuRetryEntry,
+  parsePageCpuBrowserProfile,
   shouldRetryPageCpuAttempt,
 } from './lib/kesshoProductPageCpuComparison.mjs';
+
+test('page CPU browser profiles keep desktop default and expose focused phone/tablet runs', () => {
+  assert.equal(PAGE_CPU_DEFAULT_BROWSER_PROFILE, 'desktop');
+  assert.equal(parsePageCpuBrowserProfile(), 'desktop');
+  assert.equal(parsePageCpuBrowserProfile('phone'), 'phone');
+  assert.equal(parsePageCpuBrowserProfile('tablet'), 'tablet');
+  assert.equal(PAGE_CPU_BROWSER_PROFILES.desktop.context, undefined);
+  assert.deepEqual(PAGE_CPU_BROWSER_PROFILES.phone.context.viewport, { width: 390, height: 844 });
+  assert.equal(PAGE_CPU_BROWSER_PROFILES.phone.context.hasTouch, true);
+  assert.deepEqual(PAGE_CPU_BROWSER_PROFILES.tablet.context.viewport, { width: 1024, height: 1366 });
+  assert.equal(PAGE_CPU_BROWSER_PROFILES.tablet.context.hasTouch, true);
+  assert.throws(() => parsePageCpuBrowserProfile('watch'), /Unknown browser profile/);
+  assert.throws(() => parsePageCpuBrowserProfile(''), /Unknown browser profile/);
+});
 
 function runs(values, webValues = values) {
   return values.map((productBrowserProcessCpuPercent, index) => ({

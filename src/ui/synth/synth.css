@@ -291,6 +291,47 @@
   background: rgba(255,255,255,0.03);
 }
 
+.synth-root .recorded-note-capture,
+.synth-root .recorded-note-capture-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.synth-root .recorded-note-capture {
+  padding: 6px 8px;
+}
+
+.synth-root .recorded-note-capture-mode,
+.synth-root .recorded-note-capture-length {
+  font-size: var(--k-fs-1);
+  white-space: nowrap;
+}
+
+.synth-root .recorded-note-capture-length {
+  color: var(--text-muted);
+}
+
+.synth-root .recorded-note-capture .live-overdub-status {
+  white-space: normal;
+  text-align: left;
+}
+
+.synth-root .recorded-note-capture-progress {
+  width: 64px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.1);
+}
+
+.synth-root .recorded-note-capture-progress > span {
+  display: block;
+  height: 100%;
+  background: #ed5a24;
+}
+
 .synth-root .live-overdub-controls.active {
   border-color: rgba(237,90,36,0.45);
   background: rgba(237,90,36,0.08);

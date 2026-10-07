@@ -181,6 +181,7 @@ interface SeqLaneProps {
   playhead: number;
   /** Hit count for sub-lane playhead (Elektron-style: advances only on triggers) */
   hitCount?: number;
+  playheadMode?: 'hit' | 'step';
   /** Whether this lane is enabled */
   enabled?: boolean;
   /** Current direction for sub-lanes */
@@ -204,6 +205,12 @@ interface SeqLaneProps {
   onToggleEnabled?: () => void;
   /** Change sub-lane step count */
   onChangeSteps?: (steps: number) => void;
+  /** Optional printed-bank projection used without mutating the legacy model. */
+  stepCountOverride?: number;
+  valueOverride?: readonly number[];
+  probabilityOverride?: readonly number[];
+  ratchetOverride?: readonly number[];
+  trigConditionOverride?: readonly TrigCondition[];
   /** Cycle sub-lane direction */
   onCycleDirection?: () => void;
   /** Whether sub-lane is linked to trigger steps */
@@ -223,6 +230,10 @@ interface SeqLaneProps {
   pitchDisplayRoot?: number;
   /** Scale intervals used for pitch note labels after caller-specific resolution. */
   pitchDisplayScaleIntervals?: readonly number[];
+  /** Persisted pitch mode for the selected bank, independent of the legacy model. */
+  pitchModeOverride?: PitchMode;
+  /** Printed pitch values are scale degrees relative to the stored root. */
+  pitchValuesAreScaleDegrees?: boolean;
   /** Hide note-range mode when the caller needs direct note entry. */
   hidePitchNoteRange?: boolean;
   /** Optional selected step highlight, used for keyboard note-entry targeting. */
@@ -250,6 +261,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   color,
   playhead,
   hitCount = 0,
+  playheadMode: playheadModeOverride,
   enabled = true,
   direction = 'forward',
   onToggleTriggerStep,
@@ -265,6 +277,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   onCycleTrigCondition,
   onToggleEnabled,
   onChangeSteps,
+  stepCountOverride,
+  valueOverride,
+  probabilityOverride,
+  ratchetOverride,
+  trigConditionOverride,
   onCycleDirection,
   linked = false,
   onChangePitchMode,
@@ -275,6 +292,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   allowHarmonyPitchScale = false,
   pitchDisplayRoot,
   pitchDisplayScaleIntervals,
+  pitchModeOverride,
+  pitchValuesAreScaleDegrees = false,
   selectedStep = null,
   selectedStepLabel = 'Step',
   selectedStepKeyboardFocus = true,
@@ -294,10 +313,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   const laneAccent = color || FALLBACK_LANE_COLORS[lane];
   const cursorMarkerStyle = getCursorMarkerStyle(laneAccent);
   const pitchScaleOptions = Object.keys(SCALES).filter((scale) => allowHarmonyPitchScale || scale !== 'Harmony');
+  const pitchMode = pitchModeOverride ?? sequencer.pitch.mode;
   const resolvedPitchRoot = pitchDisplayRoot ?? sequencer.pitch.root;
   const resolvedPitchScale = pitchDisplayScaleIntervals ?? SCALES[sequencer.pitch.scale] ?? SCALES.Major;
   const showPitchRootControl = sequencer.pitch.scale !== 'Harmony';
-  const laneSteps = lane === 'trigger'
+  const laneSteps = stepCountOverride ?? (lane === 'trigger'
     ? sequencer.trigger.steps
     : lane === 'chord'
       ? sequencer.slice.steps
@@ -313,9 +333,10 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               ? sequencer.nudge.steps
               : lane === 'slice'
                 ? sequencer.slice.steps
-                : sequencer.reverse.steps;
+                : sequencer.reverse.steps);
 
   const getValue = (step: number): number => {
+    if (valueOverride) return valueOverride[step] ?? 0;
     if (lane === 'pitch') return sequencer.pitch.offsets[step % sequencer.pitch.offsets.length] ?? 0;
     if (lane === 'chord') return sequencer.slice.values[step % sequencer.slice.values.length] ?? 1;
     if (lane === 'expression') return sequencer.expression.velocities[step % sequencer.expression.velocities.length] ?? 0;
@@ -379,6 +400,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             <button
               className={`seq-lane-enable-btn${enabled ? ' on' : ''}`}
               onClick={onToggleEnabled}
+              disabled={!onToggleEnabled}
             >
               {enabled ? 'On' : 'Off'}
             </button>
@@ -388,11 +410,12 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               max={maxSubLaneSteps}
               label="Steps"
               onChange={(v) => onChangeSteps?.(v)}
-              disabled={linked || lane === 'nudge'}
+              disabled={linked || !onChangeSteps}
             />
             <button
               className="seq-spark-ctrl-btn"
               onClick={onCycleDirection}
+              disabled={!onCycleDirection}
               title={DIRECTION_LABELS[direction]}
             >
               {direction === 'forward' ? '→' : direction === 'reverse' ? '←' : '↔'}
@@ -411,7 +434,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               <div className="seq-pitch-controls">
                 <select
                   className="seq-pitch-mode"
-                  value={sequencer.pitch.mode}
+                  value={pitchMode}
                   onChange={(e) => onChangePitchMode?.(e.target.value as PitchMode)}
                 >
                   <option value="semitones">Semitones</option>
@@ -430,7 +453,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                     <option value="sequence">Sequence</option>
                   </select>
                 )}
-                {sequencer.pitch.mode !== 'notes' && (
+                {pitchMode !== 'notes' && (
                   <>
                     {showPitchRootControl && (
                       <DragNumber
@@ -472,7 +495,7 @@ const SeqLane: React.FC<SeqLaneProps> = ({
       </div>
       )}
       {/* Step grid — or noteRange controls when pitch mode is noteRange */}
-      {hasPitchControls && lane === 'pitch' && sequencer.pitch.mode === 'noteRange' ? (
+      {hasPitchControls && lane === 'pitch' && pitchMode === 'noteRange' ? (
         <div className="seq-lane-body seq-noterange-body">
           <SeqLaneRangeSlider
             label="Note range"
@@ -523,15 +546,17 @@ const SeqLane: React.FC<SeqLaneProps> = ({
             // Trigger lane: playhead tracks the trigger step.
             // Sub-lanes: playhead derived from hitCount (Elektron-style, advance on trigger only).
             let isPlayhead: boolean;
-            if (lane === 'trigger') {
+            if (playhead < 0) {
+              isPlayhead = false;
+            } else if (lane === 'trigger') {
               isPlayhead = inRange && playhead % laneSteps === step;
             } else {
-              const playheadMode = lane === 'pitch' && pitchBindingMode === 'sequence' ? 'step' : 'hit';
+              const playheadMode = playheadModeOverride ?? (lane === 'pitch' && pitchBindingMode === 'sequence' ? 'step' : 'hit');
               const basis = playheadMode === 'step' ? Math.max(0, playhead) : Math.max(0, hitCount - 1);
               const idx = laneSteps > 0
                 ? seqLaneIndex({ enabled: true, steps: laneSteps, direction, _ppForward: true }, basis)
                 : -1;
-              isPlayhead = inRange && idx === step;
+              isPlayhead = inRange && idx === step && (playheadMode === 'step' || hitCount > 0);
             }
             const isBeatHead = step % 4 === 0;
 
@@ -541,11 +566,11 @@ const SeqLane: React.FC<SeqLaneProps> = ({
               const tie = Boolean(triggerTieSteps?.[step]);
               const startHoldSteps = Math.max(1, Math.round(triggerHoldSteps?.[step] ?? 1));
               const maxHoldSteps = Math.max(1, sequencer.trigger.steps);
-              const prob = sequencer.trigger.probability[step] ?? 1.0;
+              const prob = probabilityOverride?.[step] ?? sequencer.trigger.probability[step] ?? 1.0;
               const probPct = Math.round(prob * 100);
-              const trigCond: TrigCondition = sequencer.trigger.trigCondition?.[step] ?? [1, 1];
+              const trigCond: TrigCondition = trigConditionOverride?.[step] ?? sequencer.trigger.trigCondition?.[step] ?? [1, 1];
               const cellClass = ['seq-step-cell', active ? 'active' : '', tie ? 'tie' : '', isPlayhead ? 'playing' : '', isKeyboardSelected ? 'selected' : '', isSelected ? 'target' : '', !inRange ? 'inactive' : ''].filter(Boolean).join(' ');
-              const showStepNumber = inRange && (isBeatHead || active || isSelected);
+              const showStepNumber = inRange;
               const stepNumberClass = [
                 'seq-step-num',
                 'seq-step-select-btn',
@@ -566,7 +591,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                       event.stopPropagation();
                       if (showStepNumber) onSelectStep?.(step);
                     }}
-                    title={showStepNumber ? `Select trigger step ${step + 1}` : undefined}
+                    aria-label={`Inspect step ${step + 1}`}
+                    title={showStepNumber ? `Inspect step ${step + 1}` : undefined}
                   >
                     {showStepNumber ? step + 1 : ''}
                   </button>
@@ -730,8 +756,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
 
             if (lane === 'pitch') {
               /* ── Pitch bar: bipolar drum offsets or tonal scale degrees ── */
-              const isScaleDegrees = sequencer.pitch.mode === 'semitones';
-              const isFixedNotes = sequencer.pitch.mode === 'notes';
+              const isScaleDegrees = pitchValuesAreScaleDegrees || pitchMode === 'semitones';
+              const isFixedNotes = !pitchValuesAreScaleDegrees && pitchMode === 'notes';
               const off = value;
               let barStyle: React.CSSProperties;
               let valText: string;
@@ -882,7 +908,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                   </div>
                   {/* Ratchet indicator — in expression lane for polyrhythmic ratchet patterns */}
                   {(() => {
-                    const ratchet = sequencer.trigger.ratchet[step % sequencer.trigger.ratchet.length] ?? 1;
+                    const ratchetValues = ratchetOverride ?? sequencer.trigger.ratchet;
+                    const ratchet = ratchetValues[step % Math.max(1, ratchetValues.length)] ?? 1;
                     return (
                       <button
                         type="button"

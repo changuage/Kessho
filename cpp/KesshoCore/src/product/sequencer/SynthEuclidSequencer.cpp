@@ -1,5 +1,6 @@
 #include "../KesshoProductEngineInternal.h"
 
+#include <array>
 #include <limits>
 
 namespace {
@@ -39,12 +40,20 @@ bool sequencerStepFieldActive(
     uint32_t field,
     bool evolution_active) {
   const uint32_t field_id = engine.stepFieldId(field);
+  const auto* variation = kessho::product::internal::activeVariationSnapshot(lane.variation_runtime);
   const bool config_enabled =
       engine.validStepFieldId(field_id) &&
-      lane.step_value_configs[field_id].enabled;
+      (variation != nullptr
+          ? kessho::product::internal::variationFieldEnabled(*variation, field_id)
+          : lane.step_value_configs[field_id].enabled);
+  const bool variation_override = variation != nullptr && field_id < 9u &&
+      ((field_id == engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_MORPH) && variation->morph_mask != 0u) ||
+       (field_id == engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_DISTANCE) && variation->distance_mask != 0u) ||
+       (field_id == engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_EXPRESSION) && variation->expression_mask != 0u));
   switch (field) {
     case KESSHO_PRODUCT_STEP_FIELD_MORPH:
       return config_enabled ||
+          variation_override ||
           evolution_active ||
           lane.morph_override_set_low != 0u ||
           lane.morph_override_set_high != 0u ||
@@ -52,6 +61,7 @@ bool sequencerStepFieldActive(
           lane.morph_range_set_high != 0u;
     case KESSHO_PRODUCT_STEP_FIELD_DISTANCE:
       return config_enabled ||
+          variation_override ||
           evolution_active ||
           lane.distance_override_set_low != 0u ||
           lane.distance_override_set_high != 0u ||
@@ -59,6 +69,7 @@ bool sequencerStepFieldActive(
           lane.distance_range_set_high != 0u;
     case KESSHO_PRODUCT_STEP_FIELD_EXPRESSION:
       return config_enabled ||
+          variation_override ||
           evolution_active ||
           lane.expression_override_set_low != 0u ||
           lane.expression_override_set_high != 0u ||
@@ -69,6 +80,68 @@ bool sequencerStepFieldActive(
   }
 }
 
+float variationStepFloatValue(
+    const KesshoProductSequencerVariationSnapshot* variation,
+    uint32_t field,
+    uint32_t step,
+    float fallback) {
+  if (variation == nullptr || step >= 32u) return fallback;
+  const uint32_t field_id = (field >> KESSHO_PRODUCT_STEP_FIELD_SHIFT) & KESSHO_PRODUCT_STEP_FIELD_ID_MASK;
+  const uint32_t mask = field_id == 1u ? variation->probability_mask
+      : field_id == 4u ? variation->midi_note_mask
+      : field_id == 5u ? variation->expression_mask
+      : field_id == 6u ? variation->morph_mask
+      : field_id == 7u ? variation->distance_mask
+      : field_id == 8u ? variation->nudge_mask
+      : 0u;
+  if (!kessho::product::internal::variationMaskHas(mask, step)) return fallback;
+  switch (field_id) {
+    case 1u: return variation->probability[step];
+    case 4u: return variation->midi_notes[step];
+    case 5u: return variation->expression[step];
+    case 6u: return variation->morph[step];
+    case 7u: return variation->distance[step];
+    case 8u: return variation->nudge_values[step];
+    default: return fallback;
+  }
+}
+
+uint32_t variationStepU32Value(
+    const KesshoProductSequencerVariationSnapshot* variation,
+    uint32_t field,
+    uint32_t step,
+    uint32_t fallback) {
+  if (variation == nullptr || step >= 32u) return fallback;
+  const uint32_t field_id = (field >> KESSHO_PRODUCT_STEP_FIELD_SHIFT) & KESSHO_PRODUCT_STEP_FIELD_ID_MASK;
+  if (field_id == 2u && kessho::product::internal::variationMaskHas(variation->ratchet_mask, step)) {
+    return variation->ratchet[step];
+  }
+  return fallback;
+}
+
+float variationStepRangeValue(
+    const KesshoProductSequencerVariationSnapshot* variation,
+    uint32_t field,
+    uint32_t step,
+    float fallback,
+    uint32_t seed) {
+  if (variation == nullptr || step >= 32u) return fallback;
+  const uint32_t field_id = (field >> KESSHO_PRODUCT_STEP_FIELD_SHIFT) & KESSHO_PRODUCT_STEP_FIELD_ID_MASK;
+  const uint32_t mask = field_id == 5u ? variation->expression_range_mask
+      : field_id == 6u ? variation->morph_range_mask
+      : field_id == 7u ? variation->distance_range_mask
+      : 0u;
+  if (!kessho::product::internal::variationMaskHas(mask, step)) {
+    return variationStepFloatValue(variation, field, step, fallback);
+  }
+  const float value = variationStepFloatValue(variation, field, step, fallback);
+  const float max_value = field_id == 5u ? variation->expression_range_maxes[step]
+      : field_id == 6u ? variation->morph_range_maxes[step]
+      : variation->distance_range_maxes[step];
+  const float min_value = std::min(value, max_value);
+  return min_value + hashUnit(seed ^ (step * 374761393u)) * (std::max(value, max_value) - min_value);
+}
+
 bool sequencerTargetSourceEnabled(const KesshoProductEngine& engine, uint32_t source_id) {
   return source_id >= 1u &&
       source_id <= kessho::product::internal::kSourceCount &&
@@ -76,7 +149,11 @@ bool sequencerTargetSourceEnabled(const KesshoProductEngine& engine, uint32_t so
 }
 
 uint32_t relativeStepId(const kessho::product::internal::LaneState& lane, int64_t relative_step) {
-  const int64_t steps = static_cast<int64_t>(std::max(1u, lane.step_count));
+  const int64_t steps = static_cast<int64_t>(std::max(
+      1u,
+      kessho::product::internal::variationStepCount(
+          lane.variation_runtime,
+          lane.step_count)));
   int64_t step = relative_step % steps;
   if (step < 0) {
     step += steps;
@@ -107,7 +184,11 @@ uint64_t roundedSampleFrame(double sample) {
 uint32_t activeTriggerCount(
     const KesshoProductEngine& engine,
     const kessho::product::internal::LaneState& lane) {
-  const uint32_t steps = std::max(1u, lane.step_count);
+  const uint32_t steps = std::max(
+      1u,
+      kessho::product::internal::variationStepCount(
+          lane.variation_runtime,
+          lane.step_count));
   uint32_t count = 0u;
   for (uint32_t step = 0u; step < steps; ++step) {
     if (engine.manualMaskHit(lane, step)) {
@@ -125,7 +206,11 @@ uint64_t activeHitOrdinalForRelativeStep(
   if (relative_step <= 0 || active_count == 0u) {
     return 0u;
   }
-  const uint32_t steps = std::max(1u, lane.step_count);
+  const uint32_t steps = std::max(
+      1u,
+      kessho::product::internal::variationStepCount(
+          lane.variation_runtime,
+          lane.step_count));
   const uint64_t cycles = static_cast<uint64_t>(relative_step / static_cast<int64_t>(steps));
   const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(steps));
   uint64_t ordinal = cycles * static_cast<uint64_t>(active_count);
@@ -142,7 +227,11 @@ int64_t adjacentActiveRelativeStep(
     const kessho::product::internal::LaneState& lane,
     int64_t relative_step,
     int32_t direction) {
-  const uint32_t steps = std::max(1u, lane.step_count);
+  const uint32_t steps = std::max(
+      1u,
+      kessho::product::internal::variationStepCount(
+          lane.variation_runtime,
+          lane.step_count));
   for (uint32_t offset = 1u; offset <= steps; ++offset) {
     const int64_t candidate = relative_step + static_cast<int64_t>(direction) * static_cast<int64_t>(offset);
     if (engine.manualMaskHit(lane, relativeStepId(lane, candidate))) {
@@ -156,6 +245,13 @@ bool nudgeSchedulingActive(
     const KesshoProductEngine& engine,
     const kessho::product::internal::LaneState& lane) {
   const uint32_t field_id = engine.stepFieldId(KESSHO_PRODUCT_STEP_FIELD_NUDGE);
+  const auto* variation = kessho::product::internal::activeVariationSnapshot(lane.variation_runtime);
+  if (variation != nullptr) {
+    for (uint32_t step = 0u; step < KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS; ++step) {
+      if (kessho::product::internal::variationMaskHas(variation->nudge_mask, step) &&
+          std::fabs(variation->nudge_values[step]) > 0.000001f) return true;
+    }
+  }
   return engine.validStepFieldId(field_id) &&
       lane.step_value_configs[field_id].enabled &&
       (lane.nudge_override_set_low != 0u || lane.nudge_override_set_high != 0u);
@@ -170,12 +266,22 @@ float nudgeValueForRelativeStep(
   if (!nudgeSchedulingActive(engine, lane)) {
     return 0.0f;
   }
+  // Resolve the owning sublane phase first.  Variation banks retain the same
+  // independent cycle length/direction semantics as the legacy lane; indexing
+  // by the trigger cell would silently turn every nudge lane into a step lane.
   const uint32_t nudge_step_id = engine.subLaneStepForField(
       lane,
       KESSHO_PRODUCT_STEP_FIELD_NUDGE,
       trigger_step,
       relative_step,
       active_hit_ordinal);
+  if (const auto* variation = kessho::product::internal::activeVariationSnapshot(lane.variation_runtime);
+      variation != nullptr && nudge_step_id < KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS) {
+    if (kessho::product::internal::variationMaskHas(variation->nudge_mask, nudge_step_id)) {
+      return kessho::product::internal::clampFloat(variation->nudge_values[nudge_step_id], -1.0f, 1.0f);
+    }
+    return 0.0f;
+  }
   return kessho::product::internal::clampFloat(
       engine.stepFloatValue(
           nudge_step_id,
@@ -187,6 +293,71 @@ float nudgeValueForRelativeStep(
       1.0f);
 }
 
+uint32_t variationArpNoteIndex(
+    const KesshoProductSequencerVariationStep& step,
+    uint32_t pulse,
+    uint32_t lane_seed) {
+  const uint32_t note_count = std::min<uint32_t>(
+      step.note_count,
+      KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+  if (note_count == 0u) return 0u;
+  const uint32_t position = pulse % note_count;
+  switch (step.arp_flow) {
+    case 1u:
+      return note_count - 1u - position;
+    case 2u:
+    case 3u: {
+      const uint32_t period = note_count > 1u ? note_count * 2u - 2u : 1u;
+      const uint32_t folded = position % period;
+      const uint32_t up = folded < note_count ? folded : period - folded;
+      return step.arp_flow == 2u ? up : note_count - 1u - up;
+    }
+    case 4u:
+      return hashU32(lane_seed ^ pulse * 0x45d9f3bu) % note_count;
+    case 5u:
+      return hashU32(lane_seed ^ step.arp_reset_mask ^ 0x9e3779b9u) % note_count;
+    default:
+      return position;
+  }
+}
+
+int32_t productArpPositiveModulo(int32_t value, int32_t modulus);
+uint32_t productArpPingPongIndex(int32_t position, uint32_t length);
+
+float resolveVariationArpMidi(
+    const KesshoProductSequencerVariationStep& step,
+    float trigger_midi_note,
+    uint32_t pulse,
+    uint32_t lane_seed) {
+  const uint32_t note_count = std::min<uint32_t>(
+      step.note_count,
+      KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+  if (note_count == 0u) return -1.0f;
+  uint32_t segment_start = 0u;
+  for (uint32_t index = 0u; index <= pulse && index < 16u; ++index) {
+    if ((step.arp_reset_mask & (1u << index)) != 0u) segment_start = index;
+  }
+  const uint32_t local_pulse = pulse - segment_start;
+  const uint32_t base_index = variationArpNoteIndex(step, local_pulse, lane_seed);
+  const int32_t contour = step.arp_contour[pulse % 16u];
+  uint32_t index = base_index;
+  if (step.arp_contour_mode == 1u) {
+    return clampFloat(
+        trigger_midi_note + step.notes[base_index].midi_note + static_cast<float>(contour),
+        0.0f,
+        127.0f);
+  }
+  const int32_t moved = static_cast<int32_t>(base_index) + contour;
+  if (step.arp_boundary_mode == 1u) {
+    index = static_cast<uint32_t>(productArpPositiveModulo(moved, static_cast<int32_t>(note_count)));
+  } else if (step.arp_boundary_mode == 2u) {
+    index = static_cast<uint32_t>(std::clamp(moved, 0, static_cast<int32_t>(note_count - 1u)));
+  } else {
+    index = productArpPingPongIndex(moved, note_count);
+  }
+  return clampFloat(trigger_midi_note + step.notes[index].midi_note, 0.0f, 127.0f);
+}
+
 uint64_t nudgedSequencerEventSample(
     const KesshoProductEngine& engine,
     const kessho::product::internal::LaneState& lane,
@@ -196,20 +367,15 @@ uint64_t nudgedSequencerEventSample(
     double swing_samples,
     uint32_t active_count) {
   const double base_sample = sequencerAnchorSample(lane, relative_step, samples_per_step, swing_samples);
-  if (active_count == 0u) {
-    return roundedSampleFrame(base_sample);
-  }
+  // Nudge is a fraction of this lane's owning grid step.  It must not depend
+  // on the distance to the next active hit: sparse patterns still move by the
+  // same musical amount and the first/last grid cells remain deterministic.
   const uint64_t active_ordinal = activeHitOrdinalForRelativeStep(engine, lane, relative_step, active_count);
   const float nudge = nudgeValueForRelativeStep(engine, lane, trigger_step, relative_step, active_ordinal);
   if (std::fabs(nudge) <= 0.000001f) {
     return roundedSampleFrame(base_sample);
   }
-  const int64_t neighbor_step = adjacentActiveRelativeStep(engine, lane, relative_step, nudge < 0.0f ? -1 : 1);
-  if (neighbor_step == relative_step) {
-    return roundedSampleFrame(base_sample);
-  }
-  const double neighbor_sample = sequencerAnchorSample(lane, neighbor_step, samples_per_step, swing_samples);
-  const double nudged_sample = base_sample + (neighbor_sample - base_sample) * std::fabs(static_cast<double>(nudge));
+  const double nudged_sample = base_sample + static_cast<double>(nudge) * samples_per_step;
   return roundedSampleFrame(nudged_sample);
 }
 
@@ -434,6 +600,9 @@ void recordDrainedRatchet(
     kessho::product::internal::LaneState& lane,
     const kessho::product::internal::PendingRatchetEvent& pending) {
   const KesshoSequencerEvent& event = pending.event;
+  if (pending.hit_count_phase != 0u && pending.grid_origin_sample == lane.sequencer_start_sample_frame) {
+    lane.audible_hit_count = pending.hit_count_phase;
+  }
   if (pending.arp_step_index != UINT32_MAX) {
     lane.arp.current_step = pending.arp_step_index %
         kessho::product::internal::kMaxProductArpSteps;
@@ -1022,10 +1191,12 @@ void maybeCaptureGeneratedFaceEvent(
     uint32_t target_source_id,
     float midi_note,
     float velocity,
+    float expression,
     float gate_seconds,
     int32_t source_step_index,
     int32_t source_layer_index,
-    int32_t source_note_index) {
+    int32_t source_note_index,
+    uint64_t attack_id) {
   const KesshoProductGeneratedSequencerCaptureConfig& config =
       engine.generated_sequencer_capture_config;
   if (!kessho::product::shouldCaptureGeneratedSequencerEvent(config, lane_index, source_mode)) {
@@ -1039,7 +1210,13 @@ void maybeCaptureGeneratedFaceEvent(
   captured.source_mode = source_mode;
   captured.target_source_id = target_source_id;
   captured.midi_note = kessho::product::internal::clampFloat(midi_note, 0.0f, 127.0f);
-  captured.velocity = kessho::product::internal::clampFloat(velocity, 0.0f, 1.0f);
+  // Generated events normally enter triggerVoice with expression scaling
+  // enabled.  The recorded replay flag deliberately disables that second
+  // multiplier, so bake the same effective velocity into the captured note.
+  captured.velocity = kessho::product::internal::clampFloat(
+      velocity * kessho::product::internal::clampFloat(expression, 0.0f, 1.5f),
+      0.0f,
+      1.0f);
   captured.gate_seconds = kessho::product::internal::clampFloat(gate_seconds, 0.001f, 20.0f);
   captured.source_step_index = source_step_index;
   captured.source_layer_index = source_layer_index;
@@ -1048,8 +1225,9 @@ void maybeCaptureGeneratedFaceEvent(
   captured.target_step_index = captureRelativeStepIndexForSample(engine, lane, absolute_sample);
   captured.target_step_float = target_step_float;
   captured.nudge = captureNudgeForTargetStep(static_cast<double>(target_step_float), captured.target_step_index);
+  captured.attack_id = attack_id;
 
-  engine.generated_sequencer_capture_ring.push(captured);
+  engine.generated_sequencer_capture_ring->push(captured);
 }
 
 bool emitAnchorWalkerTrigger(
@@ -1092,6 +1270,9 @@ bool emitAnchorWalkerTrigger(
     }
   }
   active_layer_count = std::max(1u, active_layer_count);
+  std::array<uint64_t, kMaxAnchorWalkerLayers> capture_attack_samples{};
+  std::array<uint64_t, kMaxAnchorWalkerLayers> capture_attack_ids{};
+  uint32_t capture_attack_count = 0u;
   uint32_t layer_event_index = 0u;
   walker.last_output_count = 0u;
   for (uint32_t layer_index = 0u; layer_index < kMaxAnchorWalkerLayers; ++layer_index) {
@@ -1129,6 +1310,27 @@ bool emitAnchorWalkerTrigger(
         : static_cast<double>(walker.spread_seconds) * static_cast<double>(layer_index);
     const uint64_t layer_sample = event_sample + static_cast<uint64_t>(
         std::llround(std::max(0.0, layer_delay_seconds) * engine.sample_rate));
+    // Layers sharing an onset are one musical attack even when a delayed
+    // layer is interleaved between them. Spread/delay layers retain separate
+    // identities so the printer preserves their timing.
+    uint64_t capture_attack_id = 0u;
+    for (uint32_t attack_index = 0u; attack_index < capture_attack_count; ++attack_index) {
+      if (capture_attack_samples[attack_index] == layer_sample) {
+        capture_attack_id = capture_attack_ids[attack_index];
+        break;
+      }
+    }
+    if (capture_attack_id == 0u) {
+      capture_attack_id = engine.generated_sequencer_capture_attack_counter++;
+      if (engine.generated_sequencer_capture_attack_counter == 0u) {
+        engine.generated_sequencer_capture_attack_counter = 1u;
+      }
+      if (capture_attack_count < kMaxAnchorWalkerLayers) {
+        capture_attack_samples[capture_attack_count] = layer_sample;
+        capture_attack_ids[capture_attack_count] = capture_attack_id;
+        ++capture_attack_count;
+      }
+    }
     const uint32_t event_seed = hashU32(
         engine.rng_seed ^
         walker.seed ^
@@ -1174,13 +1376,15 @@ bool emitAnchorWalkerTrigger(
         layer_sample,
         lane_index,
         KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER,
-        event.source_id,
-        event.midi_note,
-        event.velocity,
-        event.hold_seconds,
+          event.source_id,
+          event.midi_note,
+          event.velocity,
+          event.expression,
+          event.hold_seconds,
         static_cast<int32_t>(pattern_index),
         static_cast<int32_t>(layer_index),
-        -1);
+        -1,
+        capture_attack_id);
     ++layer_event_index;
   }
   lane.emitted_hit_count += 1u;
@@ -1717,6 +1921,8 @@ bool generateOrbitLaneEvents(
     note.angle = static_cast<float>(current_angle);
     const double previous_visual_angle = orbitVisualAngle(orbit, note_index, previous_angle);
     const double current_visual_angle = orbitVisualAngle(orbit, note_index, current_angle);
+    uint64_t capture_attack_id = 0u;
+    uint64_t capture_attack_sample = UINT64_MAX;
     bool triggered = false;
     for (uint32_t line_index = 0u; line_index < line_count; ++line_index) {
       const double line_angle = (kTwoPi * static_cast<double>(line_index)) / static_cast<double>(line_count);
@@ -1768,6 +1974,13 @@ bool generateOrbitLaneEvents(
               std::llround(std::clamp(fraction, 0.0, 1.0) * static_cast<double>(frames)),
               0ll,
               static_cast<long long>(frames > 0u ? frames - 1u : 0u)));
+      if (capture_attack_id == 0u || event_sample != capture_attack_sample) {
+        capture_attack_id = engine.generated_sequencer_capture_attack_counter++;
+        if (engine.generated_sequencer_capture_attack_counter == 0u) {
+          engine.generated_sequencer_capture_attack_counter = 1u;
+        }
+        capture_attack_sample = event_sample;
+      }
       const uint32_t event_source = sourceOrFollow(note.target_source_id, orbit.target_source_id);
       if (!sequencerTargetSourceEnabled(engine, event_source)) {
         continue;
@@ -1801,10 +2014,12 @@ bool generateOrbitLaneEvents(
           event.source_id,
           event.midi_note,
           event.velocity,
+          event.expression,
           event.hold_seconds,
           -1,
           -1,
-          static_cast<int32_t>(note_index));
+          static_cast<int32_t>(note_index),
+          capture_attack_id);
       lane.emitted_hit_count += 1u;
       triggered = true;
     }
@@ -1838,7 +2053,7 @@ class ScopedSequencerAudibilityGate {
 
 } // namespace
 
-  void KesshoProductEngine::generateLaneEvents(
+void KesshoProductEngine::generateLaneEvents(
       LaneState* lanes,
       uint32_t lane_count,
       uint32_t frames,
@@ -1848,6 +2063,7 @@ class ScopedSequencerAudibilityGate {
   const bool macro_evolution_active = evolutionDepth() > 0.000001f;
   for (uint32_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     LaneState& lane = lanes[lane_index];
+    const auto* variation = kessho::product::internal::activeVariationSnapshot(lane.variation_runtime);
     ScopedSequencerAudibilityGate audibility_gate(out, lane.muted || lane.chain_muted);
     if (lane.sequencer_mode == kSequencerModeAnchorWalker) {
       if (!generateAnchorWalkerLaneEvents(*this, lane, lane_index, frames, out)) {
@@ -1862,12 +2078,18 @@ class ScopedSequencerAudibilityGate {
       continue;
     }
     const bool drum_lane = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM;
-    if (!lane.enabled || lane.step_count == 0u || lane.clock_division == 0u) {
+    const uint32_t step_count = kessho::product::internal::variationStepCount(
+        lane.variation_runtime,
+        lane.step_count);
+    const uint32_t clock_division = kessho::product::internal::variationClockDivision(
+        lane.variation_runtime,
+        lane.clock_division);
+    if (!lane.enabled || step_count == 0u || clock_division == 0u) {
       resetSequencerLaneRuntime(lane);
       continue;
     }
     const double samples_per_step =
-        sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
+        sequencerSamplesPerStep(transport, sample_rate, clock_division) /
         static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
     if (!lane.sequencer_runtime_initialized || block_start < lane.sequencer_runtime_sample_frame) {
       const bool wait_for_join_boundary = lane.sequencer_join_pending;
@@ -1885,6 +2107,15 @@ class ScopedSequencerAudibilityGate {
               samples_per_step);
       lane.sequencer_runtime_initialized = true;
       lane.sequencer_join_pending = false;
+      if (variation != nullptr && lane.variation_runtime.next_boundary_frame == UINT64_MAX &&
+          lane.variation_runtime.active != nullptr &&
+          lane.variation_runtime.active->chain_length > 0u) {
+        lane.variation_runtime.next_boundary_frame =
+            static_cast<uint64_t>(lane.sequencer_start_sample_frame) +
+            static_cast<uint64_t>(std::max<int64_t>(
+                1,
+                std::llround(samples_per_step * static_cast<double>(step_count))));
+      }
     }
     if (!sequencerTargetSourceEnabled(*this, lane.target_source_id)) {
       clearPendingRatchets(lane);
@@ -1894,27 +2125,31 @@ class ScopedSequencerAudibilityGate {
     if (!drainPendingRatchets(lane, block_start, block_end, *this, out, telemetry)) {
       return;
     }
-    if (static_cast<double>(block_end) <= static_cast<double>(lane.sequencer_start_sample_frame)) {
+    const bool variation_preactivated = lane.sequencer_variation_preactivated &&
+        static_cast<double>(block_start) < static_cast<double>(lane.sequencer_start_sample_frame);
+    if (static_cast<double>(block_end) <= static_cast<double>(lane.sequencer_start_sample_frame) &&
+        !variation_preactivated) {
       lane.sequencer_runtime_sample_frame = block_end;
       continue;
     }
     const double swing_samples = sequencerSwingSamples(transport, lane, samples_per_step);
     const bool nudge_active = nudgeSchedulingActive(*this, lane);
     const uint32_t nudge_active_count = nudge_active ? activeTriggerCount(*this, lane) : 0u;
-    const int64_t nudge_scan_padding = nudge_active_count > 0u
-        ? static_cast<int64_t>(std::max(1u, lane.step_count))
+    const int64_t nudge_scan_padding = variation != nullptr || nudge_active_count > 0u
+        ? 1
         : 0;
-    const int64_t first_step =
-        sequencerFirstRelativeStep(block_start, lane.sequencer_start_sample_frame, samples_per_step) -
-        nudge_scan_padding;
+    const int64_t first_step = variation_preactivated
+        ? 0
+        : sequencerFirstRelativeStep(block_start, lane.sequencer_start_sample_frame, samples_per_step) -
+            nudge_scan_padding;
     const int64_t last_step =
         sequencerLastRelativeStep(block_end, lane.sequencer_start_sample_frame, samples_per_step) +
         nudge_scan_padding;
     for (int64_t relative_step = first_step; relative_step <= last_step; ++relative_step) {
-      if (relative_step < 0) {
+      if (relative_step < 0 || (variation != nullptr && relative_step >= static_cast<int64_t>(step_count))) {
         continue;
       }
-      const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(lane.step_count));
+      const uint32_t step_id = static_cast<uint32_t>(relative_step % static_cast<int64_t>(step_count));
       if (step_id == 0u && relative_step > 0 && !lane.muted && !lane.chain_muted) {
         const uint64_t boundary_sample = roundedSampleFrame(
             sequencerAnchorSample(lane, relative_step, samples_per_step, swing_samples));
@@ -1923,7 +2158,7 @@ class ScopedSequencerAudibilityGate {
               lane,
               lanes == drum_lanes ? KESSHO_PRODUCT_SEQUENCER_DRUM : KESSHO_PRODUCT_SEQUENCER_SYNTH,
               lane_index,
-              static_cast<uint64_t>(relative_step) / std::max<uint32_t>(1u, lane.step_count));
+              static_cast<uint64_t>(relative_step) / std::max<uint32_t>(1u, step_count));
         }
       }
       if (!manualMaskHit(lane, step_id)) {
@@ -1937,7 +2172,15 @@ class ScopedSequencerAudibilityGate {
           samples_per_step,
           swing_samples,
           nudge_active_count);
-      if (event_sample < block_start || event_sample >= block_end) {
+      // Resolve bank triggers in owning-cell order one cell ahead. The existing
+      // pending-note queue retains their pitches and sublane values across an
+      // early variation switch, including overlapping +1/-1 boundary nudges.
+      const uint64_t scheduling_sample = variation != nullptr && relative_step > 0
+          ? roundedSampleFrame(sequencerAnchorSample(
+              lane, relative_step - 1, samples_per_step, 0.0))
+          : variation != nullptr ? std::min(event_sample, roundedSampleFrame(
+              static_cast<double>(lane.sequencer_start_sample_frame))) : event_sample;
+      if (scheduling_sample < block_start || scheduling_sample >= block_end) {
         continue;
       }
       if (!trigConditionPass(lane.trig_condition, event_sample)) {
@@ -1957,12 +2200,16 @@ class ScopedSequencerAudibilityGate {
           step_id,
           relative_step,
           hit_count_phase);
-      const float probability_base = stepFloatValue(
+      const float probability_base = variationStepFloatValue(
+          variation,
+          KESSHO_PRODUCT_STEP_FIELD_PROBABILITY,
+          probability_step_id,
+          stepFloatValue(
           probability_step_id,
           lane.probability_override_set_low,
           lane.probability_override_set_high,
           lane.probability_overrides,
-          lane.probability);
+          lane.probability));
       const float probability = evolvedLaneValue(
           lane,
           lane_index,
@@ -1983,12 +2230,16 @@ class ScopedSequencerAudibilityGate {
           relative_step,
           hit_count_phase);
       const uint32_t ratchet = clampU32(
-          stepU32Value(
+          variationStepU32Value(
+              variation,
+              KESSHO_PRODUCT_STEP_FIELD_RATCHET,
+              ratchet_step_id,
+              stepU32Value(
               ratchet_step_id,
               lane.ratchet_override_set_low,
               lane.ratchet_override_set_high,
               lane.ratchet_overrides,
-              lane.ratchet),
+              lane.ratchet)),
           1u,
           8u);
       const double ratchet_spacing = samples_per_step / static_cast<double>(ratchet);
@@ -1998,16 +2249,41 @@ class ScopedSequencerAudibilityGate {
           step_id,
           relative_step,
           hit_count_phase);
-      const float sequenced_midi_note = stepFloatValue(
+      const auto* variation_step = variation != nullptr && step_id < variation->step_count
+          ? &variation->steps[step_id]
+          : nullptr;
+      const bool variation_follow_harmony = variation_step != nullptr &&
+          variation_step->follow_harmony != 0u;
+      float lane_pitch_note = resolveHarmonyMidi(lane, lane_index, step_id, event_sample);
+      if (variation != nullptr &&
+          variation->pitch_mode == kessho::product::internal::kSequencerPitchModeNotes &&
+          !variation_follow_harmony) {
+        // Printed Notes are already absolute at the authored root.  Bypass
+        // the live harmony resolver unless that individual cell opted in.
+        lane_pitch_note = clampFloat(variation->pitch_root, 0.0f, 127.0f);
+      }
+      const bool variation_pitch_value = variation != nullptr &&
+          kessho::product::internal::variationMaskHas(variation->midi_note_mask, midi_step_id);
+      const float sequenced_midi_note_value = variationStepFloatValue(
+          variation,
+          KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE,
+          midi_step_id,
+          stepFloatValue(
           midi_step_id,
           lane.midi_note_override_set_low,
           lane.midi_note_override_set_high,
-          lane.midi_note_overrides,
-          resolveHarmonyMidi(lane, lane_index, step_id, event_sample));
+              lane.midi_note_overrides,
+          lane_pitch_note));
+      const float sequenced_midi_note = variation_pitch_value
+          ? clampFloat(lane_pitch_note + sequenced_midi_note_value, 0.0f, 127.0f)
+          : sequenced_midi_note_value;
       const uint32_t play_note_mask = !drum_lane && midi_step_id < 64u
           ? lane.play_note_voice_masks[midi_step_id]
           : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
+      const bool variation_step_empty = variation_step != nullptr &&
+          (variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_EMPTY ||
+           variation_step->note_count == 0u);
       // Keep the sequencer-only fallback telemetry for sessions that have not
       // received a live Harmony gesture. LiveChordGesture events update this
       // same telemetry at their control-event dispatch point and take priority.
@@ -2018,8 +2294,12 @@ class ScopedSequencerAudibilityGate {
             ? static_cast<float>(static_cast<double>(event_sample - transport.sample_frame) * 1000.0 / sample_rate)
             : 0.0f;
       }
-      const bool synth_arp_enabled = !drum_lane && lane.arp.enabled;
-      if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u && trigger_midi_note < 0.0f) {
+      const bool synth_arp_enabled = !drum_lane &&
+          (variation_step != nullptr
+              ? variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP
+              : lane.arp.enabled);
+      if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u &&
+          (trigger_midi_note < 0.0f || variation_step_empty)) {
         lane.emitted_hit_count += 1u;
         continue;
       }
@@ -2053,7 +2333,11 @@ class ScopedSequencerAudibilityGate {
             step_id,
             relative_step,
             hit_count_phase);
-        const float morph_base = stepFloatRangeValue(
+        const float morph_base = variationStepRangeValue(
+            variation,
+            KESSHO_PRODUCT_STEP_FIELD_MORPH,
+            morph_step_id,
+            stepFloatRangeValue(
             morph_step_id,
             lane.morph_override_set_low,
             lane.morph_override_set_high,
@@ -2062,6 +2346,7 @@ class ScopedSequencerAudibilityGate {
             lane.morph_range_set_high,
             lane.morph_range_maxes,
             lane.morph,
+            event_seed ^ 0x2c1b3c6du),
             event_seed ^ 0x2c1b3c6du);
         trigger_morph = resolveModulatedValue(
             lane.target_source_id,
@@ -2093,7 +2378,11 @@ class ScopedSequencerAudibilityGate {
             step_id,
             relative_step,
             hit_count_phase);
-        const float distance_base = stepFloatRangeValue(
+        const float distance_base = variationStepRangeValue(
+            variation,
+            KESSHO_PRODUCT_STEP_FIELD_DISTANCE,
+            distance_step_id,
+            stepFloatRangeValue(
             distance_step_id,
             lane.distance_override_set_low,
             lane.distance_override_set_high,
@@ -2102,6 +2391,7 @@ class ScopedSequencerAudibilityGate {
             lane.distance_range_set_high,
             lane.distance_range_maxes,
             lane.distance,
+            event_seed ^ 0x165667b1u),
             event_seed ^ 0x165667b1u);
         trigger_distance = resolveModulatedValue(
             lane.target_source_id,
@@ -2133,7 +2423,11 @@ class ScopedSequencerAudibilityGate {
             step_id,
             relative_step,
             hit_count_phase);
-        const float expression_base = stepFloatRangeValue(
+        const float expression_base = variationStepRangeValue(
+            variation,
+            KESSHO_PRODUCT_STEP_FIELD_EXPRESSION,
+            expression_step_id,
+            stepFloatRangeValue(
             expression_step_id,
             lane.expression_override_set_low,
             lane.expression_override_set_high,
@@ -2142,6 +2436,7 @@ class ScopedSequencerAudibilityGate {
             lane.expression_range_set_high,
             lane.expression_range_maxes,
             lane.expression,
+            event_seed ^ 0x51f15ca9u),
             event_seed ^ 0x51f15ca9u);
         trigger_expression = resolveModulatedValue(
             lane.target_source_id,
@@ -2184,7 +2479,8 @@ class ScopedSequencerAudibilityGate {
           uint32_t ratchet_count,
           uint64_t note_sample,
           uint32_t arp_step_index = UINT32_MAX,
-          bool harmony_resolved = false) {
+          bool harmony_resolved = false,
+          float note_gate_beats = 0.0f) {
         const uint64_t offset_samples = offset_ms > 0.0f
             ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
             : 0u;
@@ -2195,8 +2491,17 @@ class ScopedSequencerAudibilityGate {
         event.event_kind = static_cast<uint16_t>(KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON);
         event.midi_note = midi_note;
         event.frequency_hz = midiToFrequency(midi_note);
-        event.velocity = clampFloat(trigger_velocity * velocity_scale, 0.0f, 1.0f);
-        event.hold_seconds = lane.hold_seconds;
+        event.velocity = variation_step != nullptr
+            ? clampFloat(velocity_scale, 0.0f, 1.0f)
+            : clampFloat(trigger_velocity * velocity_scale, 0.0f, 1.0f);
+        const float gate_beats = note_gate_beats > 0.0f
+            ? note_gate_beats
+            : variation_step != nullptr ? variation_step->gate_beats : 0.0f;
+        const float variation_gate_seconds = variation_step != nullptr && gate_beats > 0.0f
+            ? gate_beats * 60.0f /
+                static_cast<float>(std::max(1.0, static_cast<double>(transport.bpm)))
+            : lane.hold_seconds;
+        event.hold_seconds = variation_gate_seconds;
         if (drum_lane) {
           event.send_delay_a = ratchet_count > 1u
               ? static_cast<float>((ratchet_spacing / sample_rate) * 0.8)
@@ -2221,6 +2526,8 @@ class ScopedSequencerAudibilityGate {
             (voice_ordinal << 8u);
         PendingRatchetEvent pending{};
         pending.parent_step_id = static_cast<uint64_t>(relative_step);
+        pending.hit_count_phase = hit_count_phase + 1u;
+        pending.grid_origin_sample = lane.sequencer_start_sample_frame;
         pending.absolute_sample = note_sample + offset_samples;
         pending.lane_index = lane_index;
         pending.step_index = step_id;
@@ -2230,17 +2537,81 @@ class ScopedSequencerAudibilityGate {
         pending.event = event;
         pushPendingRatchet(lane, pending);
       };
-      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, bool harmony_resolved = false) {
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, bool harmony_resolved = false, float note_gate_beats = 0.0f) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
-        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, harmony_resolved);
+        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, harmony_resolved, note_gate_beats);
       };
-      if (synth_arp_enabled) {
+      // Every accepted variation trigger ends any pending ARP phrase.  This
+      // keeps ARP->Note/Chord transitions bounded at the next trigger rather
+      // than letting old ratchets leak through the following cell.
+      if (variation_step != nullptr && !drum_lane && !variation_step_empty) {
+        clearPendingArpRatchets(lane, event_sample);
+      }
+      if (variation_step != nullptr && !drum_lane &&
+          variation_step->mode != KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP) {
+        // Bank-local notes are explicit. An ARP is distributed across its
+        // owning grid-step span and is replaced by the next trigger, while a
+        // chord keeps every note on the parent trigger sample.
+        const uint32_t note_count = std::min<uint32_t>(
+            variation_step->note_count,
+            KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+        for (uint32_t ratchet_index = 0u; ratchet_index < ratchet; ++ratchet_index) {
+          for (uint32_t note_index = 0u; note_index < note_count; ++note_index) {
+            const auto& note = variation_step->notes[note_index];
+            enqueueSequencerNote(
+                clampFloat(trigger_midi_note + note.midi_note, 0.0f, 127.0f),
+                note.velocity,
+                0.0f,
+                note_index,
+                ratchet_index,
+                false,
+                note.gate_beats);
+          }
+        }
+      } else if (synth_arp_enabled) {
         ProductArpRuntimeState& arp = lane.arp;
+        const bool variation_arp = variation_step != nullptr &&
+            variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP;
+        if (variation_arp) {
+          arp.enabled = true;
+          arp.length = std::max<uint32_t>(
+              1u,
+              std::min<uint32_t>(variation_step->arp_length, kMaxProductArpSteps));
+          arp.rate = clampFloat(
+              static_cast<float>(variation_step->arp_rate_x2) * 0.5f,
+              0.25f,
+              4.0f);
+          arp.active_mask = variation_step->arp_pulse_mask;
+          arp.reset_mask = variation_step->arp_reset_mask;
+          arp.flow = static_cast<ProductArpFlow>(
+              std::min<uint32_t>(variation_step->arp_flow, 5u));
+          arp.contour_mode = static_cast<ProductArpContourMode>(
+              std::min<uint32_t>(variation_step->arp_contour_mode, 1u));
+          arp.boundary_mode = static_cast<ProductArpBoundaryMode>(
+              std::min<uint32_t>(variation_step->arp_boundary_mode, 2u));
+          arp.fixed_midi_mode = true;
+          for (uint32_t pulse = 0u; pulse < kMaxProductArpSteps; ++pulse) {
+            arp.contour[pulse] = variation_step->arp_contour[pulse];
+            arp.slot_lane[pulse] = variation_step->arp_slot_lane[pulse];
+            const uint32_t note_index = variationArpNoteIndex(
+                *variation_step,
+                pulse,
+                lane.seed ^ static_cast<uint32_t>(relative_step));
+            arp.midi_notes[pulse] = note_index < variation_step->note_count
+                ? clampFloat(trigger_midi_note + variation_step->notes[note_index].midi_note, 0.0f, 127.0f)
+                : -1.0f;
+          }
+          // An armed local ARP starts from its first pulse at each parent
+          // trigger; the existing scheduler still handles rate, masks, flow,
+          // and the next-trigger cutoff below.
+          arp.cursor = 0u;
+          arp.runtime_initialized = false;
+        }
         // A parent trigger replaces only the phrase it owns. UI edits stage the
         // next phrase and must not erase notes already scheduled for this one.
-        clearPendingArpRatchets(lane);
+        clearPendingArpRatchets(lane, event_sample);
         const uint32_t arp_length = std::max(1u, std::min<uint32_t>(arp.length, kMaxProductArpSteps));
-        const uint64_t window_end = productArpWindowEndSample(
+        uint64_t window_end = productArpWindowEndSample(
             *this,
             lane,
             relative_step,
@@ -2248,6 +2619,12 @@ class ScopedSequencerAudibilityGate {
             samples_per_step,
             swing_samples,
             nudge_active_count);
+        if (variation_arp && variation_step->arp_span_steps > 0.0f) {
+          const uint64_t span_end = event_sample + static_cast<uint64_t>(std::max<double>(
+              1.0,
+              std::llround(samples_per_step * variation_step->arp_span_steps)));
+          window_end = std::min(window_end, span_end);
+        }
         const uint64_t fallback_window_samples = static_cast<uint64_t>(std::max<int64_t>(
             1,
             std::llround(samples_per_step)));
@@ -2268,7 +2645,13 @@ class ScopedSequencerAudibilityGate {
           const uint32_t arp_step = arp.cursor % arp_length;
           const bool arp_step_active = (arp.active_mask & (1u << arp_step)) != 0u;
           const float arp_midi_note = arp_step_active
-              ? resolveProductArpMidi(*this, lane, lane_index, arp_step, sequenced_midi_note)
+              ? (variation_arp
+                  ? resolveVariationArpMidi(
+                      *variation_step,
+                      trigger_midi_note,
+                      arp_step,
+                      lane.seed ^ static_cast<uint32_t>(relative_step))
+                  : resolveProductArpMidi(*this, lane, lane_index, arp_step, sequenced_midi_note))
               : -1.0f;
           const uint64_t arp_sample = productArpSlotSample(
               event_sample,
@@ -2285,7 +2668,13 @@ class ScopedSequencerAudibilityGate {
                 1u,
                 arp_sample,
                 arp_step,
-                arp.slot_lane[arp_step] >= 0 && productHarmonySlotHasPool(*this, arp.slot_lane[arp_step]));
+                !variation_arp && arp.slot_lane[arp_step] >= 0 && productHarmonySlotHasPool(*this, arp.slot_lane[arp_step]),
+                variation_arp && variation_step->note_count > 0u
+                  ? variation_step->notes[variationArpNoteIndex(
+                      *variation_step,
+                      arp_step,
+                      lane.seed ^ static_cast<uint32_t>(relative_step))].gate_beats
+                  : 0.0f);
           }
           advanceProductArpCursor(arp);
           ++emitted_arp_slots;
@@ -2327,7 +2716,7 @@ class ScopedSequencerAudibilityGate {
   }
 }
 
-  void KesshoProductEngine::generateSequencerEvents(uint32_t frames, bool include_inactive_sources) {
+void KesshoProductEngine::generateSequencerEvents(uint32_t frames, bool include_inactive_sources) {
   sequencer_events.clear();
   if (!transport.running) {
     // Realtime Anchor Walker gestures are playable independently of transport.

@@ -265,7 +265,7 @@ function hasSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum' 
   const masterKey = prefix === 'drum' ? 'drumEuclidMasterEnabled' : 'synthEuclideanMasterEnabled';
   const structuredKeys = prefix === 'drum'
     ? new Set(['drumSequencerChain'])
-    : new Set(['synthSequencerFaces', 'synthSequencerChain']);
+    : new Set(['synthSequencerFaces', 'synthSequencerChain', 'synthSequenceVariationBanks']);
   return masterKey in data
     || Object.keys(data).some((key) => (
       key.startsWith(`${prefix}Euclid`)
@@ -286,6 +286,7 @@ function pickSpecificEuclideanData(data: Record<string, unknown>, prefix: 'drum'
       || key === 'synthEuclideanTempo'
       || key === 'synthSequencerFaces'
       || key === 'synthSequencerChain'
+      || key === 'synthSequenceVariationBanks'
     );
     if (
       isDrumKey

@@ -133,37 +133,110 @@ public:
       return;
     }
 
-    reverb_instance_set_type(instance_, static_cast<int>(params_[kParamType]));
-    reverb_instance_set_quality(instance_, static_cast<int>(params_[kParamQuality]));
-    reverb_instance_set_params(
-        instance_,
-        params_[kParamDecay],
-        params_[kParamSize],
-        params_[kParamDamping],
-        params_[kParamDiffusion],
-        params_[kParamModulation],
-        params_[kParamPredelay],
-        params_[kParamWidth]);
-    reverb_instance_set_shimmer(instance_, params_[kParamShimmerAmount], params_[kParamShimmerPitch]);
-    reverb_instance_set_slow_mod(instance_, params_[kParamSlowRate], params_[kParamSlowDepth]);
-    reverb_instance_set_reverse(instance_, params_[kParamReverseAmount], params_[kParamReverseLength]);
-    reverb_instance_set_chorus(instance_, params_[kParamChorusRate], params_[kParamChorusDepth]);
-    reverb_instance_set_mod_character(instance_, static_cast<int>(params_[kParamModCharacter]));
-    reverb_instance_set_multiband_damp(
-        instance_,
-        params_[kParamDampLow],
-        params_[kParamDampHigh],
-        params_[kParamCrossover]);
-    reverb_instance_set_input_tone(instance_, params_[kParamInputTone]);
-    reverb_instance_set_shimmer_feedback(instance_, params_[kParamShimmerFeedback]);
-    reverb_instance_set_warp(instance_, params_[kParamWarp]);
-    reverb_instance_set_cross_feed(instance_, params_[kParamCrossFeed]);
-    reverb_instance_set_early_reflections(instance_, params_[kParamEarlyReflections]);
-    reverb_instance_set_air_absorption(instance_, params_[kParamAirAbsorption]);
-    reverb_instance_set_saturation_mode(instance_, static_cast<int>(params_[kParamSaturationMode]));
-    reverb_instance_set_transient_smooth(instance_, params_[kParamTransientSmooth]);
-    reverb_instance_set_er_lp_freq(instance_, params_[kParamErLpFreq]);
-    reverb_instance_set_bloom(instance_, params_[kParamBloom]);
+    const bool full_commit = !committed_params_valid_;
+    const auto changed = [&](int index) -> bool {
+      return full_commit || params_[index] != committed_params_[index];
+    };
+    const auto changed_range = [&](int start, int count) -> bool {
+      if (full_commit) {
+        return true;
+      }
+      for (int index = 0; index < count; ++index) {
+        if (params_[start + index] != committed_params_[start + index]) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // updatePreset reads type, quality, decay, size, diffusion, warp and bloom;
+    // updatePredelay reads predelay. Sample rate and scale are fixed at prepare.
+    const bool preset_dependencies_changed =
+        changed(kParamType) ||
+        changed(kParamQuality) ||
+        changed(kParamDecay) ||
+        changed(kParamSize) ||
+        changed(kParamDiffusion) ||
+        changed(kParamWarp) ||
+        changed(kParamBloom);
+    const bool predelay_dependency_changed = changed(kParamPredelay);
+    const bool needs_derived_update_batch =
+        preset_dependencies_changed || predelay_dependency_changed;
+    if (needs_derived_update_batch) {
+      reverb_instance_begin_parameter_update(instance_);
+    }
+    if (changed(kParamType)) {
+      reverb_instance_set_type(instance_, static_cast<int>(params_[kParamType]));
+    }
+    if (changed(kParamQuality)) {
+      reverb_instance_set_quality(instance_, static_cast<int>(params_[kParamQuality]));
+    }
+    if (changed_range(kParamDecay, 7)) {
+      reverb_instance_set_params(
+          instance_,
+          params_[kParamDecay],
+          params_[kParamSize],
+          params_[kParamDamping],
+          params_[kParamDiffusion],
+          params_[kParamModulation],
+          params_[kParamPredelay],
+          params_[kParamWidth]);
+    }
+    if (changed_range(kParamShimmerAmount, 2)) {
+      reverb_instance_set_shimmer(instance_, params_[kParamShimmerAmount], params_[kParamShimmerPitch]);
+    }
+    if (changed_range(kParamSlowRate, 2)) {
+      reverb_instance_set_slow_mod(instance_, params_[kParamSlowRate], params_[kParamSlowDepth]);
+    }
+    if (changed_range(kParamReverseAmount, 2)) {
+      reverb_instance_set_reverse(instance_, params_[kParamReverseAmount], params_[kParamReverseLength]);
+    }
+    if (changed_range(kParamChorusRate, 2)) {
+      reverb_instance_set_chorus(instance_, params_[kParamChorusRate], params_[kParamChorusDepth]);
+    }
+    if (changed(kParamModCharacter)) {
+      reverb_instance_set_mod_character(instance_, static_cast<int>(params_[kParamModCharacter]));
+    }
+    if (changed_range(kParamDampLow, 3)) {
+      reverb_instance_set_multiband_damp(
+          instance_,
+          params_[kParamDampLow],
+          params_[kParamDampHigh],
+          params_[kParamCrossover]);
+    }
+    if (changed(kParamInputTone)) {
+      reverb_instance_set_input_tone(instance_, params_[kParamInputTone]);
+    }
+    if (changed(kParamShimmerFeedback)) {
+      reverb_instance_set_shimmer_feedback(instance_, params_[kParamShimmerFeedback]);
+    }
+    if (changed(kParamWarp)) {
+      reverb_instance_set_warp(instance_, params_[kParamWarp]);
+    }
+    if (changed(kParamCrossFeed)) {
+      reverb_instance_set_cross_feed(instance_, params_[kParamCrossFeed]);
+    }
+    if (changed(kParamEarlyReflections)) {
+      reverb_instance_set_early_reflections(instance_, params_[kParamEarlyReflections]);
+    }
+    if (changed(kParamAirAbsorption)) {
+      reverb_instance_set_air_absorption(instance_, params_[kParamAirAbsorption]);
+    }
+    if (changed(kParamSaturationMode)) {
+      reverb_instance_set_saturation_mode(instance_, static_cast<int>(params_[kParamSaturationMode]));
+    }
+    if (changed(kParamTransientSmooth)) {
+      reverb_instance_set_transient_smooth(instance_, params_[kParamTransientSmooth]);
+    }
+    if (changed(kParamErLpFreq)) {
+      reverb_instance_set_er_lp_freq(instance_, params_[kParamErLpFreq]);
+    }
+    if (changed(kParamBloom)) {
+      reverb_instance_set_bloom(instance_, params_[kParamBloom]);
+    }
+    if (needs_derived_update_batch) {
+      reverb_instance_end_parameter_update(instance_);
+    }
     committed_params_ = params_;
     committed_params_valid_ = true;
   }

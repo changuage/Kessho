@@ -104,7 +104,8 @@ export class CoreProductAssetRegistrar {
   }
 
   unregisterAsset(assetId: number): void {
-    if (!this.registeredAssetIds.has(assetId) || this.pendingReleaseAssetIds.has(assetId)) return;
+    if ((!this.registeredAssetIds.has(assetId) && !this.pendingRegistrationPromises.has(assetId))
+      || this.pendingReleaseAssetIds.has(assetId)) return;
     this.pendingReleaseAssetIds.add(assetId);
     this.runtime.requestAssetRelease(assetId);
   }

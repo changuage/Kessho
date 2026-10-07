@@ -25,7 +25,7 @@ type CoreProductSnapshotLoadOptions = {
   metadata?: Omit<ProductRuntimeSnapshotMetadata, 'encodedSnapshotHash'>;
   awaitAudioThreadAck?: boolean;
   nowMs: () => number;
-  afterLoad?: () => void;
+  afterLoad?: () => void | Promise<void>;
 };
 
 export type CoreProductFullSnapshotResult = {
@@ -52,7 +52,7 @@ export type CoreProductSnapshotUpdateOptions = {
   metadata?: Omit<ProductRuntimeSnapshotMetadata, 'encodedSnapshotHash'>;
   awaitAudioThreadAck?: boolean;
   nowMs: () => number;
-  afterFullSnapshotLoad?: () => void;
+  afterFullSnapshotLoad?: () => void | Promise<void>;
 };
 
 export async function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOptions): Promise<CoreProductFullSnapshotResult> {
@@ -61,17 +61,21 @@ export async function loadCoreProductSnapshot(options: CoreProductSnapshotLoadOp
   const metadata = options.awaitAudioThreadAck && options.metadata
     ? { ...options.metadata, encodedSnapshotHash: fnv1a32Bytes(encodedSnapshot) }
     : undefined;
+  const awaitReceipt = options.awaitAudioThreadAck === true;
   logEncodedSnapshotForDebug(options.snapshot, options.reason, encodedSnapshot, options.metadata);
-  const receiptPromise = options.awaitAudioThreadAck
-    ? options.runtime.loadSnapshot(encodedSnapshot, metadata)
-    : options.runtime.loadSnapshot(encodedSnapshot);
-  const receipt = options.awaitAudioThreadAck ? await receiptPromise : undefined;
-  if (!options.awaitAudioThreadAck) {
+  let receiptPromise: Promise<ProductSnapshotAppliedReceipt>;
+  if (metadata !== undefined) {
+    receiptPromise = options.runtime.loadSnapshot(encodedSnapshot, metadata);
+  } else {
+    receiptPromise = options.runtime.loadSnapshot(encodedSnapshot);
+  }
+  const receipt = awaitReceipt ? await receiptPromise : undefined;
+  if (!awaitReceipt) {
     void receiptPromise.catch((error: unknown) => {
       console.warn('Core Product snapshot application failed after host post:', error);
     });
   }
-  options.afterLoad?.();
+  await options.afterLoad?.();
   return {
     mode: 'full-snapshot',
     snapshot: options.snapshot,

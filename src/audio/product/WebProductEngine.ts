@@ -32,6 +32,8 @@ import type {
   ProductPerfSnapshot,
   ProductRange,
   ProductRangeMap,
+  ProductRecordedNoteCaptureBatch,
+  ProductRecordedNoteCaptureRequest,
   ProductRuntimeModulationRangeMap,
   ProductResolvedStateCommit,
   ProductStateRecord,
@@ -49,6 +51,7 @@ import type {
   ProductSynthNoteRangeEvolvedCallback,
   ProductTelemetrySnapshot,
 } from './ProductEngineTypes';
+import type { SynthSequenceVariationBank } from '../../ui/sequencer/synthSequenceVariations';
 
 const PRODUCT_EVENT_BATCH_SIZE = 24;
 const PRODUCT_EVENT_BATCH_RETRY_MS = 40;
@@ -161,6 +164,34 @@ export class WebProductEngine implements ProductEnginePort {
       this.flushPendingProductEvents();
     }
     this.scheduleDiagnosticsPublish();
+  }
+
+  subscribeRecordedNoteCapture(
+    listener: (batch: ProductRecordedNoteCaptureBatch) => void,
+  ): () => void {
+    return coreProductRuntimeHostPort.subscribeRecordedNoteCapture(listener);
+  }
+
+  setRecordedNoteCapture(request: ProductRecordedNoteCaptureRequest): void {
+    coreProductRuntimeHostPort.setRecordedNoteCapture(request);
+  }
+
+  getRecordedNoteCaptureClockBeat(): number | null {
+    return coreProductRuntimeHostPort.getRecordedNoteCaptureClockBeat();
+  }
+
+  commitSynthSequenceVariationBank(laneIndex: number, bank: SynthSequenceVariationBank | null): Promise<boolean> {
+    return coreProductRuntimeHostPort.commitSynthSequenceVariationBank(laneIndex, bank);
+  }
+
+  getActiveSynthSequenceVariationIndices(): readonly (number | null)[] {
+    return coreProductRuntimeHostPort.getActiveSynthSequenceVariationIndices();
+  }
+
+  subscribeSynthSequenceVariationRuntime(
+    listener: (indices: readonly (number | null)[]) => void,
+  ): () => void {
+    return coreProductRuntimeHostPort.subscribeSynthSequenceVariationRuntime(listener);
   }
 
   private canFlushPendingProductEvents(): boolean {

@@ -871,6 +871,177 @@ void requireGlobalAutoCycleSuspendedHostFixture() {
   require(std::fabs(engine->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level - 0.2f) < 1.0e-6f,
       "auto-cycle MorphBA did not restore endpoint A");
 
+  KesshoProductEngine* replacement = kessho_product_create(sample_rate, max_block, 0u);
+  require(replacement != nullptr, "auto-cycle replacement engine creation failed");
+  require(kessho_product_load_snapshot_v2(replacement, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "auto-cycle replacement snapshot load failed");
+  replacement->transport.phrase_seconds = 0.1f;
+  const auto uploadReplacement = [&](uint32_t revision,
+                                     float value_a,
+                                     float value_b,
+                                     uint32_t direction,
+                                     float command_root) {
+    KesshoProductEvent begin{};
+    begin.event_kind = KESSHO_PRODUCT_EVENT_KIND_BEGIN_SCENE_PROGRAM;
+    begin.value = 1.0f;
+    begin.value2 = 1.0f;
+    begin.value3 = static_cast<float>(revision);
+    replacement->beginSceneProgram(begin);
+
+    KesshoProductEvent entry{};
+    entry.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_ENTRY;
+    entry.target_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    entry.index = 0u;
+    entry.param_id = KESSHO_PRODUCT_PARAM_SOURCE_LEVEL_ID;
+    entry.value = value_a;
+    entry.value2 = value_b;
+    entry.value3 = 0.5f;
+    entry.value4 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_PARAM);
+    entry.flags = static_cast<uint32_t>(ProductSceneInterpolation::Linear);
+    replacement->setSceneProgramEntry(entry);
+
+    KesshoProductEvent header{};
+    header.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_HEADER;
+    header.index = 0u;
+    header.value2 = 0.5f;
+    header.value3 = static_cast<float>(KESSHO_PRODUCT_EVENT_KIND_SET_HARMONY_ROOT);
+    header.value4 = static_cast<float>(direction);
+    replacement->setSceneProgramCommandHeader(header);
+    KesshoProductEvent values{};
+    values.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SCENE_COMMAND_VALUES;
+    values.index = 0u;
+    values.value = command_root;
+    replacement->setSceneProgramCommandValues(values);
+    replacement->commitSceneProgram();
+  };
+
+  uploadReplacement(11u, 0.2f, 0.8f, KESSHO_PRODUCT_SCENE_COMMAND_FORWARD, 72.0f);
+  KesshoProductEvent replacement_config{};
+  replacement_config.event_kind = KESSHO_PRODUCT_EVENT_KIND_CONFIGURE_GLOBAL_AUTO_CYCLE;
+  replacement_config.value = 0.4f;
+  replacement_config.value2 = 1.0f;
+  replacement_config.value3 = 0.5f;
+  replacement_config.value4 = 11.0f;
+  replacement_config.flags = 1u;
+  replacement->configureGlobalAutoCycle(replacement_config);
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(replacement->auto_cycle_runtime.phase == ProductAutoCyclePhase::Hold &&
+          replacement->auto_cycle_runtime.phase_start_frame == 0u &&
+          replacement->auto_cycle_runtime.phase_end_frame == 100u &&
+          replacement->auto_cycle_runtime.next_position_frame == 100u &&
+          replacement->auto_cycle_runtime.transition_count == 0u,
+      "auto-cycle replacement fixture did not start in the expected hold");
+  const auto hold_phase = replacement->auto_cycle_runtime.phase;
+  const uint64_t hold_start = replacement->auto_cycle_runtime.phase_start_frame;
+  const uint64_t hold_end = replacement->auto_cycle_runtime.phase_end_frame;
+  const uint64_t hold_next_position = replacement->auto_cycle_runtime.next_position_frame;
+  const float hold_position = replacement->auto_cycle_runtime.position;
+  const float hold_entry_start = replacement->auto_cycle_runtime.entry_start_position;
+  const float hold_entry_target = replacement->auto_cycle_runtime.entry_target_position;
+  const uint32_t hold_transitions = replacement->auto_cycle_runtime.transition_count;
+  uploadReplacement(23u, 0.6f, 0.9f, KESSHO_PRODUCT_SCENE_COMMAND_FORWARD, 84.0f);
+  require(replacement->auto_cycle_runtime.phase == hold_phase &&
+          replacement->auto_cycle_runtime.phase_start_frame == hold_start &&
+          replacement->auto_cycle_runtime.phase_end_frame == hold_end &&
+          replacement->auto_cycle_runtime.next_position_frame == hold_next_position &&
+          replacement->auto_cycle_runtime.position == hold_position &&
+          replacement->auto_cycle_runtime.entry_start_position == hold_entry_start &&
+          replacement->auto_cycle_runtime.entry_target_position == hold_entry_target &&
+          replacement->auto_cycle_runtime.transition_count == hold_transitions,
+      "auto-cycle replacement changed phase timing while holding");
+  require(replacement->auto_cycle_runtime.revision == 23u &&
+          replacement->scene_program_runtime.buffers[replacement->scene_program_runtime.active_buffer].revision == 23u,
+      "auto-cycle replacement revisions were not installed coherently");
+  replacement->scheduleSceneRuntimeEvents();
+  require(std::fabs(replacement->sources[KESSHO_PRODUCT_SOURCE_PAD1 - 1u].level - 0.72f) < 1.0e-6f,
+      "auto-cycle hold replacement did not apply the new scene target");
+  require(std::fabs(replacement->harmony.root_midi - 60.0f) < 1.0e-6f,
+      "auto-cycle hold replacement fired a midpoint command early");
+
+  replacement->transport.sample_frame = 150u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  replacement->transport.sample_frame = 250u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  replacement->transport.sample_frame = 275u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(replacement->auto_cycle_runtime.phase == ProductAutoCyclePhase::MorphAB &&
+          replacement->auto_cycle_runtime.phase_start_frame == 250u &&
+          replacement->auto_cycle_runtime.phase_end_frame == 300u &&
+          replacement->auto_cycle_runtime.transition_count == 3u,
+      "auto-cycle replacement did not continue through forward travel");
+  require(std::fabs(replacement->harmony.root_midi - 84.0f) < 1.0e-6f,
+      "auto-cycle replacement forward boundary command did not fire");
+
+  replacement->transport.sample_frame = 300u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  replacement->transport.sample_frame = 400u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  replacement->transport.sample_frame = 424u;
+  replacement->scheduleGlobalAutoCycle();
+  const auto reverse_phase = replacement->auto_cycle_runtime.phase;
+  const uint64_t reverse_start = replacement->auto_cycle_runtime.phase_start_frame;
+  const uint64_t reverse_end = replacement->auto_cycle_runtime.phase_end_frame;
+  const uint64_t reverse_next_position = replacement->auto_cycle_runtime.next_position_frame;
+  const uint32_t reverse_transitions = replacement->auto_cycle_runtime.transition_count;
+  require(reverse_phase == ProductAutoCyclePhase::MorphBA && reverse_start == 400u && reverse_end == 450u,
+      "auto-cycle replacement fixture did not reach reverse travel");
+  uploadReplacement(29u, 0.3f, 0.9f, KESSHO_PRODUCT_SCENE_COMMAND_REVERSE, 24.0f);
+  require(replacement->auto_cycle_runtime.phase == reverse_phase &&
+          replacement->auto_cycle_runtime.phase_start_frame == reverse_start &&
+          replacement->auto_cycle_runtime.phase_end_frame == reverse_end &&
+          replacement->auto_cycle_runtime.next_position_frame == reverse_next_position &&
+          replacement->auto_cycle_runtime.transition_count == reverse_transitions &&
+          replacement->auto_cycle_runtime.revision == 29u,
+      "auto-cycle reverse replacement changed phase timing");
+  replacement->scheduleSceneRuntimeEvents();
+  require(std::fabs(replacement->harmony.root_midi - 84.0f) < 1.0e-6f,
+      "auto-cycle reverse replacement fired a midpoint command at install");
+  replacement->transport.sample_frame = 425u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(std::fabs(replacement->harmony.root_midi - 84.0f) < 1.0e-6f,
+      "auto-cycle reverse replacement fired its command before crossing");
+  replacement->transport.sample_frame = 426u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(replacement->auto_cycle_runtime.phase == ProductAutoCyclePhase::MorphBA &&
+          replacement->auto_cycle_runtime.phase_start_frame == reverse_start &&
+          replacement->auto_cycle_runtime.phase_end_frame == reverse_end &&
+          replacement->auto_cycle_runtime.transition_count == reverse_transitions &&
+          replacement->auto_cycle_runtime.position < 0.5f &&
+          std::fabs(replacement->harmony.root_midi - 24.0f) < 1.0e-6f,
+      "auto-cycle reverse replacement did not continue through its new boundary");
+  replacement->harmony.root_midi = -99.0f;
+  replacement->scheduleSceneRuntimeEvents();
+  require(std::fabs(replacement->harmony.root_midi + 99.0f) < 1.0e-6f,
+      "auto-cycle reverse midpoint command duplicated after crossing");
+  replacement->transport.sample_frame = 430u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(std::fabs(replacement->harmony.root_midi + 99.0f) < 1.0e-6f,
+      "auto-cycle reverse midpoint command replayed below the crossing");
+  replacement->transport.sample_frame = 450u;
+  replacement->scheduleGlobalAutoCycle();
+  replacement->scheduleSceneRuntimeEvents();
+  require(replacement->auto_cycle_runtime.phase == ProductAutoCyclePhase::PlayA &&
+          replacement->auto_cycle_runtime.transition_count == reverse_transitions + 1u,
+      "auto-cycle reverse replacement did not reach the next phase");
+  require(kessho_product_refresh_telemetry(replacement) == KESSHO_PRODUCT_OK,
+      "auto-cycle replacement telemetry refresh failed");
+  replacement->finishRealtimeTelemetryBlock(0u);
+  const KesshoProductTelemetry replacement_telemetry = kessho_product_get_telemetry(replacement);
+  require(replacement_telemetry.scene_program_revision == 29u,
+      "auto-cycle replacement scene telemetry revision diverged");
+  require(replacement_telemetry.auto_cycle_revision == 29u,
+      "auto-cycle replacement auto telemetry revision diverged");
+  kessho_product_destroy(replacement);
+
   engine->transport.sample_frame = 0u;
   require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
       "auto-cycle transition-count snapshot reload failed");

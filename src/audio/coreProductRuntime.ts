@@ -1,5 +1,11 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import { cloneDecodedCoreProductAssetForTransfer, type DecodedCoreProductAsset } from './coreProductAssets';
+import { encodeSynthSequenceVariationBank } from './product/synthSequenceVariationEncoder';
+import type { SynthSequenceVariationBank } from '../ui/sequencer/synthSequenceVariations';
+import type {
+  RecordedNoteCaptureBatch,
+  RecordedNoteCaptureStartRequest,
+} from '../ui/sequencer/recordedNoteCaptureTypes';
 import type {
   ProductRuntimeSnapshotMetadata,
   ProductSnapshotAppliedReceipt,
@@ -32,13 +38,14 @@ const CORE_PRODUCT_VISUAL_TELEMETRY_MOBILE_INTERVAL_MS = 67;
 const CORE_PRODUCT_RUNTIME_ASSET_RETRY_COUNT = 2;
 const SNAPSHOT_APPLIED_TIMEOUT_MS = 4000;
 const CORE_PRODUCT_GRAPH_CAPTURE_ALLOWED =
-  import.meta.env.DEV || import.meta.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
+  import.meta.env?.DEV || import.meta.env?.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
 type RuntimeMessage =
   | { type: 'ready' }
   | { type: 'error'; message: string }
   | {
       type: 'snapshot-applied';
+      requestId?: number;
       revision: number;
       encodedSnapshotHash: string;
       workletSourceSummaryHash?: string;
@@ -47,6 +54,21 @@ type RuntimeMessage =
   | { type: 'perf'; cpuPercent: number; peakPercent: number; sequencerEventCount?: number; controlQueueDepth?: number }
   | { type: 'telemetry'; telemetry: CoreProductTelemetrySnapshot }
   | { type: 'visual-telemetry'; telemetry: CoreProductVisualTelemetrySnapshot }
+  | {
+      type: 'sequencer-variation-receipt';
+      requestId: number;
+      laneIndex: number;
+      accepted: boolean;
+      result: number;
+      revision: number;
+      activeRevision?: number;
+      error?: string;
+    }
+  | {
+      type: 'sequencer-variation-runtime';
+      activeSynthSequenceVariationIndices: readonly (number | null)[];
+    }
+  | { type: 'recorded-capture-batch'; batch: RecordedNoteCaptureBatch }
   | { type: 'graph-capture-chunk'; tapId: number; frameCount: number; left: Float32Array; right: Float32Array }
   | { type: 'graph-capture-flushed'; tapId: number; stopped?: boolean }
   | { type: 'asset-release-complete'; assetId: number }
@@ -69,10 +91,24 @@ type GraphTapCaptureSession = {
 };
 
 type PendingSnapshotReceipt = {
+  requestId: number;
   metadata: ProductRuntimeSnapshotMetadata;
   resolve: (receipt: ProductSnapshotAppliedReceipt) => void;
   reject: (error: Error) => void;
   timeout: number;
+};
+
+type PendingSequencerVariationCommit = {
+  laneIndex: number;
+  bank: SynthSequenceVariationBank | null;
+  resolve: (accepted: boolean) => void;
+  reject: (error: Error) => void;
+};
+
+type RecordedCaptureClock = {
+  contextTime: number;
+  beat: number;
+  bpm: number;
 };
 
 type WindowWithWebkitAudioContext = Window & {
@@ -135,6 +171,7 @@ export class CoreProductRuntime {
   private mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
   private mediaSessionAudio: HTMLAudioElement | null = null;
   private readyPromise: Promise<void> | null = null;
+  private rejectRuntimeInitialization: ((error: Error) => void) | null = null;
   private playbackRevision = 0;
   private playbackRequested = false;
   private readonly browserAudioSession = new ProductBrowserAudioSession(() => {
@@ -161,11 +198,21 @@ export class CoreProductRuntime {
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
   private dawOutputDeviceId: string | null = null;
   private readonly pendingSnapshotReceipts = new Map<number, PendingSnapshotReceipt>();
+  private snapshotRequestId = 0;
   private readonly pendingAssetRegistrations = new Map<number, {
     resolve: () => void;
     reject: (error: Error) => void;
     promise: Promise<void>;
   }>();
+  private sequencerVariationRequestId = 0;
+  private readonly pendingSequencerVariationCommits = new Map<number, PendingSequencerVariationCommit>();
+  private activeSynthSequenceVariationIndices: readonly (number | null)[] = [null, null, null, null];
+  private readonly synthSequenceVariationRuntimeListeners = new Set<
+    (indices: readonly (number | null)[]) => void
+  >();
+  private readonly recordedCaptureListeners = new Set<(batch: RecordedNoteCaptureBatch) => void>();
+  private nativeRecordedCaptureUnsubscribe: (() => void) | null = null;
+  private recordedCaptureClock: RecordedCaptureClock | null = null;
   private readonly graphTapCaptureSessions = new Map<number, GraphTapCaptureSession>();
   private readonly handleVisibilityChange = (): void => {
     const hidden = !this.isDocumentVisible();
@@ -213,21 +260,27 @@ export class CoreProductRuntime {
       return;
     }
 
-    this.readyPromise = this.initializeRuntime().catch((error: unknown) => {
-      this.readyPromise = null;
+    const ready = this.initializeRuntime().catch((error: unknown) => {
+      if (this.readyPromise === ready) this.readyPromise = null;
       throw error;
     });
-    await this.readyPromise;
+    this.readyPromise = ready;
+    await ready;
   }
 
   private async initializeRuntime(): Promise<void> {
     const context = createProductAudioContext();
     this.context = context;
+    const assertCurrentContext = () => {
+      if (this.context !== context) throw new Error('Core Product runtime disposed during initialization');
+    };
     if (this.nativeRuntime) {
       // Native AVAudioEngine owns the only realtime render path. Keep Web Audio
       // suspended; it remains available solely for decodeAudioData.
       if (context.state === 'running') await context.suspend();
+      assertCurrentContext();
       await this.nativeRuntime.prepare();
+      assertCurrentContext();
       this.bindVisibilityTelemetrySync();
       this.syncTelemetryLoop();
       this.syncVisualTelemetryLoop();
@@ -239,6 +292,7 @@ export class CoreProductRuntime {
     if (this.dawOutputDeviceId) {
       await this.applyDawOutputDeviceId(context);
     }
+    assertCurrentContext();
     const embeddedAssets = (window as WindowWithEmbeddedProductCoreAssets)
       .__pointCloudsEmbeddedProductCoreAssets;
     const base = embeddedAssets
@@ -265,6 +319,7 @@ export class CoreProductRuntime {
         context.audioWorklet.addModule(productAssetUrl('worklets/kessho-core-product.worklet.js', attempt))
       );
     }
+    assertCurrentContext();
     this.publishParityStartupPhase('worklet-module-loaded');
     const wasmUrl = embeddedAssets
       ? selectEmbeddedProductCoreAssetUrl(
@@ -284,15 +339,22 @@ export class CoreProductRuntime {
         if (!response.ok) throw new Error(`Failed to fetch ${wasmUrl}: ${response.status}`);
         return response.arrayBuffer();
       });
+    assertCurrentContext();
     this.publishParityStartupPhase('wasm-fetched');
 
     await new Promise<void>((resolve, reject) => {
+      this.rejectRuntimeInitialization = reject;
       const node = this.createProductWorkletNode(context, wasmBinary, wasmUrl.toString());
       this.publishParityStartupPhase('worklet-node-created');
       const outputGain = context.createGain();
       outputGain.gain.value = 1;
       this.configureOutputNode(outputGain);
       this.node = node;
+      const publishAssetRenderState = () => node.port.postMessage({
+        type: 'asset-render-state', active: context.state === 'running',
+      });
+      context.addEventListener('statechange', publishAssetRenderState);
+      publishAssetRenderState();
       this.outputGain = outputGain;
       this.bindVisibilityTelemetrySync();
       node.port.postMessage({ type: 'host-visibility', hidden: !this.isDocumentVisible() });
@@ -302,6 +364,7 @@ export class CoreProductRuntime {
       node.port.onmessage = (event: MessageEvent<RuntimeMessage>) => {
         const message = event.data;
         if (message.type === 'ready') {
+          this.rejectRuntimeInitialization = null;
           this.publishParityStartupPhase('ready');
           this.postDawOutputRouting();
           this.syncMeterDemand();
@@ -324,11 +387,40 @@ export class CoreProductRuntime {
             session.resolveFlush = null;
             session.rejectFlush = null;
           }
+          this.rejectRuntimeInitialization = null;
           reject(runtimeError);
           return;
         }
         if (message.type === 'snapshot-applied') {
           this.handleSnapshotApplied(message);
+          return;
+        }
+        if (message.type === 'sequencer-variation-receipt') {
+          const pending = this.pendingSequencerVariationCommits.get(message.requestId);
+          if (!pending) return;
+          this.pendingSequencerVariationCommits.delete(message.requestId);
+          if (!message.accepted) {
+            pending.reject(new Error(message.error ?? `Synth variation bank transaction failed: ${message.result}`));
+            return;
+          }
+          pending.resolve(true);
+          return;
+        }
+        if (message.type === 'sequencer-variation-runtime') {
+          this.activeSynthSequenceVariationIndices = Array.from(
+            { length: 4 },
+            (_, index) => {
+              const value = message.activeSynthSequenceVariationIndices[index];
+              return Number.isInteger(value) && Number(value) >= 0 && Number(value) < 4 ? Number(value) : null;
+            },
+          );
+          for (const listener of this.synthSequenceVariationRuntimeListeners) {
+            listener(this.activeSynthSequenceVariationIndices);
+          }
+          return;
+        }
+        if (message.type === 'recorded-capture-batch') {
+          this.handleRecordedCaptureBatch(message.batch);
           return;
         }
         if (message.type === 'telemetry') {
@@ -459,6 +551,8 @@ export class CoreProductRuntime {
   }
 
   dispose(): void {
+    this.rejectRuntimeInitialization?.(new Error('Core Product runtime disposed during initialization'));
+    this.rejectRuntimeInitialization = null;
     ++this.playbackRevision;
     this.playbackRequested = false;
     this.browserAudioSession.dispose();
@@ -472,11 +566,20 @@ export class CoreProductRuntime {
       this.visualTelemetryTimer = null;
     }
     this.unbindVisibilityTelemetrySync();
+    this.node?.port.postMessage({ type: 'cancel-asset-copies' });
+    // A disposed node must not settle a later session's request for the same asset.
+    if (this.node) this.node.port.onmessage = null;
     this.node?.disconnect();
     this.outputGain?.disconnect();
     this.mediaStreamDest?.disconnect();
     this.disconnectMediaSessionPlayback();
+    this.nativeRecordedCaptureUnsubscribe?.();
+    this.nativeRecordedCaptureUnsubscribe = null;
+    this.recordedCaptureListeners.clear();
     this.rejectPendingSnapshotReceipts(new Error('Core Product runtime disposed before pending snapshots were applied'));
+    const variationError = new Error('Core Product runtime disposed before pending synth variation banks were applied');
+    for (const pending of this.pendingSequencerVariationCommits.values()) pending.reject(variationError);
+    this.pendingSequencerVariationCommits.clear();
     const registrationError = new Error('Core Product runtime disposed before pending asset registrations completed');
     for (const pending of this.pendingAssetRegistrations.values()) pending.reject(registrationError);
     this.pendingAssetRegistrations.clear();
@@ -485,6 +588,7 @@ export class CoreProductRuntime {
     this.outputGain = null;
     this.mediaStreamDest = null;
     this.context = null;
+    this.recordedCaptureClock = null;
     this.readyPromise = null;
     if (context && context.state !== 'closed') {
       void context.close();
@@ -610,6 +714,113 @@ export class CoreProductRuntime {
     });
   }
 
+  async commitSynthSequenceVariationBank(
+    laneIndex: number,
+    bank: SynthSequenceVariationBank | null,
+  ): Promise<boolean> {
+    if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= 4) {
+      throw new RangeError(`Invalid synth variation lane: ${laneIndex}`);
+    }
+    await this.ensureStarted();
+    if (this.nativeRuntime) {
+      return this.nativeRuntime.commitSynthSequenceVariationBank(laneIndex, bank);
+    }
+    const requestId = ++this.sequencerVariationRequestId;
+    const node = this.requireNode('commitSynthSequenceVariationBank');
+    const payload = encodeSynthSequenceVariationBank(bank);
+    const receipt = new Promise<boolean>((resolve, reject) => {
+      this.pendingSequencerVariationCommits.set(requestId, { laneIndex, bank, resolve, reject });
+    });
+    try {
+      node.port.postMessage(
+        { type: 'sequencer-variation-bank-set', requestId, laneIndex, payload },
+        [payload],
+      );
+    } catch (error) {
+      this.pendingSequencerVariationCommits.delete(requestId);
+      throw error;
+    }
+    return receipt;
+  }
+
+  getActiveSynthSequenceVariationIndices(): readonly (number | null)[] {
+    if (this.nativeRuntime) return this.nativeRuntime.getActiveSynthSequenceVariationIndices();
+    return this.activeSynthSequenceVariationIndices;
+  }
+
+  subscribeSynthSequenceVariationRuntime(
+    listener: (indices: readonly (number | null)[]) => void,
+  ): () => void {
+    if (this.nativeRuntime) {
+      return this.nativeRuntime.subscribeSynthSequenceVariationRuntime((next) => {
+        this.activeSynthSequenceVariationIndices = next;
+        listener(next);
+      });
+    }
+    this.synthSequenceVariationRuntimeListeners.add(listener);
+    listener(this.activeSynthSequenceVariationIndices);
+    return () => this.synthSequenceVariationRuntimeListeners.delete(listener);
+  }
+
+  subscribeRecordedNoteCapture(listener: (batch: RecordedNoteCaptureBatch) => void): () => void {
+    this.recordedCaptureListeners.add(listener);
+    if (this.nativeRuntime && this.nativeRecordedCaptureUnsubscribe === null) {
+      this.nativeRecordedCaptureUnsubscribe = this.nativeRuntime.subscribeRecordedNoteCapture(
+        (batch) => this.handleRecordedCaptureBatch(batch),
+      );
+    }
+    return () => {
+      this.recordedCaptureListeners.delete(listener);
+      if (this.recordedCaptureListeners.size === 0) {
+        this.nativeRecordedCaptureUnsubscribe?.();
+        this.nativeRecordedCaptureUnsubscribe = null;
+      }
+    };
+  }
+
+  private handleRecordedCaptureBatch(batch: RecordedNoteCaptureBatch): void {
+    // Capture progress is authoritative audio-thread data and must be
+    // delivered while the document is hidden as well.
+    if (
+      typeof batch.clockContextTime === 'number' &&
+      Number.isFinite(batch.clockContextTime) &&
+      typeof batch.clockBpm === 'number' &&
+      Number.isFinite(batch.clockBpm) &&
+      batch.clockBpm > 0 &&
+      Number.isFinite(batch.clockBeat)
+    ) {
+      this.recordedCaptureClock = {
+        contextTime: batch.clockContextTime,
+        beat: batch.clockBeat,
+        bpm: batch.clockBpm,
+      };
+    }
+    for (const listener of this.recordedCaptureListeners) listener(batch);
+  }
+
+  setRecordedNoteCapture(request: RecordedNoteCaptureStartRequest): void {
+    if (this.nativeRuntime) {
+      this.nativeRuntime.setRecordedNoteCapture(request);
+      return;
+    }
+    this.requireNode('setRecordedNoteCapture').port.postMessage({ type: 'recorded-capture-control', request });
+  }
+
+  getRecordedNoteCaptureClockBeat(): number | null {
+    if (this.nativeRuntime) {
+      const native = this.nativeRuntime as MacNativeProductRuntime & {
+        getRecordedNoteCaptureClockBeat?: () => number | null;
+      };
+      return native.getRecordedNoteCaptureClockBeat?.() ?? null;
+    }
+    const context = this.context;
+    const clock = this.recordedCaptureClock;
+    if (!context || !clock) return null;
+    const elapsedSeconds = context.currentTime - clock.contextTime;
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return clock.beat;
+    return clock.beat + elapsedSeconds * clock.bpm / 60;
+  }
+
   requestTelemetryOnce(_reason: 'visibility-resume' | 'manual' = 'manual'): void {
     if (this.nativeRuntime) {
       void this.pollNativeTelemetry(false);
@@ -631,7 +842,7 @@ export class CoreProductRuntime {
     metadata?: ProductRuntimeSnapshotMetadata,
   ): Promise<ProductSnapshotAppliedReceipt> {
     if (this.nativeRuntime) {
-      return this.nativeRuntime.loadSnapshot(snapshot).then(() => ({
+      return this.nativeRuntime.loadSnapshot(snapshot, metadata).then(() => ({
         revision: metadata?.revision ?? 0,
         applied: true,
         encodedSnapshotHash: metadata?.encodedSnapshotHash ?? '',
@@ -647,23 +858,45 @@ export class CoreProductRuntime {
       });
     }
 
+    const requestId = ++this.snapshotRequestId;
+    const receiptMetadata: ProductRuntimeSnapshotMetadata = metadata ?? {
+      revision: 0,
+      reason: 'runtime-snapshot',
+      triggerCritical: true,
+      encodedSnapshotHash: '',
+    };
     const pending = new Promise<ProductSnapshotAppliedReceipt>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
-        this.pendingSnapshotReceipts.delete(metadata.revision);
+        this.pendingSnapshotReceipts.delete(requestId);
         reject(new Error(
-          `Timed out waiting for Product snapshot revision ${metadata.revision} ` +
-          `(${metadata.encodedSnapshotHash}) to be applied by the audio thread`,
+          `Timed out waiting for Product snapshot revision ${receiptMetadata.revision} ` +
+          `(${receiptMetadata.encodedSnapshotHash}) to be applied by the audio thread`,
         ));
       }, SNAPSHOT_APPLIED_TIMEOUT_MS);
-      this.pendingSnapshotReceipts.set(metadata.revision, {
-        metadata,
+      this.pendingSnapshotReceipts.set(requestId, {
+        requestId,
+        metadata: receiptMetadata,
         resolve,
         reject,
         timeout,
       });
     });
-
-    node.port.postMessage({ type: 'snapshot', snapshot, metadata }, [snapshot]);
+    const transferables: Transferable[] = [snapshot];
+    try {
+      node.port.postMessage({
+        type: 'snapshot',
+        snapshot,
+        metadata,
+        snapshotRequestId: requestId,
+      }, transferables);
+    } catch (error) {
+      const pendingReceipt = this.pendingSnapshotReceipts.get(requestId);
+      if (pendingReceipt) {
+        window.clearTimeout(pendingReceipt.timeout);
+        this.pendingSnapshotReceipts.delete(requestId);
+        pendingReceipt.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
     return pending;
   }
 
@@ -730,6 +963,7 @@ export class CoreProductRuntime {
       reject: (error) => rejectRegistration?.(error),
       promise: registration,
     });
+    node.port.postMessage({ type: 'asset-render-state', active: this.context?.state === 'running' });
     node.port.postMessage({
       type: 'register-asset',
       assetId: transferAsset.assetId,
@@ -770,11 +1004,15 @@ export class CoreProductRuntime {
       workletSourceSummaryHash: message.workletSourceSummaryHash ?? null,
       appliedAtFrame: message.appliedAtFrame ?? null,
     });
-    const pending = this.pendingSnapshotReceipts.get(message.revision);
+    const pending = typeof message.requestId === 'number'
+      ? this.pendingSnapshotReceipts.get(message.requestId)
+      : Array.from(this.pendingSnapshotReceipts.values()).find(
+          (candidate) => candidate.metadata.revision === message.revision,
+        );
     if (!pending) return;
     if (pending.metadata.encodedSnapshotHash !== message.encodedSnapshotHash) {
       window.clearTimeout(pending.timeout);
-      this.pendingSnapshotReceipts.delete(message.revision);
+      this.pendingSnapshotReceipts.delete(pending.requestId);
       pending.reject(new Error(
         `Product snapshot ack hash mismatch for revision ${message.revision}: ` +
         `expected ${pending.metadata.encodedSnapshotHash}, got ${message.encodedSnapshotHash}`,
@@ -782,9 +1020,9 @@ export class CoreProductRuntime {
       return;
     }
     window.clearTimeout(pending.timeout);
-    this.pendingSnapshotReceipts.delete(message.revision);
+    this.pendingSnapshotReceipts.delete(pending.requestId);
     pending.resolve({
-      revision: message.revision,
+      revision: pending.metadata.revision,
       applied: true,
       encodedSnapshotHash: message.encodedSnapshotHash,
       ...(message.workletSourceSummaryHash ? { workletSourceSummaryHash: message.workletSourceSummaryHash } : {}),

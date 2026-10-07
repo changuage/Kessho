@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
 import {
   createCoreProductAnchorWalkerPerformanceEvent,
   createCoreProductGeneratedSequencerCaptureEvent,
@@ -14,8 +14,13 @@ import {
   generatedCaptureStepPatchForState,
 } from './sequencer/generatedCaptureProductCommit';
 import { commitProductControlActionForProduct } from '../product-control';
+import type {
+  ProductRecordedNoteCaptureRequest,
+  ProductRecordedNoteCaptureSubscription,
+} from '../audio/product/ProductEngineTypes';
 import type { SliderState } from './state';
 import type { ProductRuntimeTelemetrySurface } from './productRuntimeConstruction';
+import type { SynthSequenceVariationBank } from './sequencer/synthSequenceVariations';
 
 export type ProductGeneratedSequencerCaptureRequest = {
   enabled: boolean;
@@ -40,6 +45,12 @@ export type ProductRuntimeSynthPageEvents = {
   commitProductGeneratedSequencerCaptureToStep: (
     commit: GeneratedCaptureStepCommit,
   ) => void;
+  setRecordedNoteCapture: (request: ProductRecordedNoteCaptureRequest) => void;
+  subscribeRecordedNoteCapture: ProductRecordedNoteCaptureSubscription;
+  recordedNoteCaptureAvailable: boolean;
+  getRecordedNoteCaptureClockBeat: () => number | null;
+  activeSynthSequenceVariationIndices: readonly (number | null)[];
+  commitSynthSequenceVariationBank: (laneIndex: number, bank: SynthSequenceVariationBank) => Promise<boolean>;
   getProductGeneratedSequencerCaptureTelemetry: () => ProductGeneratedSequencerCaptureTelemetry;
   getProductArpAudibleTelemetry: () => { steps: readonly number[]; midis: readonly number[] };
 };
@@ -134,17 +145,73 @@ export function useProductRuntimeSynthPageEvents(
     }
   }, [productRuntimeActive, stateRef]);
 
+  const setRecordedNoteCapture = useCallback((request: ProductRecordedNoteCaptureRequest): void => {
+    if (!productRuntimeActive) return;
+    productEngine.setRecordedNoteCapture(request);
+  }, [productRuntimeActive]);
+
+  const subscribeRecordedNoteCapture = useCallback<ProductRecordedNoteCaptureSubscription>((listener) => {
+    if (!productRuntimeActive) return () => undefined;
+    return productEngine.subscribeRecordedNoteCapture(listener);
+  }, [productRuntimeActive]);
+
+  const getRecordedNoteCaptureClockBeat = useCallback((): number | null => {
+    if (!productRuntimeActive) return null;
+    return productEngine.getRecordedNoteCaptureClockBeat();
+  }, [productRuntimeActive]);
+
+  const commitSynthSequenceVariationBank = useCallback((
+    laneIndex: number,
+    bank: SynthSequenceVariationBank,
+  ): Promise<boolean> => {
+    if (!productRuntimeActive) {
+      return Promise.reject(new Error('Product runtime is unavailable for synth variation bank commit'));
+    }
+    return productEngine.commitSynthSequenceVariationBank(laneIndex, bank);
+  }, [productRuntimeActive]);
+
+  const [activeSynthSequenceVariationIndices, setActiveSynthSequenceVariationIndices] = useState<readonly (number | null)[]>(
+    () => productRuntimeActive
+      ? productEngine.getActiveSynthSequenceVariationIndices()
+      : [null, null, null, null],
+  );
+
+  useEffect(() => {
+    if (!productRuntimeActive) {
+      setActiveSynthSequenceVariationIndices([null, null, null, null]);
+      return undefined;
+    }
+    return productEngine.subscribeSynthSequenceVariationRuntime((next) => {
+      setActiveSynthSequenceVariationIndices((previous) => {
+        if (previous.length === next.length && previous.every((value, index) => value === next[index])) return previous;
+        return next;
+      });
+    });
+  }, [productRuntimeActive]);
+
   return useMemo(() => ({
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
+    getRecordedNoteCaptureClockBeat,
+    activeSynthSequenceVariationIndices,
+    commitSynthSequenceVariationBank,
+    recordedNoteCaptureAvailable: productRuntimeActive,
     sendProductAnchorWalkerPerformanceEvent,
+    setRecordedNoteCapture,
     setProductGeneratedSequencerCaptureEnabled,
+    subscribeRecordedNoteCapture,
   }), [
     commitProductGeneratedSequencerCaptureToStep,
     getProductGeneratedSequencerCaptureTelemetry,
     getProductArpAudibleTelemetry,
+    getRecordedNoteCaptureClockBeat,
+    activeSynthSequenceVariationIndices,
+    commitSynthSequenceVariationBank,
+    productRuntimeActive,
     sendProductAnchorWalkerPerformanceEvent,
+    setRecordedNoteCapture,
     setProductGeneratedSequencerCaptureEnabled,
+    subscribeRecordedNoteCapture,
   ]);
 }

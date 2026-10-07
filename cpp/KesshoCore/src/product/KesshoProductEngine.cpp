@@ -5,7 +5,15 @@
   KesshoProductEngine::KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags)
       : sample_rate(in_sample_rate), max_block_size(in_max_block_size), flags(in_flags),
         journey_schedule_runtime_storage(std::make_unique<ProductJourneyScheduleRuntimeState>()),
-        journey_schedule_runtime(*journey_schedule_runtime_storage) {
+        journey_schedule_runtime(*journey_schedule_runtime_storage),
+        sequencer_variation_storage(std::make_unique<kessho::product::internal::SequencerVariationStorage>()),
+        generated_sequencer_capture_ring(
+            std::unique_ptr<kessho::product::GeneratedSequencerCaptureRing<2048>>(
+                new (std::nothrow) kessho::product::GeneratedSequencerCaptureRing<2048>())) {
+  if (!generated_sequencer_capture_ring) {
+    modules_ready = false;
+    return;
+  }
   modules_ready = prepareProductModules();
   loadDefaults();
 }
@@ -20,7 +28,7 @@
   reverb_module = kessho::core::createReverbModule();
   granular_module = kessho::core::createGranularModule();
   spectral_freeze_module = kessho::core::createSpectralFreezeModule();
-  dynamics_drift_module = kessho::core::createDynamicsDriftModule();
+  dynamics_drift_module = kessho::core::createDynamicsDriftModule(true);
   dynamics_degrade_send_module = kessho::core::createDynamicsDriftModule();
   soundscapes_module = kessho::core::createSoundscapesModule();
   if (!pad_module || !lead_modules[0] || !lead_modules[1] || !drum_module ||
@@ -80,8 +88,9 @@
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;
   generated_sequencer_capture_config = {};
-  generated_sequencer_capture_ring.reset();
+  generated_sequencer_capture_ring->reset();
   generated_sequencer_capture_event_counter = 1u;
+  generated_sequencer_capture_attack_counter = 1u;
   simple_sequencer_visual_ring.reset();
   simple_sequencer_visual_event_counter = 1u;
   resetInteractionSignals();
@@ -157,6 +166,7 @@
     drum_lanes[i].fill_count = (i == 0) ? 4u : 2u;
     drum_lanes[i].seed = rng_seed + 100u + i;
   }
+  bindSequencerVariationRuntimes();
   for (ModulationRange& range : modulation_ranges) {
     range = {};
   }
@@ -210,9 +220,7 @@
   snapshot_loaded_once = false;
   control_event_count = 0;
   fx_configuration_batch_depth = 0u;
-  fx_configuration_pending = false;
-  reverb_configuration_pending = false;
-  spectral_freeze_configuration_pending = false;
+  fx_configuration_pending_mask = 0u;
   pending_phrase_timing_event_count = 0u;
   pending_phrase_timing_apply_frame = 0u;
   sequencer_events.clear();
@@ -263,8 +271,9 @@
   journey_schedule_runtime.~ProductJourneyScheduleRuntimeState();
   new (&journey_schedule_runtime) ProductJourneyScheduleRuntimeState{};
   generated_sequencer_capture_config = {};
-  generated_sequencer_capture_ring.reset();
+  generated_sequencer_capture_ring->reset();
   generated_sequencer_capture_event_counter = 1u;
+  generated_sequencer_capture_attack_counter = 1u;
   simple_sequencer_visual_ring.reset();
   simple_sequencer_visual_event_counter = 1u;
   resetInteractionSignals();

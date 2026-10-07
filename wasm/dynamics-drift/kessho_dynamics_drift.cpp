@@ -237,6 +237,12 @@ struct DynamicsDriftState {
     int write_pos = 0;
     unsigned int rng = 0x6d2b79f5u;
     long long sample_clock = 0;
+    int master_only = 0;
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    unsigned long long test_wet_work_frames = 0;
+    unsigned long long test_master_skipped_wet_frames = 0;
+#endif
 
     float input[KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE * 2] = {0.0f};
     float output[KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE * 2] = {0.0f};
@@ -329,7 +335,7 @@ struct ScopedDynamicsDriftState {
 
 #define g dynamics_drift_current_state()
 
-void init_dynamics_drift_state(DynamicsDriftState& state, float sample_rate) {
+void init_dynamics_drift_state(DynamicsDriftState& state, float sample_rate, int master_only = 0) {
     std::memset(&state, 0, sizeof(state));
     state.sample_rate = std::isfinite(sample_rate) && sample_rate > 1000.0f ? sample_rate : 44100.0f;
     state.delay_size = static_cast<int>(std::fmin(static_cast<float>(kDelayMaxSamples), state.sample_rate * 0.12f));
@@ -344,6 +350,7 @@ void init_dynamics_drift_state(DynamicsDriftState& state, float sample_rate) {
     state.two_band_low_gain = 1.0f;
     state.two_band_high_gain = 1.0f;
     state.rng = 0x9e3779b9u ^ static_cast<unsigned int>(state.sample_rate);
+    state.master_only = master_only != 0 ? 1 : 0;
 }
 
 float rand01() {
@@ -436,6 +443,52 @@ void process_master_saturation(float& l, float& r, const float* p) {
     r = kessho::product::saturation::process(in_r, params, g.master_sat_state_r, g.sample_rate);
 }
 
+struct MasterChainPrepared {
+    float end_rms_coeff = 0.0f;
+    float end_makeup = 1.0f;
+    float clarity_attack_coeff = 0.0f;
+    float clarity_release_coeff = 0.0f;
+    float two_band_split_alpha = 0.0f;
+    float two_band_low_attack_coeff = 0.0f;
+    float two_band_low_release_coeff = 0.0f;
+    float two_band_high_attack_coeff = 0.0f;
+    float two_band_high_release_coeff = 0.0f;
+    float two_band_high_makeup = 1.0f;
+};
+
+MasterChainPrepared prepare_master_chain(const float* p) {
+    MasterChainPrepared prepared;
+    const bool end_chain_active = !(p[P_END_COMP_ACTIVE] < 0.5f || p[P_END_COMP_MIX] <= 0.0001f);
+    if (end_chain_active) {
+        prepared.end_rms_coeff = smooth_coeff(0.010f, g.sample_rate);
+        const float auto_makeup_db = std::fmax(
+            0.0f,
+            (-p[P_END_COMP_THRESHOLD] - 12.0f) *
+                (1.0f - 1.0f / std::fmax(1.0f, p[P_END_COMP_RATIO])) * 0.34f);
+        prepared.end_makeup =
+            p[P_END_COMP_MAKEUP] * db_to_gain(auto_makeup_db * clamp01(p[P_END_COMP_AUTO_MAKEUP]));
+    }
+
+    const float clarity_amount = clamp01(p[P_END_COMP_CLARITY]);
+    if (clarity_amount > 0.0001f) {
+        prepared.clarity_attack_coeff = smooth_coeff(0.026f, g.sample_rate);
+        prepared.clarity_release_coeff = smooth_coeff(0.160f, g.sample_rate);
+    }
+
+    const int mode = static_cast<int>(std::round(p[P_END_COMP_MODE]));
+    const float amount = clamp01(p[P_END_COMP_TWO_BAND_AMOUNT]);
+    if (mode == 4 && amount > 0.001f) {
+        const float split_hz = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
+        prepared.two_band_split_alpha = one_pole_coeff(split_hz, g.sample_rate);
+        prepared.two_band_low_attack_coeff = smooth_coeff(0.032f, g.sample_rate);
+        prepared.two_band_low_release_coeff = smooth_coeff(0.220f, g.sample_rate);
+        prepared.two_band_high_attack_coeff = smooth_coeff(0.014f, g.sample_rate);
+        prepared.two_band_high_release_coeff = smooth_coeff(0.120f, g.sample_rate);
+        prepared.two_band_high_makeup = db_to_gain(1.2f * clarity_amount);
+    }
+    return prepared;
+}
+
 void update_end_detector_filter(const float* p) {
     const float hp_hz = clampf(p[P_END_COMP_DETECTOR_HP_HZ], 8.0f, g.sample_rate * 0.35f);
     if (std::fabs(hp_hz - g.end_detector_hp_cache) <= 0.05f) return;
@@ -458,7 +511,12 @@ float compute_compressor_gain_db(float level_db, float threshold, float knee, fl
     return compressed_db - level_db;
 }
 
-void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
+void process_end_chain(
+    float& l,
+    float& r,
+    const float* p,
+    float attack_coeff,
+    const MasterChainPrepared& prepared) {
     if (p[P_END_COMP_ACTIVE] < 0.5f || p[P_END_COMP_MIX] <= 0.0001f) return;
     update_end_detector_filter(p);
     const float dry_l = l;
@@ -469,7 +527,7 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     const float hp_r = g.end_detector_hp_r.process(r);
     const float hp_peak = std::fmax(std::fabs(hp_l), std::fabs(hp_r));
 
-    const float rms_coeff = smooth_coeff(0.010f, g.sample_rate);
+    const float rms_coeff = prepared.end_rms_coeff;
     g.end_rms += (raw_peak * raw_peak - g.end_rms) * rms_coeff;
     g.end_hp_rms += (hp_peak * hp_peak - g.end_hp_rms) * rms_coeff;
     const float raw_rms = std::sqrt(std::fmax(g.end_rms, 1.0e-12f));
@@ -499,10 +557,8 @@ void process_end_chain(float& l, float& r, const float* p, float attack_coeff) {
     g.end_comp_gain += (target_gain - g.end_comp_gain) * coeff;
     g.telemetry[T_END_GR_DB] = std::fmax(g.telemetry[T_END_GR_DB], -gain_to_db(std::fmin(1.0f, g.end_comp_gain)));
 
-    const float auto_makeup_db = std::fmax(0.0f, (-p[P_END_COMP_THRESHOLD] - 12.0f) * (1.0f - 1.0f / std::fmax(1.0f, p[P_END_COMP_RATIO])) * 0.34f);
-    const float makeup = p[P_END_COMP_MAKEUP] * db_to_gain(auto_makeup_db * clamp01(p[P_END_COMP_AUTO_MAKEUP]));
-    const float wet_l = dry_l * g.end_comp_gain * makeup;
-    const float wet_r = dry_r * g.end_comp_gain * makeup;
+    const float wet_l = dry_l * g.end_comp_gain * prepared.end_makeup;
+    const float wet_r = dry_r * g.end_comp_gain * prepared.end_makeup;
     const float mix = clamp01(p[P_END_COMP_MIX]);
     l = dry_l + (wet_l - dry_l) * mix;
     r = dry_r + (wet_r - dry_r) * mix;
@@ -517,7 +573,11 @@ void update_clarity_filter() {
     set_highpass(g.clarity_hp_r, clarity_hz, 0.707f, g.sample_rate);
 }
 
-void process_clarity_lift(float& l, float& r, const float* p) {
+void process_clarity_lift(
+    float& l,
+    float& r,
+    const float* p,
+    const MasterChainPrepared& prepared) {
     const float amount = clamp01(p[P_END_COMP_CLARITY]);
     if (amount <= 0.0001f) {
         g.telemetry[T_END_CLARITY_BOOST_DB] = 0.0f;
@@ -533,8 +593,8 @@ void process_clarity_lift(float& l, float& r, const float* p) {
     const float under_db = clampf(-34.0f - high_db, 0.0f, 24.0f);
     const float boost_db = std::min(5.0f, under_db * 0.32f) * amount * gate;
     const float target = db_to_gain(boost_db);
-    const float attack = smooth_coeff(0.026f, g.sample_rate);
-    const float release = smooth_coeff(0.160f, g.sample_rate);
+    const float attack = prepared.clarity_attack_coeff;
+    const float release = prepared.clarity_release_coeff;
     const float coeff = target > g.clarity_gain ? attack : release;
     g.clarity_gain += (target - g.clarity_gain) * coeff;
     const float add = (g.clarity_gain - 1.0f) * 0.58f;
@@ -543,7 +603,11 @@ void process_clarity_lift(float& l, float& r, const float* p) {
     g.telemetry[T_END_CLARITY_BOOST_DB] = std::fmax(g.telemetry[T_END_CLARITY_BOOST_DB], boost_db);
 }
 
-void process_two_band_clarity_comp(float& l, float& r, const float* p) {
+void process_two_band_clarity_comp(
+    float& l,
+    float& r,
+    const float* p,
+    const MasterChainPrepared& prepared) {
     const int mode = static_cast<int>(std::round(p[P_END_COMP_MODE]));
     const float amount = clamp01(p[P_END_COMP_TWO_BAND_AMOUNT]);
     if (mode != 4 || amount <= 0.001f) {
@@ -552,8 +616,7 @@ void process_two_band_clarity_comp(float& l, float& r, const float* p) {
         return;
     }
 
-    const float split_hz = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
-    const float split_alpha = one_pole_coeff(split_hz, g.sample_rate);
+    const float split_alpha = prepared.two_band_split_alpha;
     g.two_band_low_l += (l - g.two_band_low_l) * split_alpha;
     g.two_band_low_r += (r - g.two_band_low_r) * split_alpha;
 
@@ -568,20 +631,18 @@ void process_two_band_clarity_comp(float& l, float& r, const float* p) {
     const float high_gr_db = compute_compressor_gain_db(gain_to_db(high_level), -28.0f, 8.0f, 1.45f);
     const float low_target = db_to_gain(low_gr_db);
     const float high_target = db_to_gain(high_gr_db);
-    const float low_attack = smooth_coeff(0.032f, g.sample_rate);
-    const float low_release = smooth_coeff(0.220f, g.sample_rate);
-    const float high_attack = smooth_coeff(0.014f, g.sample_rate);
-    const float high_release = smooth_coeff(0.120f, g.sample_rate);
-
     g.two_band_low_gain +=
         (low_target - g.two_band_low_gain) *
-        (low_target < g.two_band_low_gain ? low_attack : low_release);
+        (low_target < g.two_band_low_gain
+             ? prepared.two_band_low_attack_coeff
+             : prepared.two_band_low_release_coeff);
     g.two_band_high_gain +=
         (high_target - g.two_band_high_gain) *
-        (high_target < g.two_band_high_gain ? high_attack : high_release);
+        (high_target < g.two_band_high_gain
+             ? prepared.two_band_high_attack_coeff
+             : prepared.two_band_high_release_coeff);
 
-    const float clarity_amount = clamp01(p[P_END_COMP_CLARITY]);
-    const float high_makeup = db_to_gain(1.2f * clarity_amount);
+    const float high_makeup = prepared.two_band_high_makeup;
     const float wet_l = low_l * g.two_band_low_gain + high_l * g.two_band_high_gain * high_makeup;
     const float wet_r = low_r * g.two_band_low_gain + high_r * g.two_band_high_gain * high_makeup;
     const float mix = clamp01(p[P_END_COMP_MIX]) * 0.78f * amount;
@@ -959,6 +1020,37 @@ void dynamics_drift_process_block(int block_size) {
     g.current[P_ALLPASS_ACTIVE] = g.target[P_ALLPASS_ACTIVE];
 
     float* p = g.current;
+    g.telemetry[T_END_BAND_SPLIT_HZ] = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
+    g.telemetry[T_END_COMP_MODE] = p[P_END_COMP_MODE];
+    const float end_comp_attack_coeff = smooth_coeff(p[P_END_COMP_ATTACK], g.sample_rate);
+    const MasterChainPrepared prepared = prepare_master_chain(p);
+    if (g.master_only != 0) {
+        for (int i = 0; i < block_size; ++i) {
+            const float in_l = std::isfinite(g.input[i * 2]) ? g.input[i * 2] : 0.0f;
+            const float in_r = std::isfinite(g.input[i * 2 + 1]) ? g.input[i * 2 + 1] : in_l;
+            g.telemetry[T_INPUT_PEAK] = std::fmax(
+                g.telemetry[T_INPUT_PEAK],
+                std::fmax(std::fabs(in_l), std::fabs(in_r)));
+
+            float out_l = in_l;
+            float out_r = in_r;
+            process_master_saturation(out_l, out_r, p);
+            process_end_chain(out_l, out_r, p, end_comp_attack_coeff, prepared);
+            process_two_band_clarity_comp(out_l, out_r, p, prepared);
+            process_clarity_lift(out_l, out_r, p, prepared);
+            g.telemetry[T_OUTPUT_PEAK] = std::fmax(
+                g.telemetry[T_OUTPUT_PEAK],
+                std::fmax(std::fabs(out_l), std::fabs(out_r)));
+            g.output[i * 2] = out_l;
+            g.output[i * 2 + 1] = out_r;
+            g.sample_clock++;
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+            ++g.test_master_skipped_wet_frames;
+#endif
+        }
+        return;
+    }
+
     update_random_hold(p);
     update_water_cv(p);
     const float degrade_color = clamp01(p[P_EROSION_COLOR_INFLUENCE]);
@@ -972,8 +1064,6 @@ void dynamics_drift_process_block(int block_size) {
     const float erosion_quality = clampf(p[P_EROSION_QUALITY], 0.0f, 2.0f);
     const bool use_profile_eq = erosion_quality >= 1.0f && p[P_EROSION_PROFILE_AMOUNT] > 0.001f;
     const bool use_dither = erosion_quality >= 1.0f && p[P_EROSION_DITHER_AMOUNT] > 0.001f;
-    g.telemetry[T_END_BAND_SPLIT_HZ] = clampf(p[P_END_COMP_BAND_SPLIT_HZ], 90.0f, 320.0f);
-    g.telemetry[T_END_COMP_MODE] = p[P_END_COMP_MODE];
     g.telemetry[T_DRIFT_DIFFUSION] = diffusion;
     g.telemetry[T_EROSION_PROFILE_AMOUNT] = clamp01(p[P_EROSION_PROFILE_AMOUNT]);
     const float water_amount = clamp01(p[P_SHALLOW] + p[P_ABYSS]);
@@ -1009,8 +1099,8 @@ void dynamics_drift_process_block(int block_size) {
     const float dropout_coeff = one_pole_coeff(p[P_DROPOUT_FILTER_HZ], g.sample_rate);
     const float comp_attack_coeff = smooth_coeff(p[P_COMP_ATTACK], g.sample_rate);
     const float comp_release_coeff = smooth_coeff(p[P_COMP_RELEASE], g.sample_rate);
-    const float end_comp_attack_coeff = smooth_coeff(p[P_END_COMP_ATTACK], g.sample_rate);
     update_static_filters(p);
+    g.telemetry[T_DRIFT_MIN_DELAY_MS] = kDriftFullWetMinDelayS * 1000.0f;
 
     for (int i = 0; i < block_size; ++i) {
         if ((i & 15) == 0) {
@@ -1228,11 +1318,14 @@ void dynamics_drift_process_block(int block_size) {
         float out_l = in_l * p[P_DRY] + wet_l * wet_gain;
         float out_r = in_r * p[P_DRY] + wet_r * wet_gain;
         process_master_saturation(out_l, out_r, p);
-        process_end_chain(out_l, out_r, p, end_comp_attack_coeff);
-        process_two_band_clarity_comp(out_l, out_r, p);
-        process_clarity_lift(out_l, out_r, p);
+        process_end_chain(out_l, out_r, p, end_comp_attack_coeff, prepared);
+        process_two_band_clarity_comp(out_l, out_r, p, prepared);
+        process_clarity_lift(out_l, out_r, p, prepared);
         out_l += noise_l;
         out_r += noise_r;
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+        ++g.test_wet_work_frames;
+#endif
         g.telemetry[T_OUTPUT_PEAK] = std::fmax(g.telemetry[T_OUTPUT_PEAK], std::fmax(std::fabs(out_l), std::fabs(out_r)));
         g.output[i * 2] = out_l;
         g.output[i * 2 + 1] = out_r;
@@ -1241,9 +1334,13 @@ void dynamics_drift_process_block(int block_size) {
 }
 
 KesshoDynamicsDriftInstance* dynamics_drift_instance_create(float sample_rate) {
+    return dynamics_drift_instance_create_with_role(sample_rate, 0);
+}
+
+KesshoDynamicsDriftInstance* dynamics_drift_instance_create_with_role(float sample_rate, int master_only) {
     auto* instance = new (std::nothrow) KesshoDynamicsDriftInstance{};
     if (instance == nullptr) return nullptr;
-    init_dynamics_drift_state(instance->state, sample_rate);
+    init_dynamics_drift_state(instance->state, sample_rate, master_only);
     return instance;
 }
 
@@ -1253,7 +1350,8 @@ void dynamics_drift_instance_destroy(KesshoDynamicsDriftInstance* instance) {
 
 int dynamics_drift_instance_reset(KesshoDynamicsDriftInstance* instance, float sample_rate) {
     if (instance == nullptr) return 0;
-    init_dynamics_drift_state(instance->state, sample_rate);
+    const int master_only = instance->state.master_only;
+    init_dynamics_drift_state(instance->state, sample_rate, master_only);
     return 1;
 }
 
@@ -1284,5 +1382,17 @@ void dynamics_drift_instance_process_block(KesshoDynamicsDriftInstance* instance
     ScopedDynamicsDriftState scoped(instance->state);
     dynamics_drift_process_block(block_size);
 }
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+unsigned long long dynamics_drift_instance_get_test_wet_work_frames(
+    const KesshoDynamicsDriftInstance* instance) {
+    return instance != nullptr ? instance->state.test_wet_work_frames : 0;
+}
+
+unsigned long long dynamics_drift_instance_get_test_master_skipped_wet_frames(
+    const KesshoDynamicsDriftInstance* instance) {
+    return instance != nullptr ? instance->state.test_master_skipped_wet_frames : 0;
+}
+#endif
 
 } // extern "C"

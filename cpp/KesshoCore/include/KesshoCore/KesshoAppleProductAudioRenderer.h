@@ -4,6 +4,8 @@
 #import <Foundation/Foundation.h>
 
 #include "KesshoCore/KesshoProductCore.h"
+#include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
+#include "KesshoCore/KesshoProductSequencerVariations.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -13,6 +15,25 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)reset;
 - (BOOL)loadSnapshot:(const KesshoProductSnapshotV2*)snapshot;
 - (BOOL)enqueueEvent:(const KesshoProductEvent*)event;
+- (BOOL)copyCaptureClock:(KesshoProductCaptureClock*)clock;
+- (int32_t)setSequencerVariationBank:(uint32_t)sequencerId
+                            laneIndex:(uint32_t)laneIndex
+                                bank:(const KesshoProductSequencerVariationBank*)bank
+                      nativeRevision:(uint64_t*)nativeRevision;
+- (int32_t)selectSequencerVariation:(uint32_t)sequencerId
+                          laneIndex:(uint32_t)laneIndex
+                    variationIndex:(uint32_t)variationIndex;
+- (BOOL)copySequencerVariationRuntime:(uint32_t)sequencerId
+                             laneIndex:(uint32_t)laneIndex
+                              runtime:(KesshoProductSequencerVariationRuntime*)runtime;
+- (BOOL)setRecordedCaptureEnabled:(BOOL)enabled
+                 sourceLaneIndex:(uint32_t)sourceLaneIndex
+                 targetLaneIndex:(uint32_t)targetLaneIndex
+                       sourceMode:(uint32_t)sourceMode
+                    durationBeats:(double)durationBeats;
+- (NSData* _Nullable)copyRecordedCaptureEventsDataWithOverflowCount:(uint32_t*)overflowCount;
+- (BOOL)isRecordedCaptureActive;
+- (BOOL)copyRecordedCaptureOriginSample:(uint64_t*)sample beat:(double*)beat;
 - (BOOL)copyTelemetry:(KesshoProductTelemetry*)telemetry;
 - (BOOL)setInteractionDemandMask:(uint32_t)demandMask sourceMask:(uint32_t)sourceMask;
 - (BOOL)copyInteractionSignals:(KesshoProductInteractionSignalSnapshot*)signals;

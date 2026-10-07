@@ -1,7 +1,20 @@
 // Authoritative Product worklet behavior source. Generated bindings are written only to public/.
 const EVENT_BYTES = 40;
-const GENERATED_CAPTURE_EVENT_BYTES = 64;
+const GENERATED_CAPTURE_EVENT_BYTES = 72;
+// The native ring is larger than one quantum.  Drain a bounded prefix every
+// process call; capture is the sole owner of this ring while armed.
 const GENERATED_CAPTURE_EVENT_CAPACITY = 256;
+const RECORDED_CAPTURE_HEARTBEAT_HZ = 20;
+const CAPTURE_CLOCK_BYTES = 32;
+const CAPTURE_CLOCK_SCHEMA_VERSION = 2;
+const CAPTURE_CLOCK_SCHEMA_VERSION_OFFSET = 0;
+const CAPTURE_CLOCK_RESERVED_OFFSET = 4;
+const CAPTURE_CLOCK_SAMPLE_OFFSET = 8;
+const CAPTURE_CLOCK_BEAT_OFFSET = 16;
+const CAPTURE_CLOCK_BPM_OFFSET = 24;
+const SEQUENCER_VARIATION_BANK_BYTES = 78984;
+const SEQUENCER_VARIATION_RUNTIME_BYTES = 32;
+const SEQUENCER_VARIATION_COUNT = 4;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_BYTES = 64;
 const SIMPLE_SEQUENCER_VISUAL_EVENT_CAPACITY = 256;
 const TELEMETRY_BYTES = 14912;
@@ -30,7 +43,7 @@ const TELEMETRY_ROUTING_MUTE_GROUP_OFFSET = 14280;
 const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
-const EXPECTED_PRODUCT_ABI_VERSION = 7;
+const EXPECTED_PRODUCT_ABI_VERSION = 8;
 const EXPECTED_PRODUCT_SCHEMA_HASH = 0xf2d87c0c;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
@@ -167,6 +180,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.leftOutputView = null;
     this.rightOutputView = null;
     this.eventPtr = 0;
+    this.captureClockPtr = 0;
+    this.sequencerVariationBankPtr = 0;
+    this.sequencerVariationRuntimePtr = 0;
     this.snapshotPtr = 0;
     this.telemetryPtr = 0;
     this.interactionSignalsPtr = 0;
@@ -186,6 +202,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     };
     this.generatedCaptureEventsPtr = 0;
     this.generatedCaptureOverflowPtr = 0;
+    this.pendingSequencerVariationReceipts = [];
+    this.sequencerVariationNativeRevisions = new Map();
+    this.recordedCapture = null;
+    this.captureClock = null;
+    this.captureClockSegments = [];
     this.simpleSequencerVisualEventsPtr = 0;
     this.simpleSequencerVisualOverflowPtr = 0;
     this.granularWaveformPtr = 0;
@@ -194,8 +215,16 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     this.lastSequencerUiStateRevision = 0;
     this.lastSequencerUiState = null;
     this.pendingSnapshots = [];
+    this.pendingSnapshotAcks = [];
     this.renderedFrameCount = 0;
+    this.captureHeartbeatIntervalFrames = Math.max(
+      1,
+      Math.round(sampleRate / RECORDED_CAPTURE_HEARTBEAT_HZ),
+    );
     this.assetAllocations = new Map();
+    this.pendingAssetCopies = new Map();
+    this.pendingAssetCopyBytes = 0;
+    this.assetRenderActive = false;
     this.pendingAssetReleases = new Set();
     this.assetDecodedBytes = 0;
     this.assetAllocationBytes = 0;
@@ -351,6 +380,10 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         enqueueEvent: this.resolve('kessho_product_enqueue_event'),
         copyTelemetry: this.resolve('kessho_product_copy_telemetry'),
         refreshTelemetry: this.resolve('kessho_product_refresh_telemetry'),
+        copyCaptureClock: this.resolve('kessho_product_copy_capture_clock'),
+        setSequencerVariationBank: this.resolve('kessho_product_set_sequencer_variation_bank'),
+        selectSequencerVariation: this.resolve('kessho_product_select_sequencer_variation'),
+        copySequencerVariationRuntime: this.resolve('kessho_product_copy_sequencer_variation_runtime'),
         setMeterDemand: this.resolve('kessho_product_set_meter_demand'),
         setSimpleSequencerVisualDemand: this.resolve('kessho_product_set_simple_sequencer_visual_demand'),
         drainGeneratedSequencerCaptureEvents: this.resolve('kessho_product_drain_generated_sequencer_capture_events'),
@@ -370,6 +403,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.leftPtr = this.api.malloc(bytesPerFrame);
       this.rightPtr = this.api.malloc(bytesPerFrame);
       this.eventPtr = this.api.malloc(EVENT_BYTES);
+      this.captureClockPtr = this.api.malloc(CAPTURE_CLOCK_BYTES);
+      this.sequencerVariationBankPtr = this.api.malloc(SEQUENCER_VARIATION_BANK_BYTES);
+      this.sequencerVariationRuntimePtr = this.api.malloc(SEQUENCER_VARIATION_RUNTIME_BYTES);
       this.telemetryPtr = this.api.malloc(TELEMETRY_BYTES);
       this.interactionSignalsPtr = this.api.malloc(INTERACTION_SIGNAL_SNAPSHOT_BYTES);
       this.interactionEventsPtr = this.api.malloc(INTERACTION_EVENT_BYTES * INTERACTION_EVENT_CAPACITY);
@@ -389,6 +425,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         !this.leftPtr ||
         !this.rightPtr ||
         !this.eventPtr ||
+        !this.captureClockPtr ||
+        !this.sequencerVariationBankPtr ||
+        !this.sequencerVariationRuntimePtr ||
         !this.telemetryPtr ||
         !this.interactionSignalsPtr ||
         !this.interactionEventsPtr ||
@@ -416,6 +455,160 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
   }
 
+  readCaptureClock() {
+    if (!this.captureClockPtr || this.api.copyCaptureClock(this.engine, this.captureClockPtr) !== 1) {
+      throw new Error('Kessho Product Core capture clock copy failed');
+    }
+    const ptr = this.captureClockPtr;
+    const schemaVersion = this.view.getUint32(ptr + CAPTURE_CLOCK_SCHEMA_VERSION_OFFSET, true);
+    const reserved = this.view.getUint32(ptr + CAPTURE_CLOCK_RESERVED_OFFSET, true);
+    if (schemaVersion !== CAPTURE_CLOCK_SCHEMA_VERSION || reserved !== 0) {
+      throw new Error(
+        `Kessho Product Core capture clock schema mismatch: expected ${CAPTURE_CLOCK_SCHEMA_VERSION}, got ${schemaVersion}`,
+      );
+    }
+    const currentBeat = this.view.getFloat64(ptr + CAPTURE_CLOCK_BEAT_OFFSET, true);
+    const currentBpm = this.view.getFloat64(ptr + CAPTURE_CLOCK_BPM_OFFSET, true);
+    if (!Number.isFinite(currentBeat) || !Number.isFinite(currentBpm) || currentBpm <= 0) {
+      throw new Error('Kessho Product Core capture clock contains an invalid BPM or beat');
+    }
+    return {
+      currentSample: this.readUint64Number(ptr + CAPTURE_CLOCK_SAMPLE_OFFSET),
+      currentBeat,
+      currentBpm,
+    };
+  }
+
+  normalizeSequencerVariationLane(value) {
+    const lane = Math.trunc(Number(value));
+    if (!Number.isFinite(lane) || lane < 0 || lane >= SEQUENCER_VARIATION_COUNT) {
+      throw new Error(`Invalid synth variation lane: ${String(value)}`);
+    }
+    return lane;
+  }
+
+  readSequencerVariationRuntime(laneIndex) {
+    if (!this.sequencerVariationRuntimePtr ||
+        this.api.copySequencerVariationRuntime(this.engine, 1, laneIndex, this.sequencerVariationRuntimePtr) !== 1) {
+      return null;
+    }
+    const ptr = this.sequencerVariationRuntimePtr;
+    return {
+      activeVariation: this.view.getUint32(ptr + 4, true),
+      chainPosition: this.view.getUint32(ptr + 8, true),
+      activeStep: this.view.getUint32(ptr + 12, true),
+      revision: this.readUint64Number(ptr + 16),
+      nextBoundaryFrame: this.readUint64Number(ptr + 24),
+    };
+  }
+
+  postSequencerVariationReceipt(pending, accepted, error, result = 1, runtime = null) {
+    this.port.postMessage({
+      type: 'sequencer-variation-receipt',
+      requestId: pending.requestId,
+      laneIndex: pending.laneIndex,
+      accepted,
+      result,
+      revision: pending.expectedRevision,
+      activeRevision: runtime?.revision ?? 0,
+      ...(error ? { error } : {}),
+    });
+  }
+
+  applySequencerVariationBank(message) {
+    const laneIndex = this.normalizeSequencerVariationLane(message.laneIndex);
+    const bytes = message.payload instanceof ArrayBuffer
+      ? new Uint8Array(message.payload)
+      : ArrayBuffer.isView(message.payload)
+        ? new Uint8Array(message.payload.buffer, message.payload.byteOffset, message.payload.byteLength)
+        : null;
+    if (!bytes || bytes.byteLength !== SEQUENCER_VARIATION_BANK_BYTES) {
+      throw new Error(`Synth variation bank payload must be ${SEQUENCER_VARIATION_BANK_BYTES} bytes`);
+    }
+    const payloadView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (payloadView.getUint32(0, true) !== 1) {
+      throw new Error('Unsupported synth variation bank schema');
+    }
+    const runtime = this.readSequencerVariationRuntime(laneIndex);
+    const expectedRevision = Math.max(
+      runtime?.revision ?? 0,
+      this.sequencerVariationNativeRevisions.get(laneIndex) ?? 0,
+    ) + 1;
+    this.heapU8.set(bytes, this.sequencerVariationBankPtr);
+    // The native setter assigns the transaction revision at the audio boundary;
+    // carrying the expected value in the payload also makes diagnostics useful.
+    this.view.setBigUint64(this.sequencerVariationBankPtr + 32, BigInt(expectedRevision), true);
+    const result = this.api.setSequencerVariationBank(
+      this.engine,
+      1,
+      laneIndex,
+      this.sequencerVariationBankPtr,
+    );
+    const pending = { requestId: message.requestId, laneIndex, expectedRevision };
+    if (result !== 1) {
+      this.postSequencerVariationReceipt(
+        pending,
+        false,
+        `Synth variation bank apply failed: ${result}`,
+        result,
+        this.readSequencerVariationRuntime(laneIndex),
+      );
+      return;
+    }
+    this.sequencerVariationNativeRevisions.set(laneIndex, expectedRevision);
+    this.pendingSequencerVariationReceipts.push(pending);
+  }
+
+  pollSequencerVariationReceipts() {
+    if (this.pendingSequencerVariationReceipts.length === 0) return;
+    const remaining = [];
+    for (const pending of this.pendingSequencerVariationReceipts) {
+      const runtime = this.readSequencerVariationRuntime(pending.laneIndex);
+      if (!runtime) {
+        remaining.push(pending);
+        continue;
+      }
+      if (runtime.revision > pending.expectedRevision) {
+        this.postSequencerVariationReceipt(
+          pending,
+          false,
+          `Synth variation bank was superseded by native revision ${runtime.revision}`,
+          -1,
+          runtime,
+        );
+        continue;
+      }
+      if (runtime.revision === pending.expectedRevision) {
+        this.postSequencerVariationReceipt(pending, true, null, 1, runtime);
+        continue;
+      }
+      remaining.push(pending);
+    }
+    this.pendingSequencerVariationReceipts = remaining;
+  }
+
+  postSequencerVariationRuntime() {
+    const activeSynthSequenceVariationIndices = [];
+    for (let laneIndex = 0; laneIndex < SEQUENCER_VARIATION_COUNT; laneIndex += 1) {
+      const runtime = this.readSequencerVariationRuntime(laneIndex);
+      activeSynthSequenceVariationIndices.push(runtime ? runtime.activeVariation : null);
+    }
+    this.port.postMessage({ type: 'sequencer-variation-runtime', activeSynthSequenceVariationIndices });
+  }
+
+  rejectPendingSequencerVariationReceipts(error) {
+    for (const pending of this.pendingSequencerVariationReceipts) {
+      this.postSequencerVariationReceipt(
+        pending,
+        false,
+        error,
+        0,
+        this.readSequencerVariationRuntime(pending.laneIndex),
+      );
+    }
+    this.pendingSequencerVariationReceipts = [];
+  }
+
   handleMessage(message) {
     if (!message) return;
     if (message.type === 'enablePerf') {
@@ -424,14 +617,23 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       return;
     }
     if (message.type === 'host-visibility') {
+      const wasHidden = this.hostHidden;
       this.hostHidden = Boolean(message.hidden);
       this.setPerfEnabled(this.perfRequested && !this.hostHidden);
+      if (wasHidden && !this.hostHidden && this.recordedCapture) {
+        this.recordedCapture.forceHeartbeat = true;
+      }
       if (this.ready) {
         this.syncMeterDemand();
         this.syncStemDemand();
         this.syncSimpleSequencerVisualDemand();
         this.syncInteractionDemand();
       }
+      return;
+    }
+    if (message.type === 'asset-render-state') {
+      this.assetRenderActive = message.active === true;
+      if (this.ready && !this.assetRenderActive) this.copyPendingAssets(Infinity);
       return;
     }
     if (!this.ready) return;
@@ -447,15 +649,58 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         }
         return;
       }
+      if (message.type === 'recorded-capture-control') {
+        this.handleRecordedCaptureControl(message.request);
+        return;
+      }
+      if (message.type === 'sequencer-variation-bank-set') {
+        try {
+          this.applySequencerVariationBank(message);
+        } catch (error) {
+          this.port.postMessage({
+            type: 'sequencer-variation-receipt',
+            requestId: message.requestId,
+            laneIndex: Number.isInteger(message.laneIndex) ? message.laneIndex : 0,
+            accepted: false,
+            result: 0,
+            revision: 0,
+            activeRevision: 0,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+      if (message.type === 'select-sequencer-variation') {
+        const laneIndex = this.normalizeSequencerVariationLane(message.laneIndex);
+        const variationIndex = Math.trunc(Number(message.variationIndex));
+        if (!Number.isFinite(variationIndex) || variationIndex < 0 || variationIndex >= SEQUENCER_VARIATION_COUNT) {
+          throw new Error(`Invalid synth variation index: ${String(message.variationIndex)}`);
+        }
+        const result = this.api.selectSequencerVariation(this.engine, 1, laneIndex, variationIndex);
+        if (result !== 1) throw new Error(`Synth variation selection failed: ${result}`);
+        return;
+      }
+      if (message.type === 'request-sequencer-variation-runtime') {
+        this.postSequencerVariationRuntime();
+        return;
+      }
       if (message.type === 'snapshot') {
         this.pendingSnapshots.push({
           snapshot: message.snapshot,
           metadata: message.metadata || null,
+          snapshotRequestId: Number.isInteger(message.snapshotRequestId) ? message.snapshotRequestId : null,
         });
         return;
       }
+      if (message.type === 'cancel-asset-copies') {
+        for (const assetId of this.pendingAssetCopies.keys()) this.cancelAssetCopy(assetId);
+        return;
+      }
       if (message.type === 'reset') {
+        for (const assetId of this.pendingAssetCopies.keys()) this.cancelAssetCopy(assetId);
         this.api.reset(this.engine);
+        this.rejectPendingSequencerVariationReceipts('Synth variation bank reset before apply');
+        this.sequencerVariationNativeRevisions.clear();
         this.coreInteractionDemandMask = null;
         this.coreInteractionSourceMask = null;
         this.syncInteractionDemand();
@@ -542,6 +787,305 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       throw new Error(`Unknown Kessho Product Core worklet message: ${String(message.type)}`);
     } catch (error) {
       this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  captureModeId(source) {
+    return source === 'walker' ? 1 : source === 'orbit' ? 2 : 0;
+  }
+
+  captureSourceName(mode) {
+    return mode === 1 || mode === 'anchorWalker'
+      ? 'walker'
+      : mode === 2 || mode === 'orbit'
+        ? 'orbit'
+        : 'keyboard';
+  }
+
+  captureControlMode(request) {
+    if (request?.source === 'walker') return 1;
+    if (request?.source === 'orbit') return 2;
+    return 0;
+  }
+
+  ensureCaptureOrigin(sample, requestedBeat) {
+    const capture = this.recordedCapture;
+    if (!capture) return;
+    const clock = this.captureClock;
+    if (capture.originSample === null) {
+      capture.originSample = Number.isFinite(sample) ? Math.max(0, sample) : (clock?.sample ?? this.renderedFrameCount);
+    }
+    // The audio boundary is authoritative.  The UI value is only a hint and
+    // can be stale while a hidden page is throttled.
+    if (capture.originBeat === null && clock && Number.isFinite(clock.beat)) {
+      capture.originBeat = clock.beat;
+    }
+  }
+
+  failRecordedCapture(error) {
+    const capture = this.recordedCapture;
+    if (!capture) return;
+    const message = error instanceof Error ? error.message : String(error);
+    if (!capture.disableQueued && (capture.request.source === 'orbit' || capture.request.source === 'walker')) {
+      capture.disableQueued = true;
+      const mode = this.captureControlMode(capture.request);
+      this.enqueueEvent({
+        eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
+        targetId: 1,
+        index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+        paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
+        value: 0,
+        value2: mode,
+      });
+    }
+    this.postRecordedCaptureBatch([], 'error', null, message);
+    this.recordedCapture = null;
+    this.captureClock = null;
+    this.captureClockSegments.length = 0;
+  }
+
+  captureManualEvent(_event) {
+    // Keyboard timing belongs to the UI inputId session. Product's manual
+    // note event is playback only, so retaining a second capture path would
+    // duplicate keyboard notes and could mix unrelated sources into a
+    // generated pass.
+  }
+
+  updateCaptureClock(frames = this.frames) {
+    const capture = this.recordedCapture;
+    if (!capture) return;
+    let status;
+    try {
+      status = this.readCaptureClock();
+    } catch (error) {
+      this.failRecordedCapture(error);
+      return;
+    }
+    const clock = {
+      sample: status.currentSample,
+      beat: status.currentBeat,
+      bpm: status.currentBpm,
+      contextTime: typeof currentTime === 'number' && Number.isFinite(currentTime)
+        ? currentTime + Math.max(0, frames) / sampleRate
+        : null,
+    };
+    const previousClock = this.captureClock;
+    this.captureClock = clock;
+    const previousSegment = this.captureClockSegments[this.captureClockSegments.length - 1];
+    if (previousClock && Math.abs(previousClock.bpm - clock.bpm) > 1e-6) {
+      capture.forceHeartbeat = true;
+    }
+    if (!previousSegment || previousSegment.sample !== clock.sample || Math.abs(previousSegment.bpm - clock.bpm) > 1e-6) {
+      this.captureClockSegments.push(clock);
+      if (this.captureClockSegments.length > 16) this.captureClockSegments.shift();
+    }
+    this.ensureCaptureOrigin(clock.sample, null);
+  }
+
+  finishCaptureAtAudioBoundary() {
+    const capture = this.recordedCapture;
+    // durationBeats is the looping phrase period.  It never auto-stops a
+    // capture; only an explicit Finish request supplies a boundary.
+    if (!capture || !capture.finishAtBoundary || capture.finishBoundaryBeat === null ||
+        capture.originBeat === null || !this.captureClock ||
+        this.captureClock.beat < capture.finishBoundaryBeat) return;
+    const boundaryBeat = capture.finishBoundaryBeat;
+    capture.phase = 'finishing';
+    const samplesAtBoundary = this.captureClock.sample +
+      (boundaryBeat - this.captureClock.beat) * 60 * sampleRate / this.captureClock.bpm;
+    const cutoffSample = Number.isFinite(samplesAtBoundary)
+      ? Math.max(0, Math.ceil(samplesAtBoundary) - 1)
+      : this.captureClock.sample;
+    capture.cutoffSample = capture.cutoffSample === null
+      ? cutoffSample
+      : Math.min(capture.cutoffSample, cutoffSample);
+    capture.boundaryReached = true;
+    if (capture.disableQueued) return;
+    capture.disableQueued = true;
+    if (capture.request.source === 'orbit' || capture.request.source === 'walker') {
+      const mode = this.captureControlMode(capture.request);
+      this.enqueueEvent({
+        eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
+        targetId: 1,
+        index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+        paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
+        value: 0,
+        value2: mode,
+      });
+    }
+  }
+
+  captureClockAtSample(sample) {
+    const capture = this.recordedCapture;
+    const segments = this.captureClockSegments;
+    let segment = segments.length > 0 ? segments[segments.length - 1] : this.captureClock;
+    for (let index = segments.length - 1; index >= 0; index -= 1) {
+      if (sample >= segments[index].sample) {
+        segment = segments[index];
+        break;
+      }
+    }
+    if (!segment || !Number.isFinite(sample)) return { beat: capture?.originBeat ?? 0, bpm: segment?.bpm ?? 120 };
+    return {
+      beat: segment.beat + (sample - segment.sample) * segment.bpm / (60 * sampleRate),
+      bpm: segment.bpm,
+    };
+  }
+
+  captureEventToNote(event) {
+    const capture = this.recordedCapture;
+    const clock = this.captureClockAtSample(event.absoluteSample);
+    const originBeat = capture?.originBeat ?? clock.beat;
+    return {
+      sessionToken: capture.sessionToken,
+      eventId: event.eventId,
+      source: this.captureSourceName(event.sourceMode),
+      onsetBeats: Math.max(0, clock.beat - originBeat),
+      durationBeats: Math.max(0.000001, event.gateSeconds * clock.bpm / 60),
+      pitch: Math.max(0, Math.min(127, event.midiNote)),
+      velocity: Math.max(0, Math.min(1, event.velocity)),
+      ...(Number.isSafeInteger(event.attackId) && event.attackId > 0
+        ? { chordGroupId: `generated-attack-${event.attackId}` }
+        : {}),
+      ...(event.targetSourceId > 0 ? { sourceId: event.targetSourceId } : {}),
+    };
+  }
+
+  postRecordedCaptureBatch(events, phase, finalEventId = null, error) {
+    const capture = this.recordedCapture;
+    if (!capture) return;
+    const clock = this.captureClock;
+    this.port.postMessage({
+      type: 'recorded-capture-batch',
+      batch: {
+        sessionToken: capture.sessionToken,
+        originBeat: capture.originBeat ?? 0,
+        clockBeat: clock?.beat ?? capture.originBeat ?? 0,
+        events,
+        phase,
+        finalEventId,
+        overflowCount: capture.overflowCount,
+        ...(typeof clock?.contextTime === 'number' && Number.isFinite(clock.contextTime)
+          ? { clockContextTime: clock.contextTime }
+          : {}),
+        ...(typeof clock?.bpm === 'number' && Number.isFinite(clock.bpm) && clock.bpm > 0
+          ? { clockBpm: clock.bpm }
+          : {}),
+        ...(error ? { error } : {}),
+      },
+    });
+  }
+
+  drainRecordedCaptureEvents(renderedFrame) {
+    const capture = this.recordedCapture;
+    if (!capture) return;
+    const generated = this.readGeneratedSequencerCaptureEvents();
+    const pending = generated.events.length === 0
+      ? null
+      : generated.events.filter((event) =>
+        capture.cutoffSample === null || event.absoluteSample <= capture.cutoffSample,
+      );
+    if (generated.overflowCount > 0) capture.overflowCount += generated.overflowCount;
+    const notes = pending && pending.length > 0
+      ? (() => {
+          pending.sort((left, right) => left.absoluteSample - right.absoluteSample || left.eventId - right.eventId);
+          return pending.map((event) => {
+            const eventId = capture.nextEventId;
+            capture.nextEventId += 1;
+            capture.lastEventId = eventId;
+            return this.captureEventToNote({ ...event, eventId });
+          });
+        })()
+      : null;
+    const heartbeatDue = renderedFrame >= capture.nextHeartbeatFrame;
+    if (heartbeatDue) capture.nextHeartbeatFrame = renderedFrame + this.captureHeartbeatIntervalFrames;
+    const immediate = Boolean(notes) || generated.overflowCount > 0 || capture.forceHeartbeat;
+    if (capture.phase === 'finishing' && capture.boundaryReached && !notes) {
+      this.postRecordedCaptureBatch([], 'ready', capture.lastEventId);
+      this.recordedCapture = null;
+      this.captureClockSegments.length = 0;
+      return;
+    }
+    if (immediate || (heartbeatDue && !this.hostHidden)) {
+      this.postRecordedCaptureBatch(notes ?? [], capture.phase, null);
+      capture.forceHeartbeat = false;
+    }
+  }
+
+  handleRecordedCaptureControl(request) {
+    if (!request || typeof request !== 'object') throw new Error('Recorded capture request is missing');
+    const action = request.action;
+    if (action === 'start') {
+      if (this.recordedCapture) throw new Error('A recorded capture session is already active');
+      this.recordedCapture = {
+        request,
+        sessionToken: String(request.sessionToken || ''),
+        phase: 'recording',
+        originSample: null,
+        originBeat: null,
+        lastEventId: 0,
+        nextEventId: 1,
+        overflowCount: 0,
+        nextHeartbeatFrame: this.renderedFrameCount,
+        forceHeartbeat: true,
+        boundaryReached: false,
+        disableQueued: false,
+        finishAtBoundary: false,
+        finishBoundaryBeat: null,
+        cutoffSample: null,
+      };
+      this.captureClockSegments.length = 0;
+      this.captureClock = null;
+      const mode = this.captureControlMode(request);
+      if (request.source === 'orbit' || request.source === 'walker') {
+        this.enqueueEvent({
+          eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
+          targetId: 1,
+          index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.sourceLaneIndex) || 0))),
+          paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.targetLaneIndex) || 0))),
+          value: 1,
+          value2: mode,
+        });
+      }
+      return;
+    }
+    const capture = this.recordedCapture;
+    if (!capture || capture.sessionToken !== String(request.sessionToken || '')) return;
+    if (action === 'finish' || action === 'stop' || action === 'cancel') {
+      capture.phase = 'finishing';
+      capture.forceHeartbeat = true;
+      capture.finishAtBoundary = action === 'finish';
+      if (capture.finishAtBoundary) {
+        const durationBeats = Number(capture.request?.durationBeats);
+        const nowBeat = this.captureClock?.beat ?? capture.originBeat ?? 0;
+        const elapsed = Math.max(0, nowBeat - (capture.originBeat ?? nowBeat));
+        const loopCount = Number.isFinite(durationBeats) && durationBeats > 0
+          ? Math.max(1, Math.ceil(elapsed / durationBeats - 1e-9))
+          : 1;
+        capture.finishBoundaryBeat = (capture.originBeat ?? nowBeat) + loopCount * durationBeats;
+      } else {
+        capture.finishBoundaryBeat = null;
+      }
+      if (action !== 'finish' && capture.cutoffSample === null && this.captureClock) {
+        // Stop/cancel cuts at the next observed audio boundary immediately;
+        // finish waits for the requested phrase boundary above.
+        capture.cutoffSample = this.captureClock.sample;
+        capture.boundaryReached = true;
+      }
+      if (!capture.disableQueued && (capture.request.source === 'orbit' || capture.request.source === 'walker')) {
+        capture.disableQueued = true;
+        const mode = this.captureControlMode(capture.request);
+        this.enqueueEvent({
+          eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
+          targetId: 1,
+          index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+          paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
+          value: 0,
+          value2: mode,
+        });
+      } else {
+        capture.disableQueued = true;
+      }
     }
   }
 
@@ -1150,7 +1694,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.index = this.requireUint(event, 'index', 0, SEQUENCER_UI_STATE_LANES - 1);
         normalized.paramId = this.requireUint(event, 'paramId', 0, SEQUENCER_UI_STATE_LANES - 1);
         normalized.value = this.requireFloat(event, 'value', 0, 1);
-        normalized.value2 = this.requireFloat(event, 'value2', 1, 2);
+        normalized.value2 = this.requireFloat(event, 'value2', 0, 2);
         return normalized;
       case PRODUCT_EVENT_IDS.SetSynthArpConfig:
         normalized.targetId = this.requireUint(event, 'targetId', 1, 1);
@@ -1279,14 +1823,22 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     while (this.pendingSnapshots.length > 0) {
       const pending = this.pendingSnapshots.shift();
       this.loadSnapshot(pending.snapshot);
-      if (pending.metadata) {
-        this.port.postMessage({
+      if (pending.metadata || pending.snapshotRequestId !== null) {
+        this.pendingSnapshotAcks.push({
           type: 'snapshot-applied',
-          revision: pending.metadata.revision,
-          encodedSnapshotHash: pending.metadata.encodedSnapshotHash,
-          appliedAtFrame: this.renderedFrameCount,
+          ...(pending.snapshotRequestId !== null ? { requestId: pending.snapshotRequestId } : {}),
+          revision: pending.metadata?.revision ?? 0,
+          encodedSnapshotHash: pending.metadata?.encodedSnapshotHash ?? '',
         });
       }
+    }
+  }
+
+  postPendingSnapshotAcks(frames) {
+    if (this.pendingSnapshotAcks.length === 0) return;
+    const acks = this.pendingSnapshotAcks.splice(0);
+    for (const ack of acks) {
+      this.port.postMessage({ ...ack, appliedAtFrame: this.renderedFrameCount + frames });
     }
   }
 
@@ -1304,52 +1856,81 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!Number.isInteger(message.flags) || message.flags < 0) {
       throw new Error(`Kessho Product Core asset ${message.assetId} missing required flags`);
     }
-    if (this.assetAllocations.has(message.assetId) || this.pendingAssetReleases.has(message.assetId)) {
+    if (this.assetAllocations.has(message.assetId) || this.pendingAssetReleases.has(message.assetId)
+      || this.pendingAssetCopies.has(message.assetId)) {
       throw new Error(`Kessho Product Core asset ${message.assetId} must finish release before re-registration`);
     }
-    let decodedBytes = 0;
-    const ptrs = channels.slice(0, 2).map((channel) => {
-      const data = channel instanceof Float32Array ? channel : new Float32Array(channel);
-      const byteLength = data.length * Float32Array.BYTES_PER_ELEMENT;
-      decodedBytes += byteLength;
-      const ptr = this.api.malloc(byteLength);
-      if (!ptr) {
-        throw new Error(`Kessho Product Core asset allocation failed for asset ${message.assetId}`);
-      }
-      this.heapF32.set(data, ptr >> 2);
-      return ptr;
+    if (channels.length > 2 || channels.some((channel) => !(channel instanceof Float32Array)
+      || channel.length === 0 || channel.length !== channels[0].length)) {
+      throw new Error(`Kessho Product Core asset ${message.assetId} requires one or two equal, nonempty Float32 channels`);
+    }
+    const decodedBytes = channels.reduce((bytes, channel) => bytes + channel.byteLength, 0);
+    // The host owns admission/reservations. This is only a bounded transfer queue,
+    // using the existing mobile 192 MiB ceiling; no second decode or PCM clone.
+    if (this.pendingAssetCopies.size >= 64 || this.pendingAssetCopyBytes + decodedBytes > 192 * 1024 * 1024) {
+      throw new Error('Kessho Product Core asset transfer capacity exhausted');
+    }
+    this.pendingAssetCopies.set(message.assetId, {
+      message, ptrs: [], ptrArray: 0, decodedBytes,
+      allocationBytes: decodedBytes + channels.length * 4, channel: 0, offset: 0,
     });
-    const ptrArrayBytes = ptrs.length * Uint32Array.BYTES_PER_ELEMENT;
-    const ptrArray = this.api.malloc(ptrArrayBytes);
-    if (!ptrArray) {
-      ptrs.forEach((ptr) => this.api.free(ptr));
-      throw new Error(`Kessho Product Core asset pointer allocation failed for asset ${message.assetId}`);
+    this.pendingAssetCopyBytes += decodedBytes;
+    if (!this.assetRenderActive) this.copyPendingAssets(Infinity);
+  }
+
+  cancelAssetCopy(assetId, reason = 'Asset registration cancelled before completion') {
+    const copy = this.pendingAssetCopies.get(assetId);
+    if (!copy) return;
+    this.pendingAssetCopies.delete(assetId);
+    this.pendingAssetCopyBytes -= copy.decodedBytes;
+    for (const ptr of copy.ptrs) this.api.free(ptr);
+    if (copy.ptrArray) this.api.free(copy.ptrArray);
+    this.port.postMessage({ type: 'asset-registration-failed', assetId, result: 0, message: reason });
+  }
+
+  copyPendingAssets(byteBudget) {
+    for (const [assetId, copy] of this.pendingAssetCopies) {
+      const { message, ptrs } = copy;
+      const { channels } = message;
+      try {
+        if (!copy.ptrArray) {
+          for (const data of channels) {
+            const ptr = this.api.malloc(data.byteLength);
+            if (!ptr) throw new Error(`Kessho Product Core asset allocation failed for asset ${assetId}`);
+            ptrs.push(ptr);
+          }
+          copy.ptrArray = this.api.malloc(channels.length * 4);
+          if (!copy.ptrArray) throw new Error(`Kessho Product Core asset pointer allocation failed for asset ${assetId}`);
+          // malloc can grow memory and detach all previous views.
+          this.refreshViews();
+          for (let i = 0; i < ptrs.length; i += 1) this.view.setUint32(copy.ptrArray + i * 4, ptrs[i], true);
+        }
+        while (copy.channel < channels.length && byteBudget > 0) {
+          const data = channels[copy.channel];
+          const count = Math.min(data.length - copy.offset, byteBudget / 4);
+          this.heapF32.set(data.subarray(copy.offset, copy.offset + count), (ptrs[copy.channel] >> 2) + copy.offset);
+          copy.offset += count;
+          byteBudget -= count * 4;
+          if (copy.offset === data.length) { copy.channel += 1; copy.offset = 0; }
+        }
+        if (copy.channel < channels.length) return;
+        const result = this.api.registerAsset(this.engine, assetId, copy.ptrArray, ptrs.length,
+          channels[0].length, message.sampleRate, message.flags);
+        if (result !== 1) throw new Error(`Kessho Product Core asset registration failed for asset ${assetId}: ${result}`);
+        this.pendingAssetCopies.delete(assetId);
+        this.pendingAssetCopyBytes -= copy.decodedBytes;
+        this.assetAllocations.set(assetId, { ptrs, ptrArray: copy.ptrArray,
+          decodedBytes: copy.decodedBytes, allocationBytes: copy.allocationBytes });
+        this.assetDecodedBytes += copy.decodedBytes;
+        this.assetAllocationBytes += copy.allocationBytes;
+        this.port.postMessage({ type: 'asset-registration-complete', assetId });
+      } catch (error) {
+        this.cancelAssetCopy(assetId, error instanceof Error ? error.message : String(error));
+        this.refreshViews();
+      }
+      // At most one admission allocation/finalization per active render block.
+      if (this.assetRenderActive) return;
     }
-    for (let i = 0; i < ptrs.length; i += 1) {
-      this.view.setUint32(ptrArray + i * 4, ptrs[i], true);
-    }
-    const allocationBytes = decodedBytes + ptrArrayBytes;
-    this.assetAllocations.set(message.assetId, { ptrs, ptrArray, decodedBytes, allocationBytes });
-    this.assetDecodedBytes += decodedBytes;
-    this.assetAllocationBytes += allocationBytes;
-    const result = this.api.registerAsset(
-      this.engine,
-      message.assetId,
-      ptrArray,
-      ptrs.length,
-      channels[0].length,
-      message.sampleRate,
-      message.flags,
-    );
-    if (result !== 1) {
-      this.assetAllocations.delete(message.assetId);
-      this.assetDecodedBytes -= decodedBytes;
-      this.assetAllocationBytes -= allocationBytes;
-      ptrs.forEach((ptr) => this.api.free(ptr));
-      this.api.free(ptrArray);
-      throw new Error(`Kessho Product Core asset registration failed for asset ${message.assetId}: ${result}`);
-    }
-    this.port.postMessage({ type: 'asset-registration-complete', assetId: message.assetId });
   }
 
   freeAssetAllocation(assetId) {
@@ -1366,6 +1947,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     if (!Number.isInteger(assetId) || assetId <= 0) {
       throw new Error('Kessho Product Core asset unregistration missing required assetId');
     }
+    this.cancelAssetCopy(assetId);
     if (!this.assetAllocations.has(assetId)) {
       this.port.postMessage({ type: 'asset-release-complete', assetId });
       return;
@@ -1438,6 +2020,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       const targetStepIndex = this.view.getInt32(ptr + 52, true);
       const targetStepFloat = this.view.getFloat32(ptr + 56, true);
       const nudge = this.view.getFloat32(ptr + 60, true);
+      const attackId = this.readUint64Number(ptr + 64);
       events.push({
         eventId: this.readUint64Number(ptr),
         absoluteSample: this.readUint64Number(ptr + 8),
@@ -1453,6 +2036,7 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         targetStepIndex: targetStepIndex >= 0 ? targetStepIndex : null,
         targetStepFloat: Number.isFinite(targetStepFloat) && targetStepFloat >= 0 ? targetStepFloat : null,
         nudge: Number.isFinite(nudge) ? Math.max(-1, Math.min(1, nudge)) : 0,
+        attackId,
       });
     }
     return {
@@ -1752,7 +2336,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const productModulationDebug = this.readProductModulationDebug(ptr);
     const synthOrbitVisualLanes = this.readSynthOrbitVisualLanes(ptr);
     const synthAnchorWalkerVisualLanes = this.readSynthAnchorWalkerVisualLanes(ptr);
-    const generatedSequencerCapture = this.readGeneratedSequencerCaptureEvents();
+    // Capture owns the native ring while a session is active.  Draining here
+    // would make hidden-page capture lose events before its dedicated stream
+    // can publish them.
+    const generatedSequencerCapture = this.recordedCapture
+      ? { events: [], overflowCount: 0 }
+      : this.readGeneratedSequencerCaptureEvents();
     const simpleSequencerVisual = this.readSimpleSequencerVisualEvents();
     return {
       schemaHash: this.view.getUint32(ptr, true),
@@ -2347,6 +2936,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   postTelemetry() {
+    // Variation selection is audio-authoritative and remains useful to the
+    // host even when ordinary visual telemetry is throttled in a hidden tab.
+    this.postSequencerVariationRuntime();
     if (this.hostHidden) return;
     try {
       const telemetry = this.readTelemetry();
@@ -2392,18 +2984,37 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       return true;
     }
     const perfStartMs = this.perfEnabled ? this.nowMs() : 0;
+    // 192 MiB synchronous copy measured 32.29 ms. 128 KiB is ~0.021 ms
+    // desktop copy work, leaving margin within the measured 2.56 ms headroom.
+    // ponytail: fixed conservative budget; validate/tune against minimum iPhone.
+    if (this.pendingAssetCopies.size) this.copyPendingAssets(128 * 1024);
     const frames = left.length;
     try {
       this.applyPendingSnapshots();
     } catch (error) {
       this.pendingSnapshots.length = 0;
+      this.pendingSnapshotAcks.length = 0;
       for (const channel of output || []) {
         channel.fill(0);
       }
       this.port.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
       return true;
     }
+    // Capture controls are observed on the next render boundary.  Establish
+    // the clock before rendering so explicit Finish can select its next loop
+    // boundary; duration alone never changes the recording phase.
+    if (this.recordedCapture) {
+      this.updateCaptureClock(0);
+      this.finishCaptureAtAudioBoundary();
+    }
     this.api.render(this.engine, this.leftPtr, this.rightPtr, frames);
+    this.postPendingSnapshotAcks(frames);
+    this.updateCaptureClock(frames);
+    // This is a no-op for ordinary looping capture.  An explicit Finish
+    // request is drained at its selected audio-clock loop boundary.
+    this.finishCaptureAtAudioBoundary();
+    this.pollSequencerVariationReceipts();
+    this.drainRecordedCaptureEvents(this.renderedFrameCount + frames);
     this.retryPendingAssetReleases();
     if (this.heapF32.buffer !== this.exports.memory.buffer) {
       this.refreshViews();

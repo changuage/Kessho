@@ -3,6 +3,7 @@ import { isAtEndpoint0 } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
 import { applyPreset, type ApplyPresetOptions } from './presetUtils';
 import type { SavedPreset, SliderMode, SliderState } from './state';
+import { collectMorphEndpointStates } from './morphEndpointAssets';
 
 type PresetEngineUpdateOptions = Pick<
   ApplyPresetOptions,
@@ -41,8 +42,10 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   confirmOverrideArmedJourneyForStatePreset: (presetName: string) => Promise<boolean>;
   checkPresetCompatibility: (preset: TPreset) => string[];
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
-  syncCoreProductAppliedPreset: (nextState: SliderState) => void;
+  syncCoreProductAppliedPreset: (nextState: SliderState) => void | Promise<void>;
   skipNextPresetLoadEngineSync: () => void;
+  prepareMorphSceneAssets?: (states: readonly Record<string, unknown>[]) => Promise<void>;
+  invalidateMorphInputs: () => void;
   applyDualRangesFromPreset: (
     dualRanges?: Record<string, { min: number; max: number }>,
     presetSliderModes?: Record<string, SliderMode>,
@@ -81,6 +84,8 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
   presetEngineUpdateOptions,
   syncCoreProductAppliedPreset,
   skipNextPresetLoadEngineSync,
+  prepareMorphSceneAssets,
+  invalidateMorphInputs,
   applyDualRangesFromPreset,
   restoreEvolveConfigs,
   onPresetPoolLoad,
@@ -129,6 +134,9 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       const resolvedPreset = await resolveSavedPresetForLoad(preset);
       if (!resolvedPreset) return false;
 
+      await prepareMorphSceneAssets?.(collectMorphEndpointStates(resolvedPreset, morphPresetB));
+      invalidateMorphInputs();
+
       if (!snowflakeActivated) setSnowflakeActivated(true);
       hasLoadedPresetRef.current = true;
 
@@ -151,7 +159,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
           updateEngine: false,
           resetCofDrift: false,
         });
-        syncCoreProductAppliedPreset(result.state);
+        await syncCoreProductAppliedPreset(result.state);
         skipNextPresetLoadEngineSync();
         setMorphPresetA(result.preset as TPreset);
         lastAppliedPresetLoadRef.current = {
@@ -174,10 +182,12 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
       confirmOverrideArmedJourneyForStatePreset,
       fadeOutAndStopForPresetLoad,
       hasLoadedPresetRef,
+      invalidateMorphInputs,
       lastAppliedPresetLoadRef,
       morphPosition,
       morphPresetB,
       onPresetPoolLoad,
+      prepareMorphSceneAssets,
       presetEngineUpdateOptions,
       resolveSavedPresetForLoad,
       restoreEvolveConfigs,

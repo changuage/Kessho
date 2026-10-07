@@ -635,6 +635,15 @@ struct ReverbState {
     float bloomEnv;
     float bloomGain;
 
+    unsigned int parameterUpdateDepth;
+    bool presetUpdatePending;
+    bool predelayUpdatePending;
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    unsigned int presetUpdateCount;
+    unsigned int predelayUpdateCount;
+#endif
+
     int initialized;
 };
 
@@ -673,9 +682,46 @@ struct KesshoReverbInstance {
 
 static inline float goldenHash(int i);
 
+static void updatePreset();
+static void updatePredelay();
+
+static inline void requestPresetUpdate() {
+    if (g_reverb.parameterUpdateDepth != 0u) {
+        g_reverb.presetUpdatePending = true;
+        return;
+    }
+    updatePreset();
+}
+
+static inline void requestPredelayUpdate() {
+    if (g_reverb.parameterUpdateDepth != 0u) {
+        g_reverb.predelayUpdatePending = true;
+        return;
+    }
+    updatePredelay();
+}
+
+static inline void applyPendingParameterUpdates() {
+    if (g_reverb.parameterUpdateDepth != 0u) {
+        return;
+    }
+    if (g_reverb.presetUpdatePending) {
+        g_reverb.presetUpdatePending = false;
+        updatePreset();
+    }
+    if (g_reverb.predelayUpdatePending) {
+        g_reverb.predelayUpdatePending = false;
+        updatePredelay();
+    }
+}
+
 static void updatePreset() {
     // Dattorro types don't use FDN preset configs
     if (g_reverb.presetType >= 4) return;
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    ++g_reverb.presetUpdateCount;
+#endif
 
     const auto& preset = PRESETS[g_reverb.presetType];
     float userDecay = g_reverb.decay;
@@ -732,6 +778,9 @@ static void updatePreset() {
 }
 
 static void updatePredelay() {
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    ++g_reverb.predelayUpdateCount;
+#endif
     g_reverb.predelaySamples = (int)(g_reverb.predelayMs / 1000.0f * g_reverb.sampleRate);
 }
 
@@ -777,16 +826,24 @@ static inline void mixFDN16(const float* in, float* out) {
     for (int i = 0; i < 16; i++) out[i] = x[i] * s;
 }
 
-static inline void mixFDN8(const float* state, float* out) {
+static inline void mixFDN8(const float* in, float* out) {
     const float s = 0.3535533905932738f;  // 1/sqrt(8)
-    out[0] = s * ( state[0]+state[1]+state[2]+state[3]+state[4]+state[5]+state[6]+state[7]);
-    out[1] = s * ( state[0]-state[1]+state[2]-state[3]+state[4]-state[5]+state[6]-state[7]);
-    out[2] = s * ( state[0]+state[1]-state[2]-state[3]+state[4]+state[5]-state[6]-state[7]);
-    out[3] = s * ( state[0]-state[1]-state[2]+state[3]+state[4]-state[5]-state[6]+state[7]);
-    out[4] = s * ( state[0]+state[1]+state[2]+state[3]-state[4]-state[5]-state[6]-state[7]);
-    out[5] = s * ( state[0]-state[1]+state[2]-state[3]-state[4]+state[5]-state[6]+state[7]);
-    out[6] = s * ( state[0]+state[1]-state[2]-state[3]-state[4]-state[5]+state[6]+state[7]);
-    out[7] = s * ( state[0]-state[1]-state[2]+state[3]-state[4]+state[5]+state[6]-state[7]);
+    float x[8];
+    for (int i = 0; i < 8; i++) x[i] = in[i];
+
+    for (int stride = 1; stride < 8; stride <<= 1) {
+        int step = stride << 1;
+        for (int base = 0; base < 8; base += step) {
+            for (int j = 0; j < stride; j++) {
+                float a = x[base + j];
+                float b = x[base + j + stride];
+                x[base + j] = a + b;
+                x[base + j + stride] = a - b;
+            }
+        }
+    }
+
+    for (int i = 0; i < 8; i++) out[i] = x[i] * s;
 }
 
 static inline void mixFDN4(const float* state, float* out) {
@@ -1049,18 +1106,27 @@ void reverb_process_planar_block(
 }
 
 void reverb_set_type(int type) {
-    g_reverb.presetType = (type >= 0 && type <= 5) ? type : 1;
-    updatePreset();
+    const int nextType = (type >= 0 && type <= 5) ? type : 1;
+    if (g_reverb.presetType == nextType) return;
+    g_reverb.presetType = nextType;
+    requestPresetUpdate();
 }
 
 void reverb_set_quality(int quality) {
-    g_reverb.quality = (quality >= 0 && quality <= 2) ? quality : 1;
-    updatePreset();  // recalculate delay times for new channel count
+    const int nextQuality = (quality >= 0 && quality <= 2) ? quality : 1;
+    if (g_reverb.quality == nextQuality) return;
+    g_reverb.quality = nextQuality;
+    requestPresetUpdate();  // recalculate delay times for new channel count
 }
 
 void reverb_set_params(float decay, float size, float damping, float diffusion,
                        float modulation, float predelay, float width) {
     (void)damping;
+    const bool presetChanged =
+        g_reverb.decay != decay ||
+        g_reverb.size != size ||
+        g_reverb.diffusion != diffusion;
+    const bool predelayChanged = g_reverb.predelayMs != predelay;
     g_reverb.decay = decay;
     g_reverb.size = size;
     // Legacy `damping` parameter ignored — multi-band damping (dampLow/dampHigh)
@@ -1069,8 +1135,8 @@ void reverb_set_params(float decay, float size, float damping, float diffusion,
     g_reverb.modulation = modulation;
     g_reverb.predelayMs = predelay;
     g_reverb.width = width;
-    updatePreset();
-    updatePredelay();
+    if (presetChanged) requestPresetUpdate();
+    if (predelayChanged) requestPredelayUpdate();
 }
 
 void reverb_set_shimmer(float amount, float pitch_semitones) {
@@ -1121,7 +1187,10 @@ void reverb_set_shimmer_feedback(float feedback) {
 }
 
 void reverb_set_warp(float amount) {
-    g_reverb.warp = fmaxf(0.0f, fminf(1.0f, amount));
+    const float nextWarp = fmaxf(0.0f, fminf(1.0f, amount));
+    if (g_reverb.warp == nextWarp) return;
+    g_reverb.warp = nextWarp;
+    requestPresetUpdate();
 }
 
 void reverb_set_cross_feed(float amount) {
@@ -1149,8 +1218,10 @@ void reverb_set_er_lp_freq(float freq) {
 }
 
 void reverb_set_bloom(float amount) {
-    g_reverb.bloom = clampf(amount, -1.0f, 1.0f);
-    updatePreset();
+    const float nextBloom = clampf(amount, -1.0f, 1.0f);
+    if (g_reverb.bloom == nextBloom) return;
+    g_reverb.bloom = nextBloom;
+    requestPresetUpdate();
 }
 
 KesshoReverbInstance* reverb_instance_create(float sample_rate) {
@@ -1234,6 +1305,28 @@ void reverb_instance_process_planar_block(
 
     ScopedReverbState scoped(instance->state);
     reverb_process_planar_block(input_l, input_r, output_l, output_r, block_size);
+}
+
+void reverb_instance_begin_parameter_update(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    ++g_reverb.parameterUpdateDepth;
+}
+
+void reverb_instance_end_parameter_update(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    if (g_reverb.parameterUpdateDepth == 0u) {
+        return;
+    }
+    --g_reverb.parameterUpdateDepth;
+    applyPendingParameterUpdates();
 }
 
 void reverb_instance_set_type(KesshoReverbInstance* instance, int type) {
@@ -1419,6 +1512,36 @@ void reverb_instance_set_bloom(KesshoReverbInstance* instance, float amount) {
     reverb_set_bloom(amount);
 }
 
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+void reverb_instance_reset_update_counters(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    g_reverb.presetUpdateCount = 0u;
+    g_reverb.predelayUpdateCount = 0u;
+}
+
+unsigned int reverb_instance_get_preset_update_count(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return 0u;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    return g_reverb.presetUpdateCount;
+}
+
+unsigned int reverb_instance_get_predelay_update_count(KesshoReverbInstance* instance) {
+    if (instance == nullptr) {
+        return 0u;
+    }
+
+    ScopedReverbState scoped(instance->state);
+    return g_reverb.predelayUpdateCount;
+}
+#endif
+
 // ═══════════════ Dattorro Plate Reverb ═══════════════
 //
 // Jon Dattorro, "Effect Design Part 1", JAES 1997
@@ -1492,6 +1615,41 @@ static void dattorro_process_block(int block_size) {
         &g_reverb.datTankDelay1[1], &g_reverb.datTankDelay2[1]
     };
 
+    int tankReadPositions[4];
+    for (int side = 0; side < 2; side++) {
+        int rp1 = (int)(DAT_TANK_DELAY1[side] * scale * sizeScale);
+        if (rp1 < 1) rp1 = 1;
+        if (rp1 >= g_reverb.datTankDelay1[side].size) rp1 = g_reverb.datTankDelay1[side].size - 1;
+        tankReadPositions[side * 2] = rp1;
+
+        int rp2 = (int)(DAT_TANK_DELAY2[side] * scale * sizeScale);
+        if (rp2 < 1) rp2 = 1;
+        if (rp2 >= g_reverb.datTankDelay2[side].size) rp2 = g_reverb.datTankDelay2[side].size - 1;
+        tankReadPositions[side * 2 + 1] = rp2;
+    }
+
+    int outputTapPositionsL[7];
+    int outputTapPositionsR[7];
+    for (int t = 0; t < 7; t++) {
+        int srcL = DAT_OUT_TAP_SRC_L[t];
+        int tapL = (int)(DAT_OUT_TAPS_L[t] * scale * sizeScale);
+        if (tapL >= tankDelays[srcL]->size) tapL = tankDelays[srcL]->size - 1;
+        if (tapL < 1) tapL = 1;
+        outputTapPositionsL[t] = tapL;
+
+        int srcR = DAT_OUT_TAP_SRC_R[t];
+        int tapR = (int)(DAT_OUT_TAPS_R[t] * scale * sizeScale);
+        if (tapR >= tankDelays[srcR]->size) tapR = tankDelays[srcR]->size - 1;
+        if (tapR < 1) tapR = 1;
+        outputTapPositionsR[t] = tapR;
+    }
+
+    float erAlpha = 0.0f;
+    if (erAmount > 0.0f) {
+        float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
+        erAlpha = erOmega / (1.0f + erOmega);
+    }
+
     for (int i = 0; i < block_size; i++) {
         const int stereoIndex = i << 1;
         float inL = planarInput ? inputPlanarL[i] : inputInterleaved[stereoIndex];
@@ -1562,10 +1720,7 @@ static void dattorro_process_block(int block_size) {
         // --- Tank Side A ---
         float sA = g_reverb.datTankAP[0].processModulated(tankInA, lfo1);
         g_reverb.datTankDelay1[0].write(sA);
-        int rp1a = (int)(DAT_TANK_DELAY1[0] * scale * sizeScale);
-        if (rp1a < 1) rp1a = 1;
-        if (rp1a >= g_reverb.datTankDelay1[0].size) rp1a = g_reverb.datTankDelay1[0].size - 1;
-        sA = g_reverb.datTankDelay1[0].read(rp1a);
+        sA = g_reverb.datTankDelay1[0].read(tankReadPositions[0]);
         sA = g_reverb.datTankDamp[0].process(sA, dampCoeff);
         // Air absorption in tank A
         if (g_reverb.airAbsorption > 0.01f) {
@@ -1573,19 +1728,13 @@ static void dattorro_process_block(int block_size) {
         }
         sA = g_reverb.datTankAP2[0].process(sA);
         g_reverb.datTankDelay2[0].write(sA);
-        int rp2a = (int)(DAT_TANK_DELAY2[0] * scale * sizeScale);
-        if (rp2a < 1) rp2a = 1;
-        if (rp2a >= g_reverb.datTankDelay2[0].size) rp2a = g_reverb.datTankDelay2[0].size - 1;
-        sA = g_reverb.datTankDelay2[0].read(rp2a);
+        sA = g_reverb.datTankDelay2[0].read(tankReadPositions[1]);
         g_reverb.datTankState[0] = softClip(sA * tankDecay, satMode);
 
         // --- Tank Side B ---
         float sB = g_reverb.datTankAP[1].processModulated(tankInB, lfo2);
         g_reverb.datTankDelay1[1].write(sB);
-        int rp1b = (int)(DAT_TANK_DELAY1[1] * scale * sizeScale);
-        if (rp1b < 1) rp1b = 1;
-        if (rp1b >= g_reverb.datTankDelay1[1].size) rp1b = g_reverb.datTankDelay1[1].size - 1;
-        sB = g_reverb.datTankDelay1[1].read(rp1b);
+        sB = g_reverb.datTankDelay1[1].read(tankReadPositions[2]);
         sB = g_reverb.datTankDamp[1].process(sB, dampCoeff);
         // Air absorption in tank B
         if (g_reverb.airAbsorption > 0.01f) {
@@ -1593,26 +1742,17 @@ static void dattorro_process_block(int block_size) {
         }
         sB = g_reverb.datTankAP2[1].process(sB);
         g_reverb.datTankDelay2[1].write(sB);
-        int rp2b = (int)(DAT_TANK_DELAY2[1] * scale * sizeScale);
-        if (rp2b < 1) rp2b = 1;
-        if (rp2b >= g_reverb.datTankDelay2[1].size) rp2b = g_reverb.datTankDelay2[1].size - 1;
-        sB = g_reverb.datTankDelay2[1].read(rp2b);
+        sB = g_reverb.datTankDelay2[1].read(tankReadPositions[3]);
         g_reverb.datTankState[1] = softClip(sB * tankDecay, satMode);
 
         // --- Output tapping (14 taps: 7L, 7R) ---
         float outL = 0.0f, outR = 0.0f;
         for (int t = 0; t < 7; t++) {
             int srcL = DAT_OUT_TAP_SRC_L[t];
-            int tapL = (int)(DAT_OUT_TAPS_L[t] * scale * sizeScale);
-            if (tapL >= tankDelays[srcL]->size) tapL = tankDelays[srcL]->size - 1;
-            if (tapL < 1) tapL = 1;
-            outL += tankDelays[srcL]->read(tapL) * DAT_OUT_TAP_SIGN_L[t];
+            outL += tankDelays[srcL]->read(outputTapPositionsL[t]) * DAT_OUT_TAP_SIGN_L[t];
 
             int srcR = DAT_OUT_TAP_SRC_R[t];
-            int tapR = (int)(DAT_OUT_TAPS_R[t] * scale * sizeScale);
-            if (tapR >= tankDelays[srcR]->size) tapR = tankDelays[srcR]->size - 1;
-            if (tapR < 1) tapR = 1;
-            outR += tankDelays[srcR]->read(tapR) * DAT_OUT_TAP_SIGN_R[t];
+            outR += tankDelays[srcR]->read(outputTapPositionsR[t]) * DAT_OUT_TAP_SIGN_R[t];
         }
 
         // Scale output
@@ -1627,8 +1767,6 @@ static void dattorro_process_block(int block_size) {
                 erR += g_reverb.erDelayR.read(g_reverb.erTapSamplesR[t]) * ER_GAINS[t];
             }
             // ER low-pass filter (one-pole)
-            float erOmega = g_reverb.erLpFreq * g_reverb.twoPiOverSr;
-            float erAlpha = erOmega / (1.0f + erOmega);
             g_reverb.erLpStateL += erAlpha * (erL - g_reverb.erLpStateL);
             g_reverb.erLpStateR += erAlpha * (erR - g_reverb.erLpStateR);
             outL += g_reverb.erLpStateL * erAmount * 0.12f;
@@ -1914,6 +2052,19 @@ void reverb_process_block(int block_size) {
         }
     }
 
+    float fdnMainDelayTimes[FDN_MAX_CHANNELS]{};
+    float fdnSecondaryDelayTimesA[FDN_MAX_CHANNELS]{};
+    float fdnSecondaryDelayTimesB[FDN_MAX_CHANNELS]{};
+    for (int j = 0; j < fdnCount; j++) {
+        float delayTime = g_reverb.fdnDelayTimes[j] + lineModOffsets[j];
+        if (delayTime < 1.0f) delayTime = 1.0f;
+        fdnMainDelayTimes[j] = delayTime;
+        if (!isLite) {
+            fdnSecondaryDelayTimesA[j] = fmaxf(1.0f, delayTime * 0.618f);
+            fdnSecondaryDelayTimesB[j] = fmaxf(1.0f, delayTime * 0.382f);
+        }
+    }
+
     float tapWeightsL[FDN_MAX_CHANNELS]{};
     float tapWeightsR[FDN_MAX_CHANNELS]{};
     if (fdnCount == 16) {
@@ -1975,19 +2126,16 @@ void reverb_process_block(int block_size) {
 
         // ── Read FDN delay lines with per-line modulation ──
         for (int j = 0; j < fdnCount; j++) {
-            float delayTime = g_reverb.fdnDelayTimes[j] + lineModOffsets[j];
-            if (delayTime < 1.0f) delayTime = 1.0f;
-
             // Multi-tap read: main tap + 2 golden-ratio positions for density
             if (!isLite) {
-                float tap0 = g_reverb.fdnDelays[j].readInterpolated(delayTime);
-                float tap1 = g_reverb.fdnDelays[j].readInterpolated(fmaxf(1.0f, delayTime * 0.618f));
-                float tap2 = g_reverb.fdnDelays[j].readInterpolated(fmaxf(1.0f, delayTime * 0.382f));
+                float tap0 = g_reverb.fdnDelays[j].readInterpolated(fdnMainDelayTimes[j]);
+                float tap1 = g_reverb.fdnDelays[j].readInterpolated(fdnSecondaryDelayTimesA[j]);
+                float tap2 = g_reverb.fdnDelays[j].readInterpolated(fdnSecondaryDelayTimesB[j]);
                 g_reverb.fdnReads[j] = tap0 * MULTITAP_GAINS[0]
                                       + tap1 * MULTITAP_GAINS[1]
                                       + tap2 * MULTITAP_GAINS[2];
             } else {
-                g_reverb.fdnReads[j] = g_reverb.fdnDelays[j].readInterpolated(delayTime);
+                g_reverb.fdnReads[j] = g_reverb.fdnDelays[j].readInterpolated(fdnMainDelayTimes[j]);
             }
         }
 

@@ -45,10 +45,11 @@ export function useAppSplash() {
   const [windowSize, setWindowSize] = useState(readWindowSize);
 
   useEffect(() => {
+    if (!showSplash) return undefined;
     const handleResize = () => setWindowSize(readWindowSize());
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [showSplash]);
 
   useEffect(() => {
     const fadeInTimer = setTimeout(() => setSplashOpacity(1), 100);

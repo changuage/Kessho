@@ -95,6 +95,11 @@ final class KesshoMacRuntime: ObservableObject {
                 self?.dispatchEvent(plugin: "KesshoAudioSession", eventName: "audioSessionEvent", data: event)
             }
         }
+        audioSessionHost.onRecordedCaptureBatch = { [weak self] batch in
+            Task { @MainActor in
+                self?.dispatchEvent(plugin: "KesshoAudioSession", eventName: "recordedCaptureBatch", data: batch)
+            }
+        }
         audioOutputObserver.onChange = { [weak self] status in
             Task { @MainActor in
                 guard let self else { return }
@@ -214,6 +219,15 @@ final class KesshoMacRuntime: ObservableObject {
             return try audioSessionHost.nativeProductTelemetry()
         case "setNativeProductInteractionDemand":
             try audioSessionHost.setNativeProductInteractionDemand(options)
+            return audioSessionHost.statusPayload()
+        case "setNativeSynthSequenceVariationBank":
+            return try audioSessionHost.setNativeSynthSequenceVariationBank(options)
+        case "selectNativeSynthSequenceVariation":
+            return try audioSessionHost.selectNativeSynthSequenceVariation(options)
+        case "getNativeSynthSequenceVariationRuntime":
+            return try audioSessionHost.nativeSynthSequenceVariationRuntime(options)
+        case "setNativeProductCapture":
+            try audioSessionHost.setNativeProductCapture(options)
             return audioSessionHost.statusPayload()
         case "setNowPlaying":
             return audioSessionHost.statusPayload()
@@ -671,6 +685,10 @@ struct KesshoWebView: NSViewRepresentable {
         stopNativeProductRuntime: () => call('KesshoAudioSession', 'stopNativeProductRuntime'),
         getNativeProductTelemetry: () => call('KesshoAudioSession', 'getNativeProductTelemetry'),
         setNativeProductInteractionDemand: (options) => call('KesshoAudioSession', 'setNativeProductInteractionDemand', options),
+        setNativeSynthSequenceVariationBank: (options) => call('KesshoAudioSession', 'setNativeSynthSequenceVariationBank', options),
+        selectNativeSynthSequenceVariation: (options) => call('KesshoAudioSession', 'selectNativeSynthSequenceVariation', options),
+        getNativeSynthSequenceVariationRuntime: (options) => call('KesshoAudioSession', 'getNativeSynthSequenceVariationRuntime', options),
+        setNativeProductCapture: (options) => call('KesshoAudioSession', 'setNativeProductCapture', options),
         setNowPlaying: (options) => call('KesshoAudioSession', 'setNowPlaying', options),
         setPlaybackState: (options) => call('KesshoAudioSession', 'setPlaybackState', options),
         addListener: (eventName, callback) => addListener('KesshoAudioSession', eventName, callback),
@@ -852,8 +870,37 @@ enum KesshoMacNativeDiagnosticsSmoke {
 
 @MainActor
 final class KesshoMacAudioSessionHost {
+    private struct CaptureClockSegment {
+        let sample: UInt64
+        let beat: Double
+        let bpm: Double
+    }
+
+    private struct CaptureSession {
+        let token: String
+        let sourceLaneIndex: UInt32
+        let targetLaneIndex: UInt32
+        let source: String
+        let sourceMode: UInt32
+        let durationBeats: Double
+        var originSample: UInt64?
+        var originBeat: Double?
+        var phase: String
+        var nextEventId: UInt64 = 1
+        var lastEventId: UInt64 = 0
+        var overflowCount: UInt32 = 0
+        var segments: [CaptureClockSegment] = []
+        var pollsUntilBatch = 0
+        var emptyFinishingPolls = 0
+        var captureWasActive = false
+        var cancelled = false
+    }
+
     private var nativeProductEngine: KesshoAppleProductAudioEngine?
     private var notificationObservers: [NSObjectProtocol] = []
+    private var nativeCaptureSession: CaptureSession?
+    private var nativeCaptureTimer: Timer?
+    private let nativeProductSampleRate = 48_000.0
 
     private(set) var isPlaying = false
     private(set) var nativeProductRendererPrepared = false
@@ -873,6 +920,7 @@ final class KesshoMacAudioSessionHost {
     private(set) var lastInterruptionType = "none"
 
     var onAudioSessionEvent: (([String: Any]) -> Void)?
+    var onRecordedCaptureBatch: (([String: Any]) -> Void)?
 
     init(observeNotifications: Bool = true) {
         if observeNotifications {
@@ -881,6 +929,7 @@ final class KesshoMacAudioSessionHost {
     }
 
     deinit {
+        nativeCaptureTimer?.invalidate()
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -907,7 +956,9 @@ final class KesshoMacAudioSessionHost {
               let engine = nativeProductEngine else {
             throw BridgeError.runtime("invalid native Product Core snapshot")
         }
-        try mutateNativeProductEngine(engine) { engine.loadSnapshotData(data) }
+        try mutateNativeProductEngine(engine) {
+            engine.loadSnapshotData(data)
+        }
     }
 
     func enqueueNativeProductEvents(_ options: [String: Any]) throws {
@@ -972,6 +1023,8 @@ final class KesshoMacAudioSessionHost {
         guard let engine = nativeProductEngine else {
             throw BridgeError.runtime("native Product Core reset failed")
         }
+        nativeCaptureSession = nil
+        stopNativeCaptureTimer()
         try mutateNativeProductEngine(engine) { engine.resetRenderer() }
     }
 
@@ -989,6 +1042,8 @@ final class KesshoMacAudioSessionHost {
 
     func stopNativeProductRuntime() -> [String: Any] {
         nativeProductEngine?.stop()
+        nativeCaptureSession = nil
+        stopNativeCaptureTimer()
         nativeProductRendererRunning = false
         nativeProductRendererStopCount += 1
         isPlaying = false
@@ -1008,6 +1063,367 @@ final class KesshoMacAudioSessionHost {
             "interactionEventsBase64": interactionEvents.base64EncodedString(),
             "interactionEventOverflowCount": engine.interactionEventOverflowCount()
         ]
+    }
+
+    func setNativeSynthSequenceVariationBank(_ options: [String: Any]) throws -> [String: Any] {
+        prepareNativeProductRenderer()
+        guard let laneIndex = Self.uint32(options["laneIndex"]),
+              let encoded = options["bankBase64"] as? String,
+              let data = Data(base64Encoded: encoded),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native synth variation bank payload")
+        }
+        var result: [String: NSNumber] = ["result": NSNumber(value: -1), "nativeRevision": NSNumber(value: 0)]
+        try mutateNativeProductEngine(engine) {
+            result = engine.setSynthSequenceVariationBankData(data, laneIndex: laneIndex) as? [String: NSNumber] ?? result
+            return result["result"]?.intValue == 1
+        }
+        return result.mapValues { $0 }
+    }
+
+    func selectNativeSynthSequenceVariation(_ options: [String: Any]) throws -> [String: Any] {
+        prepareNativeProductRenderer()
+        guard let laneIndex = Self.uint32(options["laneIndex"]),
+              let variationIndex = Self.uint32(options["variationIndex"]),
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native synth variation selection")
+        }
+        var accepted = false
+        try mutateNativeProductEngine(engine) {
+            accepted = engine.selectSynthSequenceVariation(variationIndex, laneIndex: laneIndex)
+            return accepted
+        }
+        return [
+            "accepted": accepted,
+            "laneIndex": Int(laneIndex),
+            "variationIndex": Int(variationIndex),
+        ]
+    }
+
+    func nativeSynthSequenceVariationRuntime(_ options: [String: Any]) throws -> [String: Any] {
+        prepareNativeProductRenderer()
+        guard let laneIndex = Self.uint32(options["laneIndex"]),
+              let data = nativeProductEngine?.copySynthSequenceVariationRuntimeData(forLane: laneIndex),
+              data.count == MemoryLayout<KesshoProductSequencerVariationRuntime>.size else {
+            throw BridgeError.runtime("native synth variation runtime unavailable")
+        }
+        return ["runtimeBase64": data.base64EncodedString()]
+    }
+
+    func setNativeProductCapture(_ options: [String: Any]) throws {
+        prepareNativeProductRenderer()
+        guard let requestJSON = options["requestJson"] as? String,
+              let requestData = requestJSON.data(using: .utf8),
+              let requestObject = try? JSONSerialization.jsonObject(with: requestData),
+              let request = requestObject as? [String: Any],
+              let action = request["action"] as? String,
+              let token = request["sessionToken"] as? String,
+              !token.isEmpty,
+              let sourceLaneIndex = Self.uint32(request["sourceLaneIndex"]),
+              let targetLaneIndex = Self.uint32(request["targetLaneIndex"]),
+              sourceLaneIndex < 8,
+              targetLaneIndex < 8,
+              let source = request["source"] as? String,
+              source == "keyboard" || source == "walker" || source == "orbit",
+              let durationBeats = Self.double(request["durationBeats"]),
+              durationBeats > 0.0,
+              durationBeats <= 4096.0,
+              let engine = nativeProductEngine else {
+            throw BridgeError.runtime("invalid native recorded capture request")
+        }
+        let sourceMode: UInt32
+        switch source {
+        case "walker": sourceMode = 1
+        case "orbit": sourceMode = 2
+        default: sourceMode = 0
+        }
+        switch action {
+        case "start":
+            guard request["enabled"] as? Bool ?? true else {
+                throw BridgeError.runtime("native recorded capture start is disabled")
+            }
+            guard nativeCaptureSession == nil else {
+                throw BridgeError.runtime("native recorded capture is already active")
+            }
+            nativeCaptureSession = CaptureSession(
+                token: token,
+                sourceLaneIndex: sourceLaneIndex,
+                targetLaneIndex: targetLaneIndex,
+                source: source,
+                sourceMode: sourceMode,
+                durationBeats: durationBeats,
+                originSample: nil,
+                originBeat: nil,
+                phase: "recording"
+            )
+            do {
+                guard engine.setRecordedCaptureEnabled(
+                    true,
+                    sourceLaneIndex: sourceLaneIndex,
+                    targetLaneIndex: targetLaneIndex,
+                    sourceMode: sourceMode,
+                    durationBeats: durationBeats
+                ) else {
+                    throw BridgeError.runtime("native recorded capture arm failed")
+                }
+            } catch {
+                nativeCaptureSession = nil
+                throw error
+            }
+            startNativeCaptureTimer()
+        case "finish", "stop", "cancel":
+            guard var session = nativeCaptureSession else { return }
+            guard session.token == token else {
+                throw BridgeError.runtime("native recorded capture session token mismatch")
+            }
+            session.cancelled = action == "cancel"
+            if action != "finish" {
+                session.phase = "finishing"
+            }
+            nativeCaptureSession = session
+            if action != "finish" {
+                guard engine.setRecordedCaptureEnabled(
+                    false,
+                    sourceLaneIndex: session.sourceLaneIndex,
+                    targetLaneIndex: session.targetLaneIndex,
+                    sourceMode: session.sourceMode,
+                    durationBeats: 0.0
+                ) else {
+                    throw BridgeError.runtime("native recorded capture stop failed")
+                }
+            }
+            startNativeCaptureTimer()
+        default:
+            throw BridgeError.runtime("invalid native recorded capture action")
+        }
+    }
+
+    private func startNativeCaptureTimer() {
+        guard nativeCaptureTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.pollNativeCapture()
+        }
+        nativeCaptureTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopNativeCaptureTimer() {
+        nativeCaptureTimer?.invalidate()
+        nativeCaptureTimer = nil
+    }
+
+    private func failNativeCapture(_ message: String, session: CaptureSession) {
+        if let engine = nativeProductEngine {
+            _ = engine.setRecordedCaptureEnabled(
+                false,
+                sourceLaneIndex: session.sourceLaneIndex,
+                targetLaneIndex: session.targetLaneIndex,
+                sourceMode: session.sourceMode,
+                durationBeats: 0.0
+            )
+        }
+        postNativeCaptureBatch(
+            session: session,
+            clockBeat: session.originBeat ?? 0.0,
+            clockBpm: session.segments.last?.bpm ?? 120.0,
+            events: [],
+            finalEventId: nil,
+            error: message
+        )
+        nativeCaptureSession = nil
+        stopNativeCaptureTimer()
+    }
+
+    private func pollNativeCapture() {
+        guard var session = nativeCaptureSession,
+              let engine = nativeProductEngine else {
+            stopNativeCaptureTimer()
+            return
+        }
+        guard let clockData = engine.copyCaptureClockData(),
+              clockData.count == MemoryLayout<KesshoProductCaptureClock>.size else {
+            failNativeCapture("native recorded capture clock layout is unavailable", session: session)
+            return
+        }
+        var currentSample: UInt64 = 0
+        var currentBeat = 0.0
+        var currentBpm = 0.0
+        let validClock = clockData.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> Bool in
+            let clock = rawBuffer.loadUnaligned(as: KesshoProductCaptureClock.self)
+            guard clock.schema_version == 2,
+                  clock.reserved == 0,
+                  clock.current_beat.isFinite,
+                  clock.current_bpm.isFinite,
+                  clock.current_bpm > 0.0 else {
+                return false
+            }
+            currentSample = clock.current_sample
+            currentBeat = clock.current_beat
+            currentBpm = clock.current_bpm
+            return true
+        }
+        guard validClock else {
+            failNativeCapture("native recorded capture clock schema or BPM is invalid", session: session)
+            return
+        }
+        var captureOriginSample: UInt64 = 0
+        var captureOriginBeat = 0.0
+        if engine.copyRecordedCaptureOriginSample(&captureOriginSample, beat: &captureOriginBeat) {
+            session.originSample = captureOriginSample
+            session.originBeat = captureOriginBeat
+            currentSample = captureOriginSample
+            currentBeat = captureOriginBeat
+        } else if session.originSample == nil {
+            session.originSample = currentSample
+            session.originBeat = currentBeat
+        }
+        let previousSegment = session.segments.last
+        let bpm = currentBpm
+        if previousSegment == nil || currentSample > previousSegment!.sample {
+            session.segments.append(CaptureClockSegment(sample: currentSample, beat: currentBeat, bpm: bpm))
+            if session.segments.count > 16 { session.segments.removeFirst() }
+        }
+        session.captureWasActive = session.captureWasActive || engine.isRecordedCaptureActive()
+
+        let reachedDuration = currentBeat >= (session.originBeat ?? currentBeat) + session.durationBeats
+        if session.phase == "recording" && reachedDuration {
+            session.phase = "finishing"
+            _ = engine.setRecordedCaptureEnabled(
+                false,
+                sourceLaneIndex: session.sourceLaneIndex,
+                targetLaneIndex: session.targetLaneIndex,
+                sourceMode: session.sourceMode,
+                durationBeats: 0.0
+            )
+        }
+
+        var overflowCount: UInt32 = 0
+        let eventData = engine.copyRecordedCaptureEventsData(withOverflowCount: &overflowCount) ?? Data()
+        session.overflowCount = max(session.overflowCount, overflowCount)
+        var events: [[String: Any]] = []
+        let eventSize = MemoryLayout<KesshoProductGeneratedSequencerCaptureEvent>.size
+        if eventSize > 0 && eventData.count % eventSize == 0 {
+            eventData.withUnsafeBytes { rawBuffer in
+                for offset in stride(from: 0, to: eventData.count, by: eventSize) {
+                    let captured = rawBuffer.loadUnaligned(
+                        fromByteOffset: offset,
+                        as: KesshoProductGeneratedSequencerCaptureEvent.self
+                    )
+                    let capture = captureClock(
+                        sample: captured.absolute_sample,
+                        session: session,
+                        fallbackBeat: currentBeat,
+                        fallbackBpm: bpm
+                    )
+                    let originBeat = session.originBeat ?? currentBeat
+                    let onsetBeats = max(0.0, capture.beat - originBeat)
+                    if onsetBeats >= session.durationBeats { continue }
+                    let durationBeats = max(
+                        0.000001,
+                        Double(captured.gate_seconds) * capture.bpm / 60.0
+                    )
+                    let eventId = session.nextEventId
+                    session.nextEventId += 1
+                    session.lastEventId = eventId
+                    var event: [String: Any] = [
+                        "sessionToken": session.token,
+                        "eventId": Int(eventId),
+                        "source": session.source,
+                        "onsetBeats": onsetBeats,
+                        "durationBeats": durationBeats,
+                        "pitch": Double(captured.midi_note),
+                        "velocity": Double(captured.velocity)
+                    ]
+                    if captured.target_source_id != 0 {
+                        event["sourceId"] = Int(captured.target_source_id)
+                    }
+                    if captured.attack_id != 0 {
+                        event["chordGroupId"] = "generated-attack-\(captured.attack_id)"
+                    }
+                    events.append(event)
+                }
+            }
+        }
+        let shouldPost = !events.isEmpty || session.phase == "finishing" || session.pollsUntilBatch <= 0
+        if shouldPost {
+            postNativeCaptureBatch(
+                session: session,
+                clockBeat: currentBeat,
+                clockBpm: bpm,
+                events: events,
+                finalEventId: nil
+            )
+            session.pollsUntilBatch = 3
+        } else {
+            session.pollsUntilBatch -= 1
+        }
+
+        if session.phase == "finishing" {
+            if engine.isRecordedCaptureActive() {
+                session.emptyFinishingPolls = 0
+            } else {
+                session.emptyFinishingPolls += 1
+            }
+            if !session.cancelled && !engine.isRecordedCaptureActive() &&
+                (session.captureWasActive || session.emptyFinishingPolls >= 2) && events.isEmpty {
+                postNativeCaptureBatch(
+                    session: session,
+                    clockBeat: currentBeat,
+                    clockBpm: bpm,
+                    events: [],
+                    finalEventId: session.lastEventId
+                )
+            }
+            if !engine.isRecordedCaptureActive() &&
+                (session.cancelled || session.captureWasActive || session.emptyFinishingPolls >= 2) && events.isEmpty {
+                nativeCaptureSession = nil
+                stopNativeCaptureTimer()
+            } else {
+                nativeCaptureSession = session
+            }
+        } else {
+            nativeCaptureSession = session
+        }
+    }
+
+    private func captureClock(
+        sample: UInt64,
+        session: CaptureSession,
+        fallbackBeat: Double,
+        fallbackBpm: Double
+    ) -> (beat: Double, bpm: Double) {
+        guard let segment = session.segments.last(where: { sample >= $0.sample }) else {
+            return (fallbackBeat, fallbackBpm)
+        }
+        let beat = segment.beat + Double(sample - segment.sample) * segment.bpm /
+            (60.0 * nativeProductSampleRate)
+        return (beat, segment.bpm)
+    }
+
+    private func postNativeCaptureBatch(
+        session: CaptureSession,
+        clockBeat: Double,
+        clockBpm: Double,
+        events: [[String: Any]],
+        finalEventId: UInt64?,
+        error: String? = nil
+    ) {
+        var batch: [String: Any] = [
+            "sessionToken": session.token,
+            "originBeat": session.originBeat ?? clockBeat,
+            "clockBeat": clockBeat,
+            "clockContextTime": ProcessInfo.processInfo.systemUptime,
+            "clockBpm": clockBpm,
+            "events": events,
+            "phase": finalEventId == nil ? session.phase : "ready",
+            "finalEventId": finalEventId.map { Int($0) } ?? NSNull(),
+            "overflowCount": Int(session.overflowCount)
+        ]
+        if let error {
+            batch["phase"] = "error"
+            batch["error"] = error
+        }
+        onRecordedCaptureBatch?(batch)
     }
 
     func setNativeProductInteractionDemand(_ options: [String: Any]) throws {
@@ -1033,6 +1449,12 @@ final class KesshoMacAudioSessionHost {
         guard let number = value as? NSNumber else { return nil }
         let raw = number.int64Value
         return raw >= 0 && raw <= UInt32.max ? UInt32(raw) : nil
+    }
+
+    private static func double(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber else { return nil }
+        let raw = number.doubleValue
+        return raw.isFinite ? raw : nil
     }
 
     private func mutateNativeProductEngine(

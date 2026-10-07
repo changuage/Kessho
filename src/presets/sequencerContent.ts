@@ -14,6 +14,10 @@ import type {
 import type { PresetVersionMetadata } from './types';
 import type { PresetContentCandidate, PresetContentNodeType } from './contentNodes';
 import { PARAM_REGISTRY } from './ParamRegistry';
+import {
+  normalizeSynthSequenceVariationBank,
+  type SynthSequenceVariationBanks,
+} from '../ui/sequencer/synthSequenceVariations';
 
 export type SequencerPageKind = 'synth' | 'drum';
 export type SequencerSubLaneContentKind =
@@ -36,7 +40,7 @@ export const SEQUENCER_SUB_LANE_CONTENT_KINDS: readonly SequencerSubLaneContentK
 ];
 
 export interface SequencerContentComponent {
-  componentSlot: 'trigger' | 'control' | SequencerSubLaneContentKind;
+  componentSlot: 'trigger' | 'control' | 'variation' | SequencerSubLaneContentKind;
   contentType: PresetContentNodeType;
   content: Record<string, unknown>;
 }
@@ -139,6 +143,17 @@ function metadataSubLaneStates(
   kind: SequencerPageKind,
 ): Record<string, SerializedSubLaneState>[] | undefined {
   return kind === 'synth' ? metadata?.synthSubLaneStates : metadata?.drumSubLaneStates;
+}
+
+function extractVariationContent(
+  state: Record<string, unknown>,
+  metadata: PresetVersionMetadata | undefined,
+  laneIndex: number,
+): Record<string, unknown> | undefined {
+  const banks = metadata?.synthSequenceVariationBanks
+    ?? state.synthSequenceVariationBanks as SynthSequenceVariationBanks | undefined;
+  const bank = Array.isArray(banks) ? banks[laneIndex] : undefined;
+  return bank ? { bank } : undefined;
 }
 
 function trimValues<T>(values: T[] | null | undefined, steps: number): T[] | undefined {
@@ -360,6 +375,16 @@ export function buildSequencerContentGroup(options: {
       content: extractTriggerContent(state, metadata, kind, laneIndex),
     },
   ];
+  if (kind === 'synth') {
+    const variation = extractVariationContent(state, metadata, laneIndex);
+    if (variation) {
+      components.push({
+        componentSlot: 'variation',
+        contentType: 'sequencerVariation',
+        content: variation,
+      });
+    }
+  }
   for (const subLane of SEQUENCER_SUB_LANE_CONTENT_KINDS) {
     const content = extractSubLaneContent(state, metadata, kind, laneIndex, subLane);
     if (content) {
@@ -463,6 +488,17 @@ export function applySequencerContentComponents(options: {
       }
       continue;
     }
+    if (component.componentSlot === 'variation') {
+      if (kind !== 'synth') throw new Error('Variation content is only valid for synth lanes');
+      const bank = Object.prototype.hasOwnProperty.call(content, 'bank') ? content.bank : null;
+      const normalizedBank = bank === null ? null : normalizeSynthSequenceVariationBank(bank);
+      const currentBanks = (statePatch.synthSequenceVariationBanks
+        ?? stateRecord(options.state).synthSequenceVariationBanks) as SynthSequenceVariationBanks | undefined;
+      const nextBanks = setLaneArrayValue(currentBanks, laneIndex, count, normalizedBank);
+      statePatch.synthSequenceVariationBanks = nextBanks;
+      metadata.synthSequenceVariationBanks = nextBanks;
+      continue;
+    }
     if (component.componentSlot === 'control') {
       const clockKey = kind === 'synth' ? 'synthClockDivs' : 'drumClockDivs';
       const swingKey = kind === 'synth' ? 'synthSwings' : 'drumSwings';
@@ -563,6 +599,7 @@ export function stripSequencerStateFromSoundContent(
         && scope !== 'drumEuclidean'
         && key !== 'synthSequencerFaces'
         && key !== 'synthSequencerChain'
+        && key !== 'synthSequenceVariationBanks'
         && key !== 'drumSequencerChain';
     }),
   );
@@ -584,6 +621,7 @@ const SEQUENCER_METADATA_FIELDS: readonly (keyof PresetVersionMetadata)[] = [
   'drumClockDivs', 'synthClockDivs', 'drumSwings', 'synthSwings', 'drumLinked', 'synthLinked',
   'drumSubLaneStates', 'synthSubLaneStates', 'synthPlayConfigs', 'drumPitchSettings',
   'synthPitchSettings', 'synthPitchBindingModes',
+  'synthSequenceVariationBanks',
 ];
 
 export function stripSequencerMetadataFromSoundContent(

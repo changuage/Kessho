@@ -11,11 +11,13 @@ export function SequencerResumeQuantizeButton({
   kind,
   laneIndex,
   onSelectChange,
+  disabled = false,
 }: {
   state: SliderState;
   kind: SequencerResumeKind;
   laneIndex: number;
   onSelectChange: (key: keyof SliderState, value: SliderState[keyof SliderState]) => void;
+  disabled?: boolean;
 }) {
   const key = sequencerResumeQuantizationKey(kind, laneIndex + 1);
   const label = sequencerResumeQuantizationLabel(state[key]);
@@ -23,6 +25,7 @@ export function SequencerResumeQuantizeButton({
     <button
       type="button"
       className="seq-resume-quantize-btn"
+      disabled={disabled}
       onClick={() => onSelectChange(key, nextSequencerResumeQuantization(state[key]) as SliderState[typeof key])}
       title={`Unmute quantization: ${label}. Click to cycle.`}
       aria-label={`Unmute quantization: ${label}`}

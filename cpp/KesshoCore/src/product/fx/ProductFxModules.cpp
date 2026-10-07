@@ -1,39 +1,8 @@
 #include "../KesshoProductEngineInternal.h"
 
-void KesshoProductEngine::retimeTempoSyncedFx(float previous_bpm) {
-  configureSpectralFreezeModule();
-  if (!std::isfinite(previous_bpm) || !std::isfinite(transport.bpm) ||
-      previous_bpm <= 0.0f || transport.bpm <= 0.0f ||
-      std::fabs(previous_bpm - transport.bpm) <= 0.0001f) {
-    return;
-  }
-  const float tempo_ratio = previous_bpm / transport.bpm;
-  fx.delay_a_time_left_ms = clampFloat(fx.delay_a_time_left_ms * tempo_ratio, 10.0f, 5000.0f);
-  fx.delay_a_time_right_ms = clampFloat(fx.delay_a_time_right_ms * tempo_ratio, 10.0f, 5000.0f);
-  fx.delay_b_base_time_ms = clampFloat(fx.delay_b_base_time_ms * tempo_ratio, 20.0f, 5000.0f);
-
-  // A live tempo drag can produce many control events per second. Only publish
-  // the three affected delay parameters instead of rebuilding every FX module.
-  if (delay_a_module) {
-    float* params = delay_a_module->params();
-    if (params != nullptr && delay_a_module->paramCount() >= 3) {
-      params[1] = fx.delay_a_time_left_ms;
-      params[2] = fx.delay_a_time_right_ms;
-      delay_a_module->commitParams();
-    }
-  }
-  if (delay_b_module) {
-    float* params = delay_b_module->params();
-    if (params != nullptr && delay_b_module->paramCount() >= 4) {
-      params[3] = fx.delay_b_base_time_ms;
-      delay_b_module->commitParams();
-    }
-  }
-}
-
 void KesshoProductEngine::configureSpectralFreezeModule() {
   if (fx_configuration_batch_depth > 0u) {
-    spectral_freeze_configuration_pending = true;
+    fx_configuration_pending_mask |= kFxConfigurationFreeze;
     return;
   }
   if (!spectral_freeze_module) return;
@@ -54,14 +23,19 @@ void KesshoProductEngine::configureSpectralFreezeModule() {
   params[12] = 1.0f;
   params[13] = 0.1f;
   spectral_freeze_module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  ++fx_configuration_debug_counts[4];
+#endif
 }
 
-void KesshoProductEngine::configureFxModules() {
+void KesshoProductEngine::configureFxModules(uint32_t group_mask) {
+  group_mask &= kFxConfigurationAll;
+  if (group_mask == 0u) return;
   if (fx_configuration_batch_depth > 0u) {
-    fx_configuration_pending = true;
+    fx_configuration_pending_mask |= group_mask;
     return;
   }
-  if (delay_a_module) {
+  if ((group_mask & kFxConfigurationDelayA) != 0u && delay_a_module) {
     float* params = delay_a_module->params();
     if (params != nullptr && delay_a_module->paramCount() >= 17) {
       const bool active =
@@ -89,9 +63,12 @@ void KesshoProductEngine::configureFxModules() {
       params[15] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeGranular) ? 1.0f : 0.0f;
       params[16] = routing.fxEdgeEnabled(kFxNodeDelayA, kFxNodeDegrade) ? 1.0f : 0.0f;
       delay_a_module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++fx_configuration_debug_counts[0];
+#endif
     }
   }
-  if (delay_b_module) {
+  if ((group_mask & kFxConfigurationDelayB) != 0u && delay_b_module) {
     float* params = delay_b_module->params();
     if (params != nullptr && delay_b_module->paramCount() >= 25) {
       const bool active =
@@ -123,10 +100,15 @@ void KesshoProductEngine::configureFxModules() {
       }
       params[24] = routing.fxEdgeEnabled(kFxNodeDelayB, kFxNodeDegrade) ? 1.0f : 0.0f;
       delay_b_module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++fx_configuration_debug_counts[1];
+#endif
     }
   }
-  configureReverbModule();
-  if (granular_module) {
+  if ((group_mask & kFxConfigurationReverb) != 0u) {
+    configureReverbModule();
+  }
+  if ((group_mask & kFxConfigurationGranular) != 0u && granular_module) {
     float* params = granular_module->params();
     if (params != nullptr && granular_module->paramCount() >= static_cast<int>(kGranularParamCount)) {
       params[0] = fx.granular_enabled ? 1.0f : 0.0f;
@@ -212,8 +194,17 @@ void KesshoProductEngine::configureFxModules() {
       }
       granular_module->prepareRandomSeed(rng_state);
       granular_module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++fx_configuration_debug_counts[3];
+#endif
     }
   }
-  configureSpectralFreezeModule();
-  configureDynamicsDriftModule();
+  if ((group_mask & kFxConfigurationFreeze) != 0u) {
+    configureSpectralFreezeModule();
+  }
+  const uint32_t dynamics_mask = group_mask &
+      (kFxConfigurationMasterDynamics | kFxConfigurationWetDynamics);
+  if (dynamics_mask != 0u) {
+    configureDynamicsDriftModule(dynamics_mask);
+  }
 }

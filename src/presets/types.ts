@@ -15,6 +15,7 @@ import type { PitchBindingMode } from '../audio/drumSeqTypes';
 import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { DiamondPosition } from '../audio/journeyTypes';
 import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
+import type { SynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
 
 export type PresetLevel = 'engine' | 'kit' | 'source' | 'state' | 'journey';
 export type PresetLibrary = 'stock' | 'user' | 'cloud';
@@ -118,6 +119,7 @@ export interface PresetVersionMetadata {
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  synthSequenceVariationBanks?: SynthSequenceVariationBanks;
   drumScatterState?: SerializedSeqScatterState;
   journeyPreview?: JourneyPresetPreview;
   presetPool?: PresetPoolMetadata;

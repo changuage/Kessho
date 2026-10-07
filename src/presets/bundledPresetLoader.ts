@@ -19,6 +19,10 @@ import type {
 import type { SavedPresetSource } from './savedPresetSource';
 import type { PresetPoolMetadata, PresetVersionMetadata } from './types';
 import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
+import {
+  normalizeSynthSequenceVariationBanks,
+  type SynthSequenceVariationBanks,
+} from '../ui/sequencer/synthSequenceVariations';
 import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 import { completeCanonicalPresetState } from './presetStateCompatibility';
@@ -68,6 +72,7 @@ export interface BundledSavedPreset {
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  synthSequenceVariationBanks?: SynthSequenceVariationBanks;
   drumScatterState?: SerializedSeqScatterState;
   presetPool?: PresetPoolMetadata;
 }
@@ -93,6 +98,24 @@ function bundledPresetFromFileData(
     const metadata = { ...data } as Record<string, unknown>;
     delete metadata.state;
     delete metadata.timestamp;
+    const directState = enforceProductCorePresetBoundaryState(completeCanonicalPresetState(data.state as SliderState));
+    const directStateRecord = directState as unknown as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
+      try {
+        directStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+      } catch {
+        // Keep the canonical state when a bundled metadata bank is malformed.
+      }
+    } else {
+      try {
+        directStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(
+          directStateRecord.synthSequenceVariationBanks,
+          4,
+        );
+      } catch {
+        directStateRecord.synthSequenceVariationBanks = completeCanonicalPresetState({}).synthSequenceVariationBanks;
+      }
+    }
     delete metadata.name;
     const behavior = sanitizePresetParameterBehaviorMetadata(metadata as PresetVersionMetadata);
     if (behavior.sliderModes) metadata.sliderModes = behavior.sliderModes;
@@ -106,7 +129,7 @@ function bundledPresetFromFileData(
       id: typeof data.id === 'string' ? data.id : undefined,
       name: data.name,
       timestamp: new Date(data.timestamp).toISOString(),
-      state: enforceProductCorePresetBoundaryState(completeCanonicalPresetState(data.state as SliderState)),
+      state: directState,
       source,
     } as BundledSavedPreset;
   }
@@ -127,11 +150,29 @@ function bundledPresetFromFileData(
   else delete metadata.dualRanges;
   if (behavior.dualSliderConfigs) metadata.dualSliderConfigs = behavior.dualSliderConfigs;
   else delete metadata.dualSliderConfigs;
+  const restoredState = enforceProductCorePresetBoundaryState(completeCanonicalPresetState(versionData));
+  const restoredStateRecord = restoredState as unknown as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
+    try {
+      restoredStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+    } catch {
+      // Preserve the staged state when optional authored variation content is invalid.
+    }
+  } else {
+    try {
+      restoredStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(
+        restoredStateRecord.synthSequenceVariationBanks,
+        4,
+      );
+    } catch {
+      restoredStateRecord.synthSequenceVariationBanks = completeCanonicalPresetState({}).synthSequenceVariationBanks;
+    }
+  }
   return {
     id: entry.id,
     name: entry.name,
     timestamp: new Date(version.timestamp).toISOString(),
-    state: enforceProductCorePresetBoundaryState(completeCanonicalPresetState(versionData)),
+    state: restoredState,
     ...metadata,
     source,
     tags: entry.tags,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import { useDocumentVisibility } from './useDocumentVisibility';
+import { isMobileVisualViewport } from './mobileVisualPolicy';
 
 interface UseAnimationVisibilityOptions {
   enabled?: boolean;
@@ -23,7 +24,7 @@ export function getCappedCanvasDpr(
 ): number {
   if (typeof window === 'undefined') return 1;
   const rawDpr = window.devicePixelRatio || 1;
-  const isMobile = window.innerWidth < 768;
+  const isMobile = isMobileVisualViewport();
   return Math.min(rawDpr, isMobile ? mobileMax : desktopMax);
 }
 

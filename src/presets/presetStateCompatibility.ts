@@ -6,6 +6,7 @@ import {
 } from '../ui/sliderSystem/dualConfigReducer';
 import { PARAM_REGISTRY } from './ParamRegistry';
 import { normalizeFxRoutingGraphState } from '../ui/routing/fxRoutingGraph';
+import { normalizeSynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
 
 const CANONICAL_PRESET_STATE_KEYS = Object.keys(PARAM_REGISTRY) as (keyof SliderState)[];
 
@@ -52,6 +53,15 @@ export function completeCanonicalPresetState(
   for (const key of CANONICAL_PRESET_STATE_KEYS) {
     if (DEFAULT_STATE[key] !== undefined && !Object.prototype.hasOwnProperty.call(completed, key)) {
       completed[key] = DEFAULT_STATE[key];
+    }
+  }
+  if (!Object.prototype.hasOwnProperty.call(completed, 'synthSequenceVariationBanks')) {
+    completed.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
+  } else {
+    try {
+      completed.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(completed.synthSequenceVariationBanks, 4);
+    } catch {
+      completed.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
     }
   }
   for (const key of TRANSIENT_PRESET_STATE_KEYS) completed[key] = DEFAULT_STATE[key];

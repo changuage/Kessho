@@ -303,6 +303,76 @@ OSStatus renderProductCoreToAudioBufferList(
   return _runtime->enqueueEvent(*event) == KESSHO_PRODUCT_OK;
 }
 
+- (BOOL)copyCaptureClock:(KesshoProductCaptureClock*)clock {
+  if (_runtime == nullptr || clock == nullptr) {
+    return NO;
+  }
+  return _runtime->copyCaptureClock(*clock) == KESSHO_PRODUCT_OK;
+}
+
+- (int32_t)setSequencerVariationBank:(uint32_t)sequencerId
+                            laneIndex:(uint32_t)laneIndex
+                                bank:(const KesshoProductSequencerVariationBank*)bank
+                      nativeRevision:(uint64_t*)nativeRevision {
+  if (_runtime == nullptr || bank == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  return _runtime->setSequencerVariationBank(
+      sequencerId, laneIndex, *bank, nativeRevision);
+}
+
+- (int32_t)selectSequencerVariation:(uint32_t)sequencerId
+                          laneIndex:(uint32_t)laneIndex
+                    variationIndex:(uint32_t)variationIndex {
+  if (_runtime == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  return _runtime->selectSequencerVariation(sequencerId, laneIndex, variationIndex);
+}
+
+- (BOOL)copySequencerVariationRuntime:(uint32_t)sequencerId
+                             laneIndex:(uint32_t)laneIndex
+                              runtime:(KesshoProductSequencerVariationRuntime*)runtime {
+  if (_runtime == nullptr || runtime == nullptr) {
+    return NO;
+  }
+  return _runtime->copySequencerVariationRuntime(
+             sequencerId, laneIndex, *runtime) == KESSHO_PRODUCT_OK;
+}
+
+- (BOOL)setRecordedCaptureEnabled:(BOOL)enabled
+                 sourceLaneIndex:(uint32_t)sourceLaneIndex
+                 targetLaneIndex:(uint32_t)targetLaneIndex
+                       sourceMode:(uint32_t)sourceMode
+                    durationBeats:(double)durationBeats {
+  if (_runtime == nullptr) {
+    return NO;
+  }
+  return _runtime->setRecordedCapture(
+             enabled, sourceLaneIndex, targetLaneIndex, sourceMode, durationBeats) == KESSHO_PRODUCT_OK;
+}
+
+- (NSData* _Nullable)copyRecordedCaptureEventsDataWithOverflowCount:(uint32_t*)overflowCount {
+  if (_runtime == nullptr) {
+    if (overflowCount != nullptr) *overflowCount = 0u;
+    return nil;
+  }
+  std::array<KesshoProductGeneratedSequencerCaptureEvent, 4096> events{};
+  const uint32_t count = _runtime->drainRecordedCaptureEvents(
+      events.data(), static_cast<uint32_t>(events.size()), overflowCount);
+  return [NSData dataWithBytes:events.data()
+                         length:static_cast<NSUInteger>(count) * sizeof(events[0])];
+}
+
+- (BOOL)isRecordedCaptureActive {
+  return _runtime != nullptr && _runtime->recordedCaptureActive();
+}
+
+- (BOOL)copyRecordedCaptureOriginSample:(uint64_t*)sample beat:(double*)beat {
+  if (_runtime == nullptr || sample == nullptr || beat == nullptr) return NO;
+  return _runtime->copyRecordedCaptureOrigin(*sample, *beat);
+}
+
 - (BOOL)copyTelemetry:(KesshoProductTelemetry*)telemetry {
   if (_runtime == nullptr || telemetry == nullptr) {
     return NO;

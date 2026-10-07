@@ -2,7 +2,7 @@
 
 void KesshoProductEngine::configureReverbModule() {
   if (fx_configuration_batch_depth > 0u) {
-    reverb_configuration_pending = true;
+    fx_configuration_pending_mask |= kFxConfigurationReverb;
     return;
   }
   if (!reverb_module) {
@@ -56,4 +56,7 @@ void KesshoProductEngine::configureReverbModule() {
       -1.0f,
       1.0f);
   reverb_module->commitParams();
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  ++fx_configuration_debug_counts[2];
+#endif
 }

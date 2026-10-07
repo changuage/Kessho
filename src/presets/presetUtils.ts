@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { normalizeJourneyPresetPreview } from './journeyPresetPreview';
 import { normalizePresetPoolMetadata, normalizePresetTags } from './presetPool';
+import { normalizeSynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
 import {
   arePresetScopesCompatible,
   canonicalizePresetScope,
@@ -41,6 +42,7 @@ export const PRESET_VERSION_METADATA_FIELDS = [
   'drumPitchSettings',
   'synthPitchSettings',
   'synthPitchBindingModes',
+  'synthSequenceVariationBanks',
   'drumScatterState',
   'journeyPreview',
   'presetPool',
@@ -301,11 +303,19 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
   }
 
   for (const field of PRESET_VERSION_METADATA_FIELDS) {
-    const normalized = field === 'journeyPreview'
-      ? normalizeJourneyPresetPreview(input[field])
-      : field === 'presetPool'
-        ? normalizePresetPoolMetadata(input[field])
-        : normalizeMetadataField(input[field]);
+    const normalized = field === 'synthSequenceVariationBanks'
+        ? (() => {
+            try {
+              return normalizeSynthSequenceVariationBanks(input[field], 4);
+            } catch {
+              return undefined;
+            }
+          })()
+      : field === 'journeyPreview'
+        ? normalizeJourneyPresetPreview(input[field])
+        : field === 'presetPool'
+          ? normalizePresetPoolMetadata(input[field])
+          : normalizeMetadataField(input[field]);
     if (normalized !== undefined) {
       if ((field === 'dualRanges' || field === 'sliderModes' || field === 'dualSliderConfigs') && isPlainObject(normalized)) {
         migrateLegacyDelayAKeys(normalized as Record<string, unknown>);

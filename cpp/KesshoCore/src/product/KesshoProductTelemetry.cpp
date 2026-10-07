@@ -404,11 +404,14 @@ constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
       continue;
     }
     const double samples_per_step =
-        sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
+        sequencerSamplesPerStep(transport, sample_rate, lane.sequencer_mode == kSequencerModeEuclid
+            ? variationClockDivision(lane.variation_runtime, lane.clock_division) : lane.clock_division) /
         static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
     telemetry.synth_sequencer_current_steps[i] = sequencerCurrentRelativeStep(lane, transport.sample_frame, samples_per_step);
     telemetry.synth_sequencer_hit_counts[i] = static_cast<uint32_t>(
-        std::min<uint64_t>(lane.emitted_hit_count, 0xffffffffull));
+        std::min<uint64_t>(lane.sequencer_mode == kSequencerModeEuclid &&
+            activeVariationSnapshot(lane.variation_runtime) != nullptr
+                ? lane.audible_hit_count : lane.emitted_hit_count, 0xffffffffull));
     telemetry.synth_arp_current_steps[i] = lane.arp.enabled
         ? lane.arp.current_step % std::max(1u, lane.arp.length)
         : 0u;
@@ -418,12 +421,14 @@ constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
     const LaneState& lane = drum_lanes[i];
     if (lane.enabled && lane.sequencer_runtime_initialized && lane.step_count != 0u && lane.clock_division != 0u) {
       const double samples_per_step =
-          sequencerSamplesPerStep(transport, sample_rate, lane.clock_division) /
+          sequencerSamplesPerStep(transport, sample_rate, lane.sequencer_mode == kSequencerModeEuclid
+            ? variationClockDivision(lane.variation_runtime, lane.clock_division) : lane.clock_division) /
           static_cast<double>(clampFloat(lane.tempo_multiplier, 0.25f, 12.0f));
       telemetry.drum_sequencer_current_steps[i] = sequencerCurrentRelativeStep(lane, transport.sample_frame, samples_per_step);
     }
     telemetry.drum_sequencer_hit_counts[i] = static_cast<uint32_t>(
-        std::min<uint64_t>(drum_lanes[i].emitted_hit_count, 0xffffffffull));
+        std::min<uint64_t>(activeVariationSnapshot(lane.variation_runtime) != nullptr
+            ? lane.audible_hit_count : lane.emitted_hit_count, 0xffffffffull));
   }
   telemetry.sequencer_event_count = sequencer_events.count;
   telemetry.control_queue_depth = control_event_count;

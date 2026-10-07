@@ -32,6 +32,9 @@ typedef struct KesshoProductGeneratedSequencerCaptureEvent {
   int32_t target_step_index;
   float target_step_float;
   float nudge;
+  // Shared identity for notes emitted by one musical attack (for example the
+  // layers of one Anchor Walker gesture).  event_id remains note-unique.
+  uint64_t attack_id;
 } KesshoProductGeneratedSequencerCaptureEvent;
 
 typedef struct KesshoProductGeneratedSequencerCaptureConfig {
@@ -50,7 +53,7 @@ typedef struct KesshoProductGeneratedSequencerCaptureConfig {
 namespace kessho::product {
 
 static_assert(
-    sizeof(KesshoProductGeneratedSequencerCaptureEvent) == 64u,
+    sizeof(KesshoProductGeneratedSequencerCaptureEvent) == 72u,
     "Generated sequencer capture event ABI size changed");
 
 inline uint32_t generatedSequencerCaptureModeBit(uint32_t mode) noexcept {

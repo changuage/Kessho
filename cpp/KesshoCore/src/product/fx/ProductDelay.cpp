@@ -39,8 +39,6 @@
   for (uint32_t bus = 0; bus < tap_count; ++bus) {
     tap_l[bus] = module_tap_l[bus];
     tap_r[bus] = module_tap_r[bus];
-    std::fill(module_tap_l[bus], module_tap_l[bus] + frames, 0.0f);
-    std::fill(module_tap_r[bus], module_tap_r[bus] + frames, 0.0f);
   }
   module->processPlanarStereoTaps(input_l + start, input_r + start, tap_l, tap_r, tap_count, static_cast<int>(frames));
   const float feedback_gain = is_delay_a

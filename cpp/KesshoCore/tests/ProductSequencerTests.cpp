@@ -1316,8 +1316,8 @@ void requireProductSequencerNudgeSchedulingTests() {
       const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
       expectAbsoluteOffsets(
           events,
-          {step_frames / 2u, step_frames},
-          "positive nudge should schedule late toward the next active trigger and anchor ratchets at the nudged sample");
+          {step_frames / 4u, step_frames * 3u / 4u},
+          "positive nudge should move by one quarter of its owning grid step and anchor ratchets at the nudged sample");
       kessho_product_destroy(engine);
     }
 
@@ -1330,8 +1330,8 @@ void requireProductSequencerNudgeSchedulingTests() {
       const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
       expectAbsoluteOffsets(
           events,
-          {0u, step_frames / 2u, step_frames, step_frames + step_frames / 2u},
-          "negative nudge should schedule early and anchor ratchets at the nudged sample");
+          {0u, step_frames / 2u, step_frames * 3u / 2u},
+          "negative nudge should move by half of its owning grid step and anchor ratchets at the nudged sample");
       kessho_product_destroy(engine);
     }
 
@@ -1760,6 +1760,8 @@ void requireProductSequencerModeEventTests() {
     require(overflow_count == 0u, "Anchor Walker generated capture should not overflow");
     require(captured_count == 2u, "Anchor Walker generated capture should drain layered events");
     require(captured[0].event_id > 0u && captured[1].event_id > captured[0].event_id, "Anchor Walker generated capture event ids should increase");
+    require(captured[0].attack_id != 0u, "Anchor Walker generated capture should assign an attack id");
+    require(captured[0].attack_id != captured[1].attack_id, "Anchor Walker delayed layer should have a distinct attack id");
     require(captured[0].source_lane_index == 0u, "Anchor Walker generated capture lane mismatch");
     require(captured[0].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER, "Anchor Walker generated capture mode mismatch");
     require(captured[0].target_step_index == 0, "Anchor Walker generated capture should map first layer to target step zero");
@@ -1770,6 +1772,34 @@ void requireProductSequencerModeEventTests() {
     require(captured[1].nudge > 0.0f, "Anchor Walker delayed layer nudge should be positive");
     require(std::fabs(captured[0].midi_note - events[0].midi_note) < 0.001f, "Anchor Walker generated capture MIDI should match emitted event");
     require(std::fabs(captured[1].midi_note - events[1].midi_note) < 0.001f, "Anchor Walker delayed capture MIDI should match emitted event");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "Anchor Walker simultaneous capture engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeAnchorWalkerSnapshot();
+    auto& walker = snapshot.synth_euclid.mode_states[0].anchor_walker;
+    walker.spread_seconds = 0.0f;
+    walker.layers[1].delay_seconds = 0.0f;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "Anchor Walker simultaneous capture snapshot load failed");
+    enableGeneratedSequencerCapture(
+        engine,
+        0u,
+        0u,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER,
+        "Anchor Walker simultaneous capture enable failed");
+
+    KesshoSequencerEvent events[8]{};
+    require(kessho_product_debug_render_events(engine, events, 8u, 1024u) == 2, "Anchor Walker simultaneous capture should emit layered events");
+    KesshoProductGeneratedSequencerCaptureEvent captured[8]{};
+    uint32_t overflow_count = 0u;
+    require(
+        kessho_product_drain_generated_sequencer_capture_events(engine, captured, 8u, &overflow_count) == 2u,
+        "Anchor Walker simultaneous capture should drain layered events");
+    require(overflow_count == 0u, "Anchor Walker simultaneous capture should not overflow");
+    require(captured[0].attack_id != 0u, "Anchor Walker simultaneous capture should assign an attack id");
+    require(captured[0].attack_id == captured[1].attack_id, "Anchor Walker simultaneous layers should share an attack id");
     kessho_product_destroy(engine);
   }
 
@@ -4792,6 +4822,537 @@ void requireActiveModulationRangeIndexing() {
       "third indexed random walk did not advance across a slot hole");
 }
 
+void requireNegativeFirstNudgePendingEdits() {
+  constexpr uint32_t step_frames = 1500u;
+  constexpr uint32_t loop_frames = 8u * step_frames;
+  for (const uint32_t submission_frame : {100u, loop_frames - 100u, loop_frames + 100u}) {
+    for (const bool select_only : {false, true}) {
+      KesshoProductEngine* engine = kessho_product_create(48000.0, 4096u, 0u);
+      auto snapshot = makeSnapshot();
+      snapshot.drum_euclid.lane_count = 0u;
+      require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+          "negative first nudge edit snapshot failed");
+      KesshoProductSequencerVariationBank bank{};
+      bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+      bank.enabled = 1u;
+      bank.chain_length = 1u;
+      for (uint32_t index = 0u; index < 2u; ++index) {
+        auto& phrase = bank.variations[index];
+        phrase.step_count = index == 0u ? 8u : 24u;
+        phrase.clock_division = 64u;
+        phrase.trigger_mask = 1u;
+        phrase.nudge_mask = 1u;
+        phrase.nudge_values[0] = -0.24f;
+        phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+        phrase.steps[0].note_count = 1u;
+        phrase.steps[0].notes[0].velocity = 0.5f;
+        phrase.steps[0].notes[0].gate_beats = 0.125f;
+      }
+      require(kessho_product_set_sequencer_variation_bank(
+          engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+          "negative first nudge bank failed");
+      (void)renderEventsInBlocks(engine, 127u, submission_frame);
+      if (select_only) {
+        require(kessho_product_select_sequencer_variation(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 1u) == KESSHO_PRODUCT_OK,
+            "negative first nudge selection failed");
+      } else {
+        bank.variations[0].step_count = 24u;
+        bank.variations[0].clock_division = 12u;
+        require(kessho_product_set_sequencer_variation_bank(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+            "negative first nudge replacement failed");
+      }
+      const uint32_t boundary = submission_frame < loop_frames ? loop_frames : loop_frames * 2u;
+      (void)renderEventsInBlocks(engine, 127u, boundary - submission_frame);
+      const auto& runtime = engine->synth_lanes[0].variation_runtime;
+      require(select_only ? runtime.pending_variation_valid : runtime.pending_valid,
+          "pending edits must wait for their nominal boundary");
+      const auto boundary_events = renderEventsInBlocks(engine, 127u, 1u);
+      require(boundary_events.empty(),
+          "pending edits must not replay the already elapsed negative first onset");
+      require(!runtime.pending_valid && !runtime.pending_variation_valid,
+          "negative first nudge must not starve pending edits");
+      require(runtime.active->variations[runtime.active_variation].step_count == 24u,
+          "pending edit must activate the 24-cell phrase at its nominal boundary");
+      require(runtime.active_variation == (select_only ? 1u : 0u),
+          "pending variation selection must apply at its nominal boundary");
+      kessho_product_destroy(engine);
+    }
+  }
+}
+
+void requirePrinted24StepTelemetryTests() {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 4096u, 0u);
+  KesshoProductSnapshotV2 snapshot = makeSnapshot();
+  snapshot.drum_euclid.lane_count = 0u;
+  snapshot.synth_euclid.lanes[0].step_count = 16u;
+  snapshot.synth_euclid.lanes[0].clock_division = 16u;
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "24-step telemetry snapshot failed");
+  KesshoProductSequencerVariationBank bank{};
+  bank.enabled = 1u;
+  bank.chain_length = 1u;
+  auto& variation = bank.variations[0];
+  variation.step_count = 24u;
+  variation.clock_division = 12u;
+  variation.sublane_enabled_mask = 1u << 8u;
+  variation.sublane_follow_trigger_hits_mask = 1u << 8u;
+  variation.sublane_steps[8] = 13u;
+  variation.nudge_mask = 0x1fffu;
+  constexpr uint32_t trigger_steps[] = {0u, 1u, 2u, 3u, 4u, 5u, 6u, 13u, 14u, 15u, 19u, 21u, 23u};
+  for (uint32_t hit = 0u; hit < 13u; ++hit) {
+    const uint32_t step = trigger_steps[hit];
+    variation.trigger_mask |= 1u << step;
+    variation.nudge_values[hit] = hit == 0u ? 0.0f : hit % 2u ? 0.25f : -0.25f;
+    variation.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+    variation.steps[step].note_count = 1u;
+    variation.steps[step].notes[0].velocity = 1.0f;
+  }
+  auto initial_bank = bank;
+  initial_bank.variations[0].step_count = 8u;
+  initial_bank.variations[0].clock_division = 4u;
+  initial_bank.variations[0].trigger_mask &= 0xffu;
+  require(kessho_product_set_sequencer_variation_bank(
+      engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &initial_bank) == KESSHO_PRODUCT_OK,
+      "initial 8-step bank failed");
+  (void)renderEventsInBlocks(engine, 64u, 64u);
+  require(kessho_product_set_sequencer_variation_bank(
+      engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+      "running bank resize to 24 triplet steps failed");
+  (void)renderEventsInBlocks(engine, 64u, 192000u - 64u);
+
+  uint32_t hit_count = 0u;
+  constexpr uint32_t samples_per_step = 8000u;
+  for (uint32_t cursor = 0u; cursor < 24u * samples_per_step; cursor += 64u) {
+    KesshoSequencerEvent events[16]{};
+    const int32_t count = kessho_product_debug_render_events(engine, events, 16u, 64u);
+    require(count >= 0, "24-step telemetry render failed");
+    for (int32_t event_index = 0; event_index < count; ++event_index) {
+      require(hit_count < 13u, "printed phrase emitted an extra attack");
+      const uint32_t expected_step = trigger_steps[hit_count];
+      const uint32_t expected_sample = static_cast<uint32_t>(
+          (expected_step + variation.nudge_values[hit_count]) * samples_per_step);
+      require(events[event_index].step_id == expected_step &&
+          cursor + events[event_index].sample_offset == expected_sample,
+          "24-step print must preserve owning cells and hit-following nudge after step16");
+      ++hit_count;
+    }
+    require(engine->telemetry.synth_sequencer_current_steps[0] ==
+        ((cursor + 64u) / samples_per_step) % 24u,
+        "printed playhead must use bank length and triplet division, not legacy16");
+    require(engine->telemetry.synth_sequencer_hit_counts[0] == hit_count,
+        "printed sublane telemetry must follow audible attacks, not lookahead");
+  }
+  require(hit_count == 13u, "24-step print should emit all 13 attacks in 8 beats");
+  kessho_product_destroy(engine);
+}
+
+void requireProductSequencerVariationRuntimeTests() {
+  constexpr double sample_rate = 48000.0;
+  constexpr uint32_t clock_division = 64u;
+  constexpr uint32_t step_frames = 1500u;
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0u);
+    require(engine != nullptr, "variation runtime engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "variation runtime snapshot load failed");
+
+    KesshoProductSequencerVariationBank bank{};
+    bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+    bank.enabled = 1u;
+    bank.chain_length = 2u;
+    bank.chain[0] = 0u;
+    bank.chain[1] = 1u;
+    bank.play_variation = 0u;
+    for (uint32_t variation = 0u; variation < 2u; ++variation) {
+      auto& phrase = bank.variations[variation];
+      phrase.step_count = 2u;
+      phrase.clock_division = clock_division;
+      phrase.trigger_mask = 0x3u;
+      phrase.swing = 0.0f;
+      phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+      phrase.steps[0].note_count = 1u;
+      phrase.steps[0].gate_beats = 0.25f;
+      phrase.steps[0].notes[0].midi_note = variation == 0u ? 0.0f : 12.0f;
+      phrase.steps[0].notes[0].velocity = 0.5f;
+      phrase.steps[0].notes[0].gate_beats = 0.125f;
+      phrase.steps[1].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_CHORD;
+      phrase.steps[1].note_count = 2u;
+      phrase.steps[1].gate_beats = 0.5f;
+      phrase.steps[1].notes[0].midi_note = variation == 0u ? 7.0f : 19.0f;
+      phrase.steps[1].notes[0].velocity = 0.75f;
+      phrase.steps[1].notes[0].gate_beats = 0.25f;
+      phrase.steps[1].notes[1].midi_note = variation == 0u ? 12.0f : 24.0f;
+      phrase.steps[1].notes[1].velocity = 0.625f;
+      phrase.steps[1].notes[1].gate_beats = 0.375f;
+    }
+    require(
+        kessho_product_set_sequencer_variation_bank(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "variation bank submission failed");
+    KesshoProductSequencerVariationRuntime runtime{};
+    require(
+        kessho_product_copy_sequencer_variation_runtime(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &runtime) == KESSHO_PRODUCT_OK,
+        "variation runtime copy before boundary failed");
+    require(runtime.revision == 0u, "variation bank should remain pending before an audio boundary");
+
+    const std::vector<RenderedSequencerEvent> first_phrase = renderEventsInBlocks(engine, 64u, step_frames + 1u);
+    require(!first_phrase.empty(), "variation bank should emit its first phrase events");
+    require(
+        std::any_of(first_phrase.begin(), first_phrase.end(), [](const RenderedSequencerEvent& event) {
+          return std::fabs(event.event.midi_note - 60.0f) < 0.001f &&
+              std::fabs(event.event.velocity - 0.5f) < 0.001f;
+        }),
+        "variation Single step should preserve note and velocity");
+    bool chord_emitted = false;
+    for (size_t left = 0u; left < first_phrase.size() && !chord_emitted; ++left) {
+      for (size_t right = left + 1u; right < first_phrase.size(); ++right) {
+        if (first_phrase[left].absolute_offset == first_phrase[right].absolute_offset &&
+            std::fabs(
+                std::fabs(first_phrase[left].event.midi_note - first_phrase[right].event.midi_note) - 5.0f) <
+                0.001f) {
+          chord_emitted = true;
+          break;
+        }
+      }
+    }
+    require(chord_emitted, "variation Chord step should emit its local notes");
+    require(
+        kessho_product_copy_sequencer_variation_runtime(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &runtime) == KESSHO_PRODUCT_OK,
+        "variation runtime copy after boundary failed");
+    require(runtime.revision == 1u, "variation bank revision should become active at the audio boundary");
+    require(runtime.active_variation == 0u, "variation chain should begin at A");
+    require(runtime.next_boundary_frame != UINT64_MAX, "variation runtime should publish its next boundary");
+
+    require(
+        kessho_product_select_sequencer_variation(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 1u) == KESSHO_PRODUCT_OK,
+        "variation selection should queue a populated chain entry");
+    (void)renderEventsInBlocks(engine, 64u, step_frames * 2u + 1u);
+    require(
+        kessho_product_copy_sequencer_variation_runtime(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &runtime) == KESSHO_PRODUCT_OK,
+        "variation runtime copy after selection failed");
+    require(runtime.active_variation == 1u, "queued variation selection should apply at the phrase boundary");
+    require(runtime.chain_position == 1u, "variation selection should update chain position");
+    (void)renderEventsInBlocks(engine, 64u, step_frames * 2u + 1u);
+    require(
+        kessho_product_copy_sequencer_variation_runtime(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &runtime) == KESSHO_PRODUCT_OK,
+        "variation runtime copy after chain advance failed");
+    require(runtime.active_variation == 0u, "variation chain should advance back to A");
+    const auto apply_bank_at_boundary = [&]() {
+      require(kessho_product_set_sequencer_variation_bank(
+          engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+          "edited bank submission failed");
+      (void)renderEventsInBlocks(engine, 64u, static_cast<uint32_t>(
+          runtime.next_boundary_frame - engine->transport.sample_frame + 1u));
+      engine->copySequencerVariationRuntime(KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, runtime);
+    };
+    bank.chain_length = 1u;
+    bank.chain[0] = 1u;
+    bank.play_variation = 1u;
+    apply_bank_at_boundary();
+    require(runtime.active_variation == 1u, "explicit bank playback selection should switch to B");
+    bank.variations[1].steps[0].notes[0].velocity = 0.7f;
+    apply_bank_at_boundary();
+    require(runtime.active_variation == 1u, "editing B should preserve its playback selection");
+    bank.chain_length = 2u;
+    bank.chain[0] = 0u;
+    bank.chain[1] = 1u;
+    apply_bank_at_boundary();
+    require(runtime.active_variation == 1u && runtime.chain_position == 1u,
+        "enabling the chain after editing B should retain its chain position");
+    for (const uint32_t expected : {0u, 1u, 0u}) {
+      (void)renderEventsInBlocks(engine, 64u, static_cast<uint32_t>(
+          runtime.next_boundary_frame - engine->transport.sample_frame + 1u));
+      engine->copySequencerVariationRuntime(KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, runtime);
+      require(runtime.active_variation == expected, "edited bank chain should continue alternating A/B");
+    }
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0u);
+    require(engine != nullptr, "variation nudge engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "variation nudge snapshot load failed");
+    KesshoProductSequencerVariationBank bank{};
+    bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+    bank.enabled = 1u;
+    bank.chain_length = 1u;
+    bank.chain[0] = 0u;
+    bank.play_variation = 0u;
+    auto& phrase = bank.variations[0];
+    phrase.step_count = 8u;
+    phrase.clock_division = clock_division;
+    phrase.trigger_mask = 0xffu;
+    phrase.nudge_mask = 0x7u;
+    phrase.nudge_values[0] = 0.0f;
+    phrase.nudge_values[1] = 0.25f;
+    phrase.nudge_values[2] = -0.25f;
+    phrase.sublane_enabled_mask = 1u << 8u;
+    phrase.sublane_steps[8] = 3u;
+    phrase.sublane_directions[8] = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
+    for (uint32_t step = 0u; step < phrase.step_count; ++step) {
+      phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+      phrase.steps[step].note_count = 1u;
+      phrase.steps[step].notes[0].midi_note = 0.0f;
+      phrase.steps[step].notes[0].velocity = 1.0f;
+    }
+    require(
+        kessho_product_set_sequencer_variation_bank(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "variation nudge bank submission failed");
+    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, 64u, 5000u);
+    std::vector<uint32_t> offsets;
+    offsets.reserve(events.size());
+    for (const RenderedSequencerEvent& event : events) offsets.push_back(event.absolute_offset);
+    require(
+        std::find(offsets.begin(), offsets.end(), 1875u) != offsets.end(),
+        "variation nudge should use the second value in its independent three-step cycle");
+    require(
+        std::find(offsets.begin(), offsets.end(), 2625u) != offsets.end(),
+        "variation nudge should use the third value in its independent three-step cycle");
+    kessho_product_destroy(engine);
+    engine = kessho_product_create(sample_rate, 4096u, 0u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "swung nudge snapshot failed");
+    phrase.swing = 0.5f;
+    phrase.nudge_values[2] = -1.0f;
+    require(kessho_product_set_sequencer_variation_bank(
+        engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "swung nudge bank failed");
+    const auto swung_events = renderEventsInBlocks(engine, 64u, 3500u);
+    bool saw_early_even_step = false;
+    for (const auto& event : swung_events) {
+      saw_early_even_step |= event.event.step_id == 2u && event.absolute_offset == step_frames;
+    }
+    require(saw_early_even_step, "lookahead must precede a full negative nudge after a swung cell");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0u);
+    require(engine != nullptr, "variation arp cutoff engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    require(
+        kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "variation arp cutoff snapshot load failed");
+
+    KesshoProductSequencerVariationBank bank{};
+    bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+    bank.enabled = 1u;
+    bank.chain_length = 1u;
+    bank.chain[0] = 0u;
+    bank.play_variation = 0u;
+    auto& phrase = bank.variations[0];
+    phrase.step_count = 2u;
+    phrase.clock_division = clock_division;
+    phrase.trigger_mask = 0x3u;
+    phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP;
+    phrase.steps[0].note_count = 2u;
+    phrase.steps[0].gate_beats = 0.25f;
+    phrase.steps[0].arp_span_steps = 4.0f;
+    phrase.steps[0].arp_rate_x2 = 2u;
+    phrase.steps[0].arp_length = 2u;
+    phrase.steps[0].arp_pulse_mask = 0x3u;
+    phrase.steps[0].notes[0].midi_note = 1.0f;
+    phrase.steps[0].notes[0].velocity = 0.8f;
+    phrase.steps[0].notes[0].gate_beats = 0.125f;
+    phrase.steps[0].notes[1].midi_note = 3.0f;
+    phrase.steps[0].notes[1].velocity = 0.7f;
+    phrase.steps[0].notes[1].gate_beats = 0.25f;
+    phrase.steps[1].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+    phrase.steps[1].note_count = 1u;
+    phrase.steps[1].gate_beats = 8.0f;
+    phrase.steps[1].notes[0].midi_note = 24.0f;
+    phrase.steps[1].notes[0].velocity = 0.6f;
+    phrase.steps[1].notes[0].gate_beats = 8.0f;
+    require(
+        kessho_product_set_sequencer_variation_bank(
+            engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "variation arp cutoff bank submission failed");
+
+    const std::vector<RenderedSequencerEvent> events =
+        renderEventsInBlocks(engine, 64u, step_frames * 2u + 1u);
+    bool saw_arp_before_cutoff = false;
+    bool saw_note_after_cutoff = false;
+    bool saw_long_gate = false;
+    bool saw_old_arp_after_cutoff = false;
+    for (const RenderedSequencerEvent& event : events) {
+      const float midi_note = event.event.midi_note;
+      const bool arp_note = std::fabs(midi_note - 61.0f) < 0.001f ||
+          std::fabs(midi_note - 63.0f) < 0.001f;
+      if (arp_note && event.absolute_offset < step_frames) {
+        saw_arp_before_cutoff = true;
+      }
+      if (arp_note && event.absolute_offset >= step_frames && event.absolute_offset < step_frames * 2u) {
+        saw_old_arp_after_cutoff = true;
+      }
+      if (!arp_note && event.absolute_offset >= step_frames &&
+          event.absolute_offset < step_frames * 2u) {
+        saw_note_after_cutoff = true;
+        saw_long_gate = event.event.hold_seconds >= 3.999f && event.event.hold_seconds <= 4.001f;
+      }
+    }
+    require(saw_arp_before_cutoff, "variation ARP should emit before the next Note trigger");
+    require(saw_note_after_cutoff, "variation Note should replace ARP at the next trigger boundary");
+    require(!saw_old_arp_after_cutoff, "variation ARP events should be cut off by the next Note");
+    require(saw_long_gate, "variation Note should preserve its long gate in seconds");
+    kessho_product_destroy(engine);
+    engine = kessho_product_create(sample_rate, 4096u, 0u);
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "delayed arp snapshot reset failed");
+    std::swap(phrase.steps[0], phrase.steps[1]);
+    phrase.nudge_mask = 2u;
+    phrase.nudge_values[1] = 0.25f;
+    require(kessho_product_set_sequencer_variation_bank(
+        engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "delayed arp bank failed");
+    const auto delayed_arp = renderEventsInBlocks(engine, 64u, step_frames * 2u);
+    bool saw_delayed_arp = false;
+    for (const auto& event : delayed_arp) {
+      if (event.event.step_id != 1u) continue;
+      saw_delayed_arp = true;
+      require(event.absolute_offset >= 1875u, "lookahead must not sound ARP before its nudged onset");
+    }
+    require(saw_delayed_arp, "delayed ARP should still sound at its actual onset");
+    kessho_product_destroy(engine);
+  }
+
+  {
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0u);
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "phase lookahead snapshot failed");
+    KesshoProductSequencerVariationBank bank{};
+    bank.enabled = 1u;
+    bank.chain_length = 1u;
+    auto& phrase = bank.variations[0];
+    phrase.step_count = 2u;
+    phrase.clock_division = clock_division;
+    phrase.trigger_mask = 3u;
+    phrase.nudge_mask = 3u;
+    phrase.nudge_values[0] = 1.0f;
+    phrase.nudge_values[1] = -0.25f;
+    phrase.expression_mask = 3u;
+    phrase.expression[0] = 0.2f;
+    phrase.expression[1] = 0.8f;
+    phrase.sublane_enabled_mask = 1u << 5u;
+    phrase.sublane_follow_trigger_hits_mask = 1u << 5u;
+    phrase.sublane_steps[5] = 2u;
+    for (uint32_t step = 0u; step < 2u; ++step) {
+      phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+      phrase.steps[step].note_count = 1u;
+      phrase.steps[step].notes[0].midi_note = step == 0u ? 0.0f : 12.0f;
+      phrase.steps[step].notes[0].velocity = step == 0u ? 0.3f : 0.9f;
+    }
+    require(kessho_product_set_sequencer_variation_bank(
+        engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "phase lookahead bank failed");
+    const auto events = renderEventsInBlocks(engine, 64u, step_frames * 2u);
+    require(events.size() == 2u, "lookahead should emit both owning cells once");
+    for (const auto& event : events) {
+      const bool first = event.event.step_id == 0u;
+      require(event.absolute_offset == (first ? 1500u : 1125u), "lookahead must retain actual onset");
+      require(std::fabs(event.event.velocity - (first ? 0.3f : 0.9f)) < 0.001f,
+          "lookahead must retain owning note velocity");
+      require(std::fabs(event.event.expression - (first ? 0.2f : 0.8f)) < 0.001f,
+          "lookahead must retain owning follow-hit expression phase");
+    }
+    kessho_product_destroy(engine);
+  }
+
+  for (const uint32_t chain_length : {1u, 4u}) {
+    for (const float positive_nudge : {0.25f, 1.0f}) {
+      for (const float negative_nudge : {-0.25f, -1.0f}) {
+        KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0u);
+        require(engine != nullptr, "cross-variation nudge engine create failed");
+        KesshoProductSnapshotV2 snapshot = makeSnapshot();
+        snapshot.drum_euclid.lane_count = 0u;
+        require(
+            kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+            "cross-variation nudge snapshot load failed");
+
+        KesshoProductSequencerVariationBank bank{};
+        bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+        bank.enabled = 1u;
+        bank.chain_length = chain_length;
+        bank.chain[0] = 0u;
+        bank.chain[1] = 1u;
+        bank.chain[2] = 2u;
+        bank.chain[3] = 3u;
+        bank.play_variation = 0u;
+        for (uint32_t variation = 0u; variation < 4u; ++variation) {
+          auto& phrase = bank.variations[variation];
+          phrase.step_count = 2u;
+          phrase.clock_division = clock_division;
+          phrase.trigger_mask = 0x3u;
+          for (uint32_t step = 0u; step < phrase.step_count; ++step) {
+            phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
+            phrase.steps[step].note_count = 1u;
+            phrase.steps[step].gate_beats = 0.25f;
+            phrase.steps[step].notes[0].midi_note = variation == 0u
+                ? (step == 0u ? 0.0f : 7.0f)
+                : 12.0f;
+            phrase.steps[step].notes[0].velocity = 1.0f;
+          }
+        }
+        bank.variations[0].nudge_mask = 0x3u;
+        bank.variations[0].nudge_values[0] = negative_nudge;
+        bank.variations[0].nudge_values[1] = positive_nudge;
+        bank.variations[3].nudge_mask = 1u << 1u;
+        bank.variations[3].nudge_values[1] = positive_nudge;
+        bank.variations[1].nudge_mask = 1u;
+        bank.variations[1].nudge_values[0] = negative_nudge;
+        require(
+            kessho_product_set_sequencer_variation_bank(
+                engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+            "cross-variation nudge bank submission failed");
+
+        const std::vector<RenderedSequencerEvent> events =
+            renderEventsInBlocks(engine, 64u, step_frames * chain_length * 2u + 1u);
+        bool saw_late_a_end = false;
+        bool saw_early_b_start = false;
+        bool saw_late_d_end = false;
+        bool saw_early_a_wrap = false;
+        for (const RenderedSequencerEvent& event : events) {
+          if (event.absolute_offset == static_cast<uint64_t>(step_frames * (1.0f + positive_nudge))) {
+            saw_late_a_end = true;
+          }
+          if (event.absolute_offset == static_cast<uint64_t>(step_frames * (2.0f + negative_nudge)) &&
+              std::fabs(event.event.midi_note - 72.0f) < 0.001f) {
+            saw_early_b_start = true;
+          }
+          saw_late_d_end |= event.absolute_offset == static_cast<uint64_t>(step_frames * (7.0f + positive_nudge));
+          saw_early_a_wrap |= event.absolute_offset == static_cast<uint64_t>(step_frames * (8.0f + negative_nudge));
+        }
+        require(chain_length == 1u || (saw_late_d_end && saw_early_a_wrap), "D/A wrap must preserve overlapping nudge endpoints");
+        require(events.size() == chain_length * 2u + 1u, "variation chain must not emit a duplicate from the outgoing bank");
+        require(saw_late_a_end,
+            "variation A final positive nudge should survive the chain boundary window");
+        require(chain_length == 1u || saw_early_b_start,
+            "variation B first negative nudge should be scheduled before its chain boundary");
+        kessho_product_destroy(engine);
+      }
+    }
+  }
+
+}
+
 using ProductSequencerTest = void (*)();
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -4811,6 +5372,9 @@ int main() {
     requireProductSequencerRatchetPendingClearTests,
     requireProductSequencerSynthArpRuntimeTests,
     requireProductSequencerNudgeSchedulingTests,
+    requireProductSequencerVariationRuntimeTests,
+    requirePrinted24StepTelemetryTests,
+    requireNegativeFirstNudgePendingEdits,
     requireProductSequencerModeEventTests,
     requireAnchorWalkerTriggerAndBoundaryTests,
     requireAnchorWalkerStuckNoteEdgeTests,

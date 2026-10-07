@@ -319,6 +319,8 @@ class DelayBModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
+    filters_configured_ = false;
+    tap_runtime_configured_ = false;
     delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int output_latency_frames = std::max(
@@ -439,6 +441,7 @@ public:
   }
 
   void commitParams() override {
+    const DelayBState previous_state = state_;
     state_.enabled = params_[kParamEnabled] > 0.5f;
     state_.activity = clamp(params_[kParamActivity], 0.0f, 1.0f);
     state_.repeats = state_.enabled ? clamp(params_[kParamRepeats], 0.0f, 0.85f) : 0.0f;
@@ -463,8 +466,30 @@ public:
       state_.tape_head_levels[index] = clamp(params_[kParamTapeHeadLevelBase + i], 0.0f, 1.0f);
       state_.tape_head_pans[index] = clamp(params_[kParamTapeHeadPanBase + i], 0.0f, 1.0f);
     }
-    configureFilters();
-    configureTapRuntime();
+    const bool filters_changed = !filters_configured_ ||
+        previous_state.tone != state_.tone ||
+        previous_state.tape_heads != state_.tape_heads ||
+        previous_state.warp != state_.warp ||
+        previous_state.warp_intensity != state_.warp_intensity;
+    const bool tap_runtime_changed = !tap_runtime_configured_ ||
+        previous_state.enabled != state_.enabled ||
+        previous_state.activity != state_.activity ||
+        previous_state.repeats != state_.repeats ||
+        previous_state.base_time_sec != state_.base_time_sec ||
+        previous_state.vibrato != state_.vibrato ||
+        previous_state.diffuse != state_.diffuse ||
+        previous_state.tape_heads != state_.tape_heads ||
+        previous_state.pattern != state_.pattern ||
+        previous_state.warp != state_.warp ||
+        previous_state.warp_intensity != state_.warp_intensity ||
+        previous_state.spread != state_.spread ||
+        previous_state.tape_head_mask != state_.tape_head_mask ||
+        previous_state.tape_head_levels != state_.tape_head_levels ||
+        previous_state.tape_head_pans != state_.tape_head_pans;
+    if (filters_changed) configureFilters();
+    if (tap_runtime_changed) configureTapRuntime();
+    filters_configured_ = true;
+    tap_runtime_configured_ = true;
   }
 
   int outputTapCount() const override {
@@ -494,6 +519,9 @@ private:
   }
 
   void configureFilters() {
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    ++debug_filter_configurations;
+#endif
     const float tone = state_.tone;
     const float high_cut_hz = state_.tape_heads
         ? clamp(11000.0f - tone * 7600.0f - state_.warp_intensity * 1400.0f, 1200.0f, 12000.0f)
@@ -531,6 +559,9 @@ private:
   }
 
   void configureTapRuntime() {
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+    ++debug_tap_configurations;
+#endif
     float sum_gain = 0.0f;
     for (int i = 0; i < kTapCount; ++i) {
       const size_t index = static_cast<size_t>(i);
@@ -719,6 +750,8 @@ private:
   float feedback_l_ = 0.0f;
   float feedback_r_ = 0.0f;
   float delay_time_slew_ = 1.0f;
+  bool filters_configured_ = false;
+  bool tap_runtime_configured_ = false;
 };
 
 } // namespace

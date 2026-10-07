@@ -23,7 +23,7 @@ type ScheduleAudioEngineParamUpdate = (
     forceFullSnapshot?: boolean;
     triggerCritical?: boolean;
   },
-) => void;
+) => void | Promise<void>;
 
 type UsePresetEngineSyncOptions = {
   audioEngineProductCore: boolean;
@@ -37,7 +37,7 @@ type UsePresetEngineSyncOptions = {
 
 type PresetEngineSyncControls = {
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
-  syncCoreProductAppliedPreset: (nextState: SliderState) => void;
+  syncCoreProductAppliedPreset: (nextState: SliderState) => Promise<void>;
   syncScheduledAudioEngineState: (nextState: SliderState) => void;
   skipNextPresetLoadEngineSync: () => void;
 };
@@ -99,10 +99,10 @@ export function usePresetEngineSync({
     [audioEngineProductCore, resetSelectedCofDrift, updateSelectedReferenceParams],
   );
 
-  const syncCoreProductAppliedPreset = useCallback((nextState: SliderState): void => {
+  const syncCoreProductAppliedPreset = useCallback(async (nextState: SliderState): Promise<void> => {
     if (!audioEngineProductCore) return;
     immediatelyAppliedAudioEngineStateRef.current = nextState;
-    scheduleAudioEngineParamUpdate(nextState, createProductPresetSyncOptions());
+    await scheduleAudioEngineParamUpdate(nextState, createProductPresetSyncOptions());
   }, [audioEngineProductCore, scheduleAudioEngineParamUpdate]);
 
   const syncScheduledAudioEngineState = useCallback((nextState: SliderState): void => {
@@ -114,7 +114,9 @@ export function usePresetEngineSync({
       skipNextPresetLoadEngineSyncRef.current = false;
       return;
     }
-    scheduleAudioEngineParamUpdate(nextState);
+    void Promise.resolve(scheduleAudioEngineParamUpdate(nextState)).catch((error) => {
+      console.warn('Scheduled Product runtime sync failed:', error);
+    });
   }, [scheduleAudioEngineParamUpdate]);
 
   const skipNextPresetLoadEngineSync = useCallback((): void => {

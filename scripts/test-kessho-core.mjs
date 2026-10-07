@@ -919,6 +919,7 @@ run('/usr/bin/clang++', [
   '-Wall',
   '-Wextra',
   '-Werror',
+  '-DKESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS=1',
   ...kesshoCoreIncludeArgs(root),
   ...sources,
   testSource,

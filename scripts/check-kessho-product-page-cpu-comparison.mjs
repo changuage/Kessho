@@ -7,9 +7,12 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   PAGE_CPU_MAX_TRANSIENT_RETRIES,
+  PAGE_CPU_BROWSER_PROFILES,
+  PAGE_CPU_DEFAULT_BROWSER_PROFILE,
   classifyPageCpuTransientError,
   createPageCpuViteEnv,
   createPageCpuRetryEntry,
+  parsePageCpuBrowserProfile,
   shouldRetryPageCpuAttempt,
 } from './lib/kesshoProductPageCpuComparison.mjs';
 import {
@@ -34,6 +37,7 @@ function parseArgs(argv) {
     settleMs: 800,
     warmupMs: 1500,
     scenarios: [],
+    profile: PAGE_CPU_DEFAULT_BROWSER_PROFILE,
   };
   for (const arg of argv) {
     if (arg.startsWith('--url=')) args.url = arg.slice('--url='.length);
@@ -42,8 +46,9 @@ function parseArgs(argv) {
     else if (arg.startsWith('--settle-ms=')) args.settleMs = Number(arg.slice('--settle-ms='.length));
     else if (arg.startsWith('--warmup-ms=')) args.warmupMs = Number(arg.slice('--warmup-ms='.length));
     else if (arg.startsWith('--scenario=')) args.scenarios.push(arg.slice('--scenario='.length));
+    else if (arg.startsWith('--profile=')) args.profile = parsePageCpuBrowserProfile(arg.slice('--profile='.length));
     else if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/check-kessho-product-page-cpu-comparison.mjs [--url=http://127.0.0.1:4173/] [--duration-ms=8000] [--settle-ms=800] [--warmup-ms=1500] [--scenario=synth]');
+      console.log('Usage: node scripts/check-kessho-product-page-cpu-comparison.mjs [--url=http://127.0.0.1:4173/] [--duration-ms=8000] [--settle-ms=800] [--warmup-ms=1500] [--scenario=synth] [--profile=desktop|phone|tablet]');
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -964,10 +969,10 @@ function summarizeCapture(capture) {
   };
 }
 
-async function measureEngineScenarioAttempt({ browser, baseUrl, mode, args, scenario }) {
-  const stateKey = `page-cpu-${scenario.id}-${mode}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+async function measureEngineScenarioAttempt({ browser, baseUrl, mode, args, scenario, profile }) {
+  const stateKey = `page-cpu-${profile.id}-${scenario.id}-${mode}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const storageKey = `${ENGINE_STATE_STORAGE_PREFIX}${stateKey}`;
-  const context = await browser.newContext();
+  const context = await browser.newContext(profile.context);
   let cdp = null;
   let page = null;
   const url = withQuery(baseUrl, {
@@ -1116,6 +1121,8 @@ function writeReport(report) {
     '',
     `Duration: ${report.defaults.durationMs} ms; warmup: ${report.defaults.warmupMs} ms; settle: ${report.defaults.settleMs} ms`,
     '',
+    `Browser profile: ${report.defaults.profile}`,
+    '',
     `Product wins: ${report.summary.productWins}/${report.summary.comparableScenarioCount}`,
     '',
     `Average Product CPU saved vs Web TS: ${report.summary.averageSavedPercent === null ? 'n/a' : `${report.summary.averageSavedPercent.toFixed(2)}%`}`,
@@ -1190,6 +1197,7 @@ function writeReport(report) {
 
 const args = parseArgs(process.argv.slice(2));
 const selectedScenarios = selectScenarios(args);
+const browserProfile = PAGE_CPU_BROWSER_PROFILES[args.profile];
 const server = args.url ? { url: args.url, stop: async () => {} } : await startPreview(args.port);
 let browser = null;
 let report = null;
@@ -1210,7 +1218,7 @@ try {
       root,
       generatedAt,
       command: process.argv.map(String).join(' '),
-      scenarioName: selectedScenarios.map((scenario) => scenario.id).join(','),
+      scenarioName: `${args.profile}:${selectedScenarios.map((scenario) => scenario.id).join(',')}`,
       sampleRate: null,
       blockSize: RENDER_BLOCK_FRAMES,
       durationMs: args.durationMs,
@@ -1224,6 +1232,7 @@ try {
       durationMs: args.durationMs,
       settleMs: args.settleMs,
       warmupMs: args.warmupMs,
+      profile: browserProfile.id,
       serverMode: args.url ? 'external' : 'vite-dev-reference',
     },
     scenarios: [],
@@ -1234,6 +1243,7 @@ try {
     for (const scenario of selectedScenarios) {
       const result = {
         id: scenario.id,
+        profile: browserProfile.id,
         label: scenario.label,
         tabLabel: scenario.tabLabel,
         activeModules: scenario.activeModules,
@@ -1244,7 +1254,7 @@ try {
 
       for (const mode of ['core-product', 'web-ts']) {
         try {
-          result.engines[mode] = await measureEngineScenario({ browser, baseUrl: server.url, mode, args, scenario });
+          result.engines[mode] = await measureEngineScenario({ browser, baseUrl: server.url, mode, args, scenario, profile: browserProfile });
         } catch (error) {
           result.errors[mode] = error instanceof Error ? error.message : String(error);
           if (error?.retryMetadata) {
@@ -1278,7 +1288,7 @@ try {
       root,
       generatedAt: report.generatedAt,
       command: process.argv.map(String).join(' '),
-      scenarioName: report.scenarios.map((scenario) => scenario.id).join(','),
+      scenarioName: `${args.profile}:${report.scenarios.map((scenario) => scenario.id).join(',')}`,
       sampleRate: firstCapture?.sampleRate ?? null,
       blockSize: RENDER_BLOCK_FRAMES,
       durationMs: args.durationMs,

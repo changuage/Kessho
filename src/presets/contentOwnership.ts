@@ -111,6 +111,7 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
   drumPitchSettings: 'portable-content',
   synthPitchSettings: 'portable-content',
   synthPitchBindingModes: 'portable-content',
+  synthSequenceVariationBanks: 'portable-content',
   drumScatterState: 'portable-content',
   journeyPreview: 'identity-metadata',
   presetPool: 'user-preference',

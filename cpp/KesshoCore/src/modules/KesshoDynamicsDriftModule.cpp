@@ -11,6 +11,8 @@ namespace {
 
 class DynamicsDriftModule final : public IKesshoModule {
 public:
+  explicit DynamicsDriftModule(bool master_only) : master_only_(master_only) {}
+
   ~DynamicsDriftModule() override {
     dynamics_drift_instance_destroy(instance_);
   }
@@ -20,7 +22,8 @@ public:
     max_block_size_ = std::max(1, max_block_size);
     dynamics_drift_instance_destroy(instance_);
     instance_ = nullptr;
-    instance_ = dynamics_drift_instance_create(static_cast<float>(sample_rate_));
+    instance_ = dynamics_drift_instance_create_with_role(
+        static_cast<float>(sample_rate_), master_only_ ? 1 : 0);
     return instance_ != nullptr;
   }
 
@@ -103,13 +106,14 @@ public:
 private:
   double sample_rate_ = 48000.0;
   int max_block_size_ = KESSHO_DYNAMICS_DRIFT_MAX_BLOCK_SIZE;
+  bool master_only_ = false;
   KesshoDynamicsDriftInstance* instance_ = nullptr;
 };
 
 } // namespace
 
-std::unique_ptr<IKesshoModule> createDynamicsDriftModule() {
-  return std::make_unique<DynamicsDriftModule>();
+std::unique_ptr<IKesshoModule> createDynamicsDriftModule(bool master_only) {
+  return std::make_unique<DynamicsDriftModule>(master_only);
 }
 
 } // namespace kessho::core

@@ -991,7 +991,9 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
   scheduleGlobalAutoCycle();
   scheduleSceneRuntimeEvents();
 
+  beginFxConfigurationBatch();
   advanceModulationRanges(frames);
+  endFxConfigurationBatch();
   advanceGranularPhraseReseed();
   advanceReverbHarmonyCoupling(frames);
   if (transport.running) {
@@ -1010,11 +1012,29 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
     endFxConfigurationBatch();
     applyPendingTransportTransition();
     applyPendingSequencerAudibilityTransitions();
+    applyPendingSequencerVariationBanks();
+    advanceSequencerVariationBanks(0u);
     applySequencerChainTransitions();
     scheduleJourneyRuntime();
     scheduleGlobalAutoCycle();
     scheduleSceneRuntimeEvents();
+    const float harmony_root_before_clock = harmony.root_midi;
+    const uint32_t harmony_scale_before_clock = harmony.scale_id;
+    const uint32_t harmony_pool_count_before_clock = harmony.note_pool_count;
+    float harmony_chord_before_clock[4]{};
+    for (uint32_t index = 0u; index < 4u; ++index) {
+      harmony_chord_before_clock[index] = harmony.chord_midi[index];
+    }
     advanceHarmonyClock();
+    bool harmony_granular_config_changed =
+        harmony.root_midi != harmony_root_before_clock ||
+        harmony.scale_id != harmony_scale_before_clock ||
+        harmony.note_pool_count != harmony_pool_count_before_clock;
+    for (uint32_t index = 0u; index < 4u; ++index) {
+      harmony_granular_config_changed = harmony_granular_config_changed ||
+          harmony.chord_midi[index] != harmony_chord_before_clock[index];
+    }
+    if (harmony_granular_config_changed) configureFxModules(kFxConfigurationGranular);
     applyAutoStopAtCurrentFrame();
     scheduleSourceMorphAutomation();
 
@@ -1047,6 +1067,13 @@ void KesshoProductEngine::render(float* out_l, float* out_r, uint32_t frames) {
       control_segment_end = std::min<uint32_t>(
           control_segment_end,
           cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_chain, frames - cursor)));
+    }
+    const uint64_t next_variation_frame = nextSequencerVariationBoundaryFrame();
+    if (next_variation_frame != UINT64_MAX && next_variation_frame > transport.sample_frame) {
+      const uint64_t frames_until_variation = next_variation_frame - transport.sample_frame;
+      control_segment_end = std::min<uint32_t>(
+          control_segment_end,
+          cursor + static_cast<uint32_t>(std::min<uint64_t>(frames_until_variation, frames - cursor)));
     }
     if (harmony.next_harmony_frame != UINT64_MAX && harmony.next_harmony_frame > transport.sample_frame) {
       const uint64_t frames_until_harmony = harmony.next_harmony_frame - transport.sample_frame;

@@ -18,6 +18,8 @@ export interface GeneratedSequencerCaptureEvent {
   targetStepIndex: number | null;
   targetStepFloat: number | null;
   nudge: number;
+  /** Shared identity for notes emitted by one generated musical attack. */
+  attackId?: number;
 }
 
 export function productCaptureModeFromId(id: number): GeneratedSequencerCaptureSourceMode {

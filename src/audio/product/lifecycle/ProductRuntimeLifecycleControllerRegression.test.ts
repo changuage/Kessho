@@ -286,4 +286,55 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
   );
 }
 
+
+
+// Disposing during module startup must not install a stale node or clear a
+// replacement startup promise when the original async load finally completes.
+{
+  const { CoreProductRuntime } = await import('../../coreProductRuntime');
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const moduleLoads = [createDeferred(), createDeferred()] as const;
+  let contexts = 0;
+  let nodes = 0;
+  class StartupContext {
+    state = 'suspended';
+    audioWorklet = { addModule: () => moduleLoads[contexts++]!.promise };
+    close = async () => { this.state = 'closed'; };
+  }
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    AudioContext: StartupContext,
+    location: { search: '', protocol: 'https:', origin: 'https://example.test' },
+    __pointCloudsEmbeddedProductCoreAssets: {
+      workletUrl: 'https://example.test/worklet.js', wasmUrl: 'https://example.test/core.wasm', wasmBinary: new ArrayBuffer(8),
+    },
+  } });
+  try {
+    const runtime = new CoreProductRuntime();
+    const internals = runtime as unknown as {
+      prepareMediaSessionPlayback: () => void;
+      createProductWorkletNode: () => never;
+      readyPromise: Promise<void> | null;
+    };
+    internals.prepareMediaSessionPlayback = () => {};
+    internals.createProductWorkletNode = () => { nodes += 1; throw new Error('stale node created'); };
+    const first = runtime.ensureStarted();
+    const firstRejected = assert.rejects(first, /disposed during initialization/);
+    runtime.dispose();
+    const replacement = runtime.ensureStarted();
+    const replacementRejected = assert.rejects(replacement, /disposed during initialization/);
+    const replacementPromise = internals.readyPromise;
+    moduleLoads[0].resolve();
+    await firstRejected;
+    assert.equal(nodes, 0, 'late initialization installed a node after disposal');
+    assert.equal(internals.readyPromise, replacementPromise, 'old initialization cleared the replacement startup');
+    runtime.dispose();
+    moduleLoads[1].resolve();
+    await replacementRejected;
+    assert.equal(nodes, 0);
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+}
+
 console.log('Product runtime lifecycle controller regression passed');

@@ -33,7 +33,31 @@ public:
   [[nodiscard]] float normalizedScanPosition() const noexcept { return scan_head_.normalizedPosition(); }
   [[nodiscard]] uint32_t lastCaptureSerial() const noexcept { return last_capture_serial_; }
 
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  void debugSetCaptureAnalysisCacheEnabled(bool enabled) noexcept {
+    capture_analysis_cache_enabled_ = enabled;
+  }
+  void debugResetCaptureAnalysisCounters() noexcept {
+    capture_forward_analysis_count_ = 0;
+    capture_analysis_cache_hit_count_ = 0;
+  }
+  [[nodiscard]] uint64_t debugCaptureForwardAnalysisCount() const noexcept {
+    return capture_forward_analysis_count_;
+  }
+  [[nodiscard]] uint64_t debugCaptureAnalysisCacheHitCount() const noexcept {
+    return capture_analysis_cache_hit_count_;
+  }
+#endif
+
 private:
+  struct CaptureAnalysisCache {
+    std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> magnitude{};
+    std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> phase{};
+    uint64_t capture_generation = 0;
+    double center_position = 0.0;
+    bool valid = false;
+  };
+
   static constexpr int kOutputRingSize = SpectralFreezeStft::kFftSize * 2;
 
   void processHop() noexcept;
@@ -64,6 +88,8 @@ private:
   void finishReleaseIfSilent() noexcept;
   void updatePositionTarget() noexcept;
   void updateSpectralCaches() noexcept;
+  void invalidateCaptureAnalysisCache() noexcept;
+  [[nodiscard]] bool captureAnalysisCacheMatches(double center_position) const noexcept;
 
   [[nodiscard]] float deterministicSignedRandom(int channel, int bin) const noexcept;
   [[nodiscard]] float decayGainPerHop() const noexcept;
@@ -74,6 +100,7 @@ private:
   int hop_counter_ = 0;
   int output_read_position_ = 0;
   uint64_t spectral_frame_index_ = 0;
+  uint64_t capture_generation_ = 0;
   uint32_t last_capture_serial_ = 0;
   bool pending_capture_ = false;
   bool source_phase_valid_ = false;
@@ -106,11 +133,18 @@ private:
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> phase_advance_{};
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> synthesis_phase_{};
   std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2> smoothed_log_magnitude_{};
+  CaptureAnalysisCache capture_analysis_cache_{};
   std::array<float, SpectralFreezeStft::kBinCount> tone_gain_{};
   std::array<float, SpectralFreezeStft::kBinCount> side_weight_{};
   std::array<float, SpectralFreezeStft::kBinCount> output_magnitude_{};
   std::array<float, SpectralFreezeStft::kBinCount> output_phase_{};
   std::array<std::array<float, kOutputRingSize>, 2> output_ring_{};
+
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  bool capture_analysis_cache_enabled_ = true;
+  uint64_t capture_forward_analysis_count_ = 0;
+  uint64_t capture_analysis_cache_hit_count_ = 0;
+#endif
 };
 
 }  // namespace kessho::spectral_freeze

@@ -23,7 +23,6 @@ import {
   useProductRuntimeSession,
   useProductRuntimeShell,
 } from './ui/useProductRuntimeSession';
-import { calculateDriftedRoot } from './audio/harmony';
 import { useHarmonyWorkspaceController } from './ui/harmony/useHarmonyWorkspaceController';
 import { useHarmonyLiveProjection } from './ui/harmony/useHarmonyLiveProjection';
 import { DrumVoiceType as DrumPresetVoice } from './audio/drumPresets';
@@ -48,11 +47,9 @@ import {
 import { getProductDrumMorphDualRangeOverrides, interpolateProductDrumMorphDualRanges } from './product-control';
 
 import {
-  clampMorphPosition,
   isInMidMorph,
   isAtEndpoint0,
   isAtEndpoint1,
-  selectDiscreteMorphEndpoint,
 } from './audio/morphUtils';
 import {
   getRuntimeSliderFlashing,
@@ -71,7 +68,7 @@ import SnowflakeUI from './ui/SnowflakeUI';
 import { SnowflakePresetLoader } from './ui/SnowflakePresetLoader';
 import { SliderHelpProvider } from './ui/SliderHelpOverlay';
 import { MidiLearnProvider } from './ui/midiLearn/MidiLearnProvider';
-import { CircleOfFifths, getMorphedRootNote } from './ui/CircleOfFifths';
+import { CircleOfFifths } from './ui/CircleOfFifths';
 import { useJourney } from './ui/journeyState';
 import { useBackgroundJourneyRuntimeSurface } from './ui/useBackgroundJourneyRuntimeSurface';
 import { JourneyStatusPill } from './ui/JourneyStatusPill';
@@ -120,14 +117,13 @@ import {
   getRoutingSourceDef,
   getRoutingSourceToggleKeys,
   ROUTING_ACTIVE_EPSILON,
-  normalizeDegradeReverbCrossfeed,
-  normalizeDegradeReverbCrossfeedRanges,
   normalizeRoutingMuteGroupsState,
   isLegacyFxRoutingKey,
   updateFxRoutingGraphFromLegacyParam,
   type RoutingMuteGroupsState,
 } from './ui/routing';
 import type { SynthKeyboardUiState, SynthPresetPoolSource } from './ui/synth/SynthPage';
+import type { SynthSequenceVariationBank } from './ui/sequencer/synthSequenceVariations';
 import { usePlatformRuntimeCapabilities } from './ui/usePlatformRuntimeCapabilities';
 import { usePresetLibraryRuntimeSurface } from './ui/usePresetLibraryRuntimeSurface';
 import { useCloudSharedPresetRuntimeSurface } from './ui/useCloudSharedPresetRuntimeSurface';
@@ -168,22 +164,17 @@ import {
 } from './app/AppControls';
 import { getSliderCapability } from './ui/sliderSystem/sliderCapabilities';
 import {
-  normalizeDualSliderConfig,
   type DualSliderConfig,
   type DualSliderShapeConfig,
 } from './ui/sliderSystem/dualConfigReducer';
 import { createSignedSnowflakeWelcomeState } from './app/signedSnowflakeWelcomeState';
 import { AppDebugPanel } from './app/AppDebugPanel';
 import {
-  BOOLEAN_MORPH_KEYS,
-  DISCRETE_MORPH_KEYS,
-  DYNAMICS_FADE_BY_MODULE,
-  DYNAMICS_TOGGLE_KEYS,
-  ENGINE_TOGGLE_KEYS,
-  NUMERIC_MORPH_KEYS,
-  PARENT_CHILD_MAP,
-  ROUTER_MATRIX_BY_ENGINE,
-} from './app/morphRoutingTables';
+  createMorphPairPreparer,
+  evaluatePreparedMorphPair,
+  type MorphInterpolationResult,
+  type MorphPairPreparer,
+} from './app/morphInterpolation';
 import { MacAudioStatusPill } from './app/AppRuntimeStatusPills';
 import { applySampleLibrarySelectionDefaultsToFlatState } from './audio/sampleLibraries/sampleLibrarySelectionDefaults';
 import type { SampleLibraryKey } from './audio/sampleLibraries/SampleLibraryTypes';
@@ -493,7 +484,9 @@ const App: React.FC = () => {
   });
   const {
     scheduleProductRuntimeParamUpdate,
+    commitProductRuntimeParamUpdate,
     presetProductRuntimeUpdateOptions,
+    prepareMorphSceneAssets,
     syncCoreProductAppliedPreset,
     syncScheduledProductRuntimeState,
     skipNextPresetLoadEngineSync,
@@ -887,7 +880,7 @@ const App: React.FC = () => {
             }
           : undefined,
       }),
-    [activePresetPool, canonicalSynthPlayConfigs, dualConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, visualizerPresetName],
+    [activePresetPool, canonicalSynthPlayConfigs, dualConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, stateRef, visualizerPresetName],
   );
 
   const restoreRoutingMuteGroupsFromPreset = useCallback((value: SavedPreset['routingMuteGroups']) => {
@@ -1705,6 +1698,20 @@ const App: React.FC = () => {
     },
     [applyMorphEndpointStatePatch, dispatchDrumMorphProductControlAction, getCurrentDrumMorphOverrideState],
   );
+  const updateSynthSequenceVariationBank = useCallback((
+    laneIndex: number,
+    updater: (bank: SynthSequenceVariationBank | null) => SynthSequenceVariationBank | null,
+  ): void => {
+    if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= 4) return;
+    handleStateChange((previous) => {
+      const banks = previous.synthSequenceVariationBanks ?? [];
+      const nextBanks = Array.from({ length: Math.max(4, banks.length) }, (_, index) => banks[index] ?? null);
+      const nextBank = updater(banks[laneIndex] ?? null);
+      if (nextBanks[laneIndex] === nextBank) return previous;
+      nextBanks[laneIndex] = nextBank;
+      return { ...previous, synthSequenceVariationBanks: nextBanks };
+    });
+  }, [handleStateChange]);
   const harmonyWorkspaceController = useHarmonyWorkspaceController(state, handleStateChange);
 
   useEffect(() => {
@@ -1929,375 +1936,22 @@ const App: React.FC = () => {
     }).status === 'started';
   }, [midiLiveNoteInput]);
 
-  // Result type for lerpPresets - includes both state and dual ranges
-  interface LerpResult {
-    state: SliderState;
-    dualRanges: DualSliderState;
-    dualModes: Record<string, SliderMode>;
-    dualConfigs: Record<string, DualSliderConfig>;
-    // CoF morph visualization info
-    morphCoFInfo?: {
-      isMorphing: boolean;
-      startRoot: number; // Original starting root (captured at morph start)
-      effectiveRoot: number; // Current root during morph (stepping through CoF)
-      targetRoot: number; // Final destination root
-      cofStep: number; // Current CoF step relative to start
-      totalSteps: number; // Total steps in the journey
-    };
-  }
+  // Keep the public callback stable while preparing only the current endpoint pair.
+  const morphPairPreparerRef = useRef<MorphPairPreparer | null>(null);
+  if (!morphPairPreparerRef.current) morphPairPreparerRef.current = createMorphPairPreparer();
 
-  // Lerp between two preset states based on morph position (0-100)
-  // capturedStartRoot: if provided, use this as the starting root (for consistent morphing)
-  // currentCofStep: fallback CoF drift step if capturedStartRoot not provided
-  // direction: 'toB' (A→B, 0→100) or 'toA' (B→A, 100→0)
   const lerpPresets = useCallback(
-    (presetA: SavedPreset, presetB: SavedPreset, t: number, currentCofStep: number = 0, capturedStartRoot?: number, direction: 'toA' | 'toB' = 'toB'): LerpResult => {
-      const stateA = {
-        ...DEFAULT_STATE,
-        ...normalizePresetForWeb(presetA.state),
-      };
-      const stateB = {
-        ...DEFAULT_STATE,
-        ...normalizePresetForWeb(presetB.state),
-      };
-      const result = { ...stateA };
-      const morphPosition = clampMorphPosition(t, true);
-      const tNorm = morphPosition / 100; // Normalize to 0-1
-
-      // Handle rootNote via Circle of Fifths path
-      // Direction determines which preset we're morphing FROM and TO:
-      // - 'toB': morph A → B (slider 0→100), capturedStartRoot is A's effective root
-      // - 'toA': morph B → A (slider 100→0), capturedStartRoot is B's effective root
-      let fromRoot: number;
-      let toRoot: number;
-      let cofMorphT: number; // The t value to use for CoF path progression
-
-      if (direction === 'toB') {
-        // Morphing A → B: from A's root (or captured) to B's root
-        fromRoot = capturedStartRoot !== undefined ? capturedStartRoot : stateA.cofDriftEnabled ? calculateDriftedRoot(stateA.rootNote, currentCofStep) : stateA.rootNote;
-        toRoot = stateB.rootNote;
-        cofMorphT = morphPosition; // 0→100 maps directly
-      } else {
-        // Morphing B → A: from B's root (or captured) to A's root
-        fromRoot = capturedStartRoot !== undefined ? capturedStartRoot : stateB.cofDriftEnabled ? calculateDriftedRoot(stateB.rootNote, currentCofStep) : stateB.rootNote;
-        toRoot = stateA.rootNote;
-        cofMorphT = 100 - morphPosition; // 100→0 needs to become 0→100 for path progression
-      }
-
-      // Get the morphed root note stepping through CoF
-      const { currentRoot, cofStep, totalSteps } = getMorphedRootNote(fromRoot, toRoot, cofMorphT);
-      result.rootNote = currentRoot;
-
-      // Scale transition: snap at 50% (or when we've completed the CoF journey)
-      // For a musical feel, snap scale when we're halfway or past
-      result.scaleMode = tNorm < 0.5 ? stateA.scaleMode : stateB.scaleMode;
-      result.manualScale = tNorm < 0.5 ? stateA.manualScale : stateB.manualScale;
-
-      // Modulator definitions are discrete preset settings. Keep ranges moving
-      // continuously below, but switch each complete A/B generator at 50% so
-      // type, relationship/timing, waveform, and speed can never be mixed.
-      result.modulationSourceA = selectDiscreteMorphEndpoint(
-        stateA.modulationSourceA,
-        stateB.modulationSourceA,
-        tNorm,
-      );
-      result.modulationSourceB = selectDiscreteMorphEndpoint(
-        stateA.modulationSourceB,
-        stateB.modulationSourceB,
-        tNorm,
-      );
-
-      // Build morph CoF info for visualization
-      const morphCoFInfo =
-        fromRoot !== toRoot
-          ? {
-              isMorphing: true,
-              startRoot: fromRoot, // Original starting root (captured at morph start)
-              effectiveRoot: currentRoot,
-              targetRoot: toRoot,
-              cofStep,
-              totalSteps,
-            }
-          : undefined;
-
-      // ─── Router-matrix asymmetric morph ────────────────────────────────────
-      // When one preset has an engine OFF and the other has it ON, the engine's
-      // router-matrix values (level + delay/granular/reverb sends) should be
-      // treated as 0 on the OFF side so the engine smoothly fades in/out through
-      // routing. Computed BEFORE dual-range / numeric loops so both honor it.
-
-
-      // For router-matrix keys with mismatched engine toggle: record which side is OFF.
-      // 'A' means stateA's engine is off (treat valA / rangeA as 0); 'B' means stateB's.
-      const routerZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
-      for (const entry of ROUTER_MATRIX_BY_ENGINE) {
-        const onA = entry.isOn(stateA);
-        const onB = entry.isOn(stateB);
-        if (onA === onB) continue; // both on or both off → handled normally
-        const offSide: 'A' | 'B' = onA ? 'B' : 'A';
-        for (const childKey of entry.keys) {
-          if (!routerZeroSide.has(childKey)) {
-            routerZeroSide.set(childKey, offSide);
-          }
-        }
-      }
-
-      // Dynamics asymmetric morph:
-      // When one side has a Dynamics module effectively OFF (master off or module off)
-      // and the other has it ON, fade the module's audible carrier from/to zero.
-      // Saturation has no wet mix, so its drive is the fade carrier.
-
-
-      const dynamicsZeroSide = new Map<keyof SliderState, 'A' | 'B'>();
-      for (const entry of DYNAMICS_FADE_BY_MODULE) {
-        const onA = entry.isOn(stateA);
-        const onB = entry.isOn(stateB);
-        if (onA === onB) continue;
-        dynamicsZeroSide.set(entry.fadeKey, onA ? 'B' : 'A');
-      }
-
-      // Compute interpolated dual ranges
-      const dualRangesA = presetA.dualRanges || {};
-      const dualRangesB = presetB.dualRanges || {};
-      const rawModesA = presetA.sliderModes || {};
-      const rawModesB = presetB.sliderModes || {};
-      const rawConfigsA = presetA.dualSliderConfigs || {};
-      const rawConfigsB = presetB.dualSliderConfigs || {};
-      const resultDualRanges: DualSliderState = {};
-      const resultDualModes: Record<string, SliderMode> = {};
-      const resultDualConfigs: Record<string, DualSliderConfig> = {};
-
-      // Canonical configs are authoritative; legacy range/mode maps remain valid
-      // migration inputs. Old morph slot A defaults to Walk and slot B to S&H.
-      const allDualKeys = new Set([
-        ...Object.keys(dualRangesA),
-        ...Object.keys(dualRangesB),
-        ...Object.keys(rawConfigsA),
-        ...Object.keys(rawConfigsB),
-      ]);
-
-      for (const keyStr of allDualKeys) {
-        const key = keyStr as keyof SliderState;
-        const configA = rawConfigsA[keyStr];
-        const configB = rawConfigsB[keyStr];
-        let rangeA = configA
-          ? { min: configA.range[0], max: configA.range[1] }
-          : dualRangesA[keyStr];
-        let rangeB = configB
-          ? { min: configB.range[0], max: configB.range[1] }
-          : dualRangesB[keyStr];
-        const info = getParamInfo(key);
-        const fallbackValue = info ? (info.min + info.max) * 0.5 : 0;
-        let valA = getSliderNumericValue(key, stateA[key]) ?? fallbackValue;
-        let valB = getSliderNumericValue(key, stateB[key]) ?? fallbackValue;
-
-        // Asymmetric morph: collapse the OFF side's value AND range to 0 so
-        // engine sends / Dynamics carriers fade in/out instead of jumping.
-        const offSide = routerZeroSide.get(key) ?? dynamicsZeroSide.get(key);
-        if (offSide === 'A') {
-          valA = 0;
-          rangeA = undefined;
-        } else if (offSide === 'B') {
-          valB = 0;
-          rangeB = undefined;
-        }
-
-        // Resolve effective mode per preset: explicit mode, or infer 'walk' when
-        // a dualRange exists without an explicit sliderMode (same default used by
-        // applyDualRangesFromPreset). Without this, a missing mode causes the ||
-        // fallback chain to pick the OTHER preset's mode, defeating the midpoint snap.
-        const configModeA = configA
-          ? (configA.source === 'a' ? stateA.modulationSourceA : stateA.modulationSourceB).type
-          : undefined;
-        const configModeB = configB
-          ? (configB.source === 'a' ? stateB.modulationSourceA : stateB.modulationSourceB).type
-          : undefined;
-        const modeA = normalizeDualSliderMode(keyStr, configModeA || rawModesA[keyStr] || (rangeA ? 'walk' : undefined));
-        const modeB = normalizeDualSliderMode(keyStr, configModeB || rawModesB[keyStr] || (rangeB ? 'sampleHold' : undefined));
-
-        let morphedMin: number;
-        let morphedMax: number;
-
-        if (rangeA && rangeB) {
-          // Dual A → Dual B: morph min→min, max→max
-          morphedMin = rangeA.min + (rangeB.min - rangeA.min) * tNorm;
-          morphedMax = rangeA.max + (rangeB.max - rangeA.max) * tNorm;
-        } else if (rangeA && !rangeB) {
-          // Dual A → Single B: both min and max morph toward B's single value
-          morphedMin = rangeA.min + (valB - rangeA.min) * tNorm;
-          morphedMax = rangeA.max + (valB - rangeA.max) * tNorm;
-        } else if (!rangeA && rangeB) {
-          // Single A → Dual B: start both at A's value, morph to B's min/max
-          morphedMin = valA + (rangeB.min - valA) * tNorm;
-          morphedMax = valA + (rangeB.max - valA) * tNorm;
-        } else {
-          // Neither has dual - shouldn't happen given allDualKeys
-          continue;
-        }
-
-        // Only add to dual ranges if min !== max (i.e., it's still a range)
-        // At t=0 for Single→Dual, min===max (both at valA)
-        // At t=100 for Dual→Single, min===max (both at valB)
-        const isEffectivelyDual = Math.abs(morphedMax - morphedMin) > 0.001;
-
-        if (isEffectivelyDual) {
-          // Midpoint snap for discrete mode handoff (same pattern used for other discrete morph keys)
-          const selectedMode = tNorm < 0.5
-            ? modeA || modeB || 'walk'
-            : modeB || modeA || 'sampleHold';
-          if (selectedMode === 'single') continue;
-          const selectedConfig = tNorm < 0.5 ? configA : configB;
-          resultDualModes[key as string] = selectedMode;
-          resultDualRanges[key] = { min: morphedMin, max: morphedMax };
-          resultDualConfigs[keyStr] = normalizeDualSliderConfig({
-            source: selectedConfig?.source ?? (selectedMode === 'sampleHold' ? 'b' : 'a'),
-            range: [morphedMin, morphedMax],
-          });
-        } else {
-          // Collapsed to single value — explicitly mark as 'single' so the merge
-          // in handleMorphPositionChange resets any previous 'walk'/'sampleHold' mode
-          resultDualModes[key as string] = 'single';
-        }
-      }
-
-      // Define parent-child relationships for conditional morphing
-      // If parent boolean is OFF in the target preset, don't morph child sliders
-
-
-      // Router-matrix child keys (per engine toggle) that represent the engine's
-      // contribution into the global mix. The OFF-side substitution is handled
-      // above (see ROUTER_MATRIX_BY_ENGINE / routerZeroSide); here we only need to
-      // ensure router keys are excluded from the midpoint-snap behavior so the
-      // asymmetric morph (already baked into stateA/stateB-derived values via
-      // routerZeroSide) reaches the numeric loop unimpeded.
-
-      // Determine which keys should be snapped (not morphed) based on parent boolean state.
-      // Router-matrix keys are excluded here because they get the asymmetric "off=0" morph below.
-      const keysToSnap = new Set<keyof SliderState>();
-      for (const [parentKey, childKeys] of Object.entries(PARENT_CHILD_MAP)) {
-        const parentA = stateA[parentKey as keyof SliderState];
-        const parentB = stateB[parentKey as keyof SliderState];
-        // If either preset has the parent OFF, snap the children instead of morphing
-        if (!parentA || !parentB) {
-          for (const childKey of childKeys) {
-            if (routerZeroSide.has(childKey)) continue; // router keys morph asymmetrically instead
-            keysToSnap.add(childKey);
-          }
-        }
-      }
-
-      // Interpolate all numeric values (except those that should snap)
-
-
-      for (const key of NUMERIC_MORPH_KEYS) {
-        const valA = stateA[key];
-        const valB = stateB[key];
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          // Asymmetric morph: when one preset has the source/module OFF and the
-          // other ON, treat the OFF side's audible carrier as 0.
-          const offSide = routerZeroSide.get(key) ?? dynamicsZeroSide.get(key);
-          if (offSide === 'A') {
-            // A is off → start at 0, morph to B's value
-            (result as Record<string, unknown>)[key] = valB * tNorm;
-          } else if (offSide === 'B') {
-            // B is off → start at A's value, morph to 0
-            (result as Record<string, unknown>)[key] = valA * (1 - tNorm);
-          } else if (keysToSnap.has(key)) {
-            // If this key should snap (parent is off), snap at 50% instead of morphing
-            (result as Record<string, unknown>)[key] = tNorm < 0.5 ? valA : valB;
-          } else {
-            (result as Record<string, unknown>)[key] = valA + (valB - valA) * tNorm;
-          }
-        }
-      }
-
-      // Snap discrete values at 50% (scaleMode and manualScale handled above with rootNote)
-      // Note: reverbQuality is excluded - it's a user preference, not a musical parameter
-
-      for (const key of DISCRETE_MORPH_KEYS) {
-        (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
-      }
-
-      // Snap boolean values at 50% (except engine toggles and cofDriftEnabled which have special handling)
-
-      for (const key of BOOLEAN_MORPH_KEYS) {
-        (result as Record<string, unknown>)[key] = tNorm < 0.5 ? stateA[key] : stateB[key];
-      }
-
-      // Special handling for engine toggles and cofDriftEnabled:
-      // - Off → On: Turn ON immediately when leaving the "off" endpoint (engine fades in via level morph from 0)
-      // - On → Off: Keep ON until arriving at the "off" endpoint (engine fades out via level morph to 0)
-      const atEndpointA = isAtEndpoint0(morphPosition, true);
-      const atEndpointB = isAtEndpoint1(morphPosition, true);
-
-
-      for (const key of ENGINE_TOGGLE_KEYS) {
-        const onA = stateA[key] as boolean;
-        const onB = stateB[key] as boolean;
-        if (onA && onB) {
-          (result as Record<string, unknown>)[key] = true;
-        } else if (!onA && !onB) {
-          (result as Record<string, unknown>)[key] = false;
-        } else if (!onA && onB) {
-          // A off, B on: turn ON as soon as we leave A (t > 0)
-          (result as Record<string, unknown>)[key] = !atEndpointA;
-        } else {
-          // A on, B off: stay ON until we arrive at B (t === 100)
-          (result as Record<string, unknown>)[key] = !atEndpointB;
-        }
-      }
-
-
-      for (const entry of DYNAMICS_TOGGLE_KEYS) {
-        const onA = entry.isOn(stateA);
-        const onB = entry.isOn(stateB);
-        const rawA = Boolean(stateA[entry.key]);
-        const rawB = Boolean(stateB[entry.key]);
-        if (onA && onB) {
-          (result as Record<string, unknown>)[entry.key] = true;
-        } else if (!onA && !onB) {
-          (result as Record<string, unknown>)[entry.key] = tNorm < 0.5 ? rawA : rawB;
-        } else if (!onA && onB) {
-          (result as Record<string, unknown>)[entry.key] = atEndpointA ? rawA : true;
-        } else {
-          (result as Record<string, unknown>)[entry.key] = atEndpointB ? rawB : true;
-        }
-      }
-
-      // Endpoints must be exact preset states. The interpolation loops above only
-      // touch morph-managed keys, so overlay the full endpoint to avoid stale keys
-      // from the opposite slot surviving at Full A / Full B.
-      if (atEndpointA) {
-        Object.assign(result, stateA);
-      } else if (atEndpointB) {
-        Object.assign(result, stateB);
-      }
-      const normalizedResult = normalizeDegradeReverbCrossfeed(result);
-      normalizeDegradeReverbCrossfeedRanges(normalizedResult, resultDualRanges, resultDualModes);
-      for (const key of Object.keys(resultDualConfigs)) {
-        const range = resultDualRanges[key as keyof SliderState];
-        const mode = resultDualModes[key];
-        if (!range || !mode || mode === 'single') {
-          delete resultDualConfigs[key];
-          continue;
-        }
-        resultDualConfigs[key] = normalizeDualSliderConfig({
-          ...resultDualConfigs[key],
-          range: [range.min, range.max],
-        });
-      }
-
-      return {
-        state: normalizedResult,
-        dualRanges: resultDualRanges,
-        dualModes: resultDualModes,
-        dualConfigs: resultDualConfigs,
-        morphCoFInfo,
-      };
-    },
+    (presetA: SavedPreset, presetB: SavedPreset, t: number, currentCofStep: number = 0, capturedStartRoot?: number, direction: 'toA' | 'toB' = 'toB'): MorphInterpolationResult => (
+      evaluatePreparedMorphPair(
+        morphPairPreparerRef.current!.get(presetA, presetB),
+        t,
+        currentCofStep,
+        capturedStartRoot,
+        direction,
+      )
+    ),
     [],
   );
-
   // Store captured state for morph reference (when no preset is loaded)
   // This captures the state BEFORE any morph preset is loaded
   const morphCapturedStateRef = useRef<SliderState | null>(null);
@@ -2326,7 +1980,7 @@ const App: React.FC = () => {
     scheduleProductRuntimeParamUpdate,
   });
 
-  const { handleMorphPositionChange } = useMorphPositionRuntimeSurface({
+  const { handleMorphPositionChange, invalidateMorphInputs } = useMorphPositionRuntimeSurface({
     morphPresetA: projectedMorphPresetA,
     morphPresetB: projectedMorphPresetB,
     morphMode,
@@ -2370,20 +2024,6 @@ const App: React.FC = () => {
     handleMorphPositionChange(position, options);
   }, [backgroundJourney.morphProjection, handleMorphPositionChange, stopJourneyForEdit]);
 
-  const handleMorphSlotAClear = useCallback(() => {
-    stopJourneyForEdit();
-    setMorphPresetA(null);
-    setMorphSlotAName('');
-    setMorphPosition(0);
-  }, [stopJourneyForEdit]);
-
-  const handleMorphSlotBClear = useCallback(() => {
-    stopJourneyForEdit();
-    setMorphPresetB(null);
-    setMorphSlotBName('');
-    setMorphPosition(0);
-  }, [stopJourneyForEdit]);
-
   const { handleLoadMorphA, handleLoadMorphB } = useMorphSlotLoadRuntimeSurface<SavedPreset>({
     morphPresetA,
     morphPresetB,
@@ -2411,7 +2051,9 @@ const App: React.FC = () => {
     setLinkedVisualizerPresetRequest,
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
-    scheduleProductRuntimeParamUpdate,
+    commitProductRuntimeParamUpdate,
+    prepareMorphSceneAssets,
+    invalidateMorphInputs,
     normalizeState: (current) => current,
     lerpPresets,
     applyDualRangesFromPreset,
@@ -2419,6 +2061,22 @@ const App: React.FC = () => {
     confirmOverrideArmedJourneyForStatePreset,
     onPresetPoolLoad: handlePresetPoolLoad,
   });
+
+  const handleMorphSlotAClear = useCallback(() => {
+    stopJourneyForEdit();
+    invalidateMorphInputs();
+    setMorphPresetA(null);
+    setMorphSlotAName('');
+    setMorphPosition(0);
+  }, [invalidateMorphInputs, stopJourneyForEdit]);
+
+  const handleMorphSlotBClear = useCallback(() => {
+    stopJourneyForEdit();
+    invalidateMorphInputs();
+    setMorphPresetB(null);
+    setMorphSlotBName('');
+    setMorphPosition(0);
+  }, [invalidateMorphInputs, stopJourneyForEdit]);
 
   const { handleLoadPresetFromList } = useSavedPresetLoadRuntimeSurface<SavedPreset>({
     state,
@@ -2444,6 +2102,8 @@ const App: React.FC = () => {
     presetEngineUpdateOptions: presetProductRuntimeUpdateOptions,
     syncCoreProductAppliedPreset,
     skipNextPresetLoadEngineSync,
+    prepareMorphSceneAssets,
+    invalidateMorphInputs,
     applyDualRangesFromPreset,
     restoreEvolveConfigs,
     onPresetPoolLoad: handlePresetPoolLoad,
@@ -2662,6 +2322,9 @@ const App: React.FC = () => {
     isRunning: playbackIsRunning,
     phraseSeconds: engineState.transportDebug?.effectivePhraseSeconds ?? getEffectivePhraseDuration(state),
     productRuntimeActive: productRuntimeCore,
+    runtimeUiActive: !POINT_CLOUDS_ENGINE_MODE
+      && uiMode === 'advanced'
+      && (activeTab === 'global' || activeTab === 'routing'),
   });
 
   const renderWithPresetPoolProvider = (children: React.ReactNode) => (
@@ -3156,6 +2819,7 @@ const App: React.FC = () => {
                 diceLane={productPageRuntimeSurface.synthPageSequencerBridge.diceLane}
                 evolvedOverrides={synthEvolvedOverrides}
                 {...productPageRuntimeSurface.synthPageRuntimeProps}
+                onSynthSequenceVariationBankChange={updateSynthSequenceVariationBank}
                 onVisualTelemetryActiveChange={setSynthVisualTelemetryActive}
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}

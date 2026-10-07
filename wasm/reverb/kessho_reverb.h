@@ -142,6 +142,8 @@ void  reverb_instance_process_planar_block(
     float* output_r,
     int block_size
 );
+void  reverb_instance_begin_parameter_update(KesshoReverbInstance* instance);
+void  reverb_instance_end_parameter_update(KesshoReverbInstance* instance);
 void  reverb_instance_set_type(KesshoReverbInstance* instance, int type);
 void  reverb_instance_set_quality(KesshoReverbInstance* instance, int quality);
 void  reverb_instance_set_params(
@@ -175,6 +177,12 @@ void  reverb_instance_set_saturation_mode(KesshoReverbInstance* instance, int mo
 void  reverb_instance_set_transient_smooth(KesshoReverbInstance* instance, float amount);
 void  reverb_instance_set_er_lp_freq(KesshoReverbInstance* instance, float freq);
 void  reverb_instance_set_bloom(KesshoReverbInstance* instance, float amount);
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+void  reverb_instance_reset_update_counters(KesshoReverbInstance* instance);
+unsigned int reverb_instance_get_preset_update_count(KesshoReverbInstance* instance);
+unsigned int reverb_instance_get_predelay_update_count(KesshoReverbInstance* instance);
+#endif
 
 #ifdef __cplusplus
 }

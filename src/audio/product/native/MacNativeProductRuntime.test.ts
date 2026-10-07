@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   MacNativeProductRuntime,
+  decodeMacNativeSynthSequenceVariationRuntime,
   decodeMacNativeProductInteractionSignals,
   decodeMacNativeProductInteractionEvents,
   decodeMacNativeProductTelemetry,
@@ -56,6 +57,15 @@ function makeInteractionEventsBase64(): string {
   return Buffer.from(bytes).toString('base64');
 }
 
+function makeVariationRuntimeBase64(revision = 0, activeVariation = 0): string {
+  const bytes = new Uint8Array(32);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 1, true);
+  view.setUint32(4, activeVariation, true);
+  view.setBigUint64(16, BigInt(revision), true);
+  return Buffer.from(bytes).toString('base64');
+}
+
 function makeNativePluginFixture(): { calls: PluginCall[]; plugin: Record<string, unknown> } {
   const calls: PluginCall[] = [];
   let rejectNextSnapshot = true;
@@ -90,6 +100,13 @@ function makeNativePluginFixture(): { calls: PluginCall[]; plugin: Record<string
       });
     },
     setNativeProductInteractionDemand: (options: unknown) => status('setNativeProductInteractionDemand', options),
+    setNativeSynthSequenceVariationBank: (options: unknown) => status('setNativeSynthSequenceVariationBank', options),
+    getNativeSynthSequenceVariationRuntime: (options: unknown) => {
+      calls.push({ method: 'getNativeSynthSequenceVariationRuntime', options });
+      return Promise.resolve({ runtimeBase64: makeVariationRuntimeBase64() });
+    },
+    setNativeProductCapture: (options: unknown) => status('setNativeProductCapture', options),
+    addListener: (_eventName: unknown, _listener: unknown) => Promise.resolve({ remove: () => undefined }),
   };
   return { calls, plugin };
 }
@@ -135,7 +152,7 @@ test('encodes the native Product event ABI exactly', () => {
 test('decodes the native Product telemetry ABI', () => {
   const bytes = new Uint8Array(14912);
   const view = new DataView(bytes.buffer);
-  view.setUint32(0, 0xc602ab76, true);
+  view.setUint32(0, KESSHO_PRODUCT_SCHEMA_HASH, true);
   view.setFloat64(8, 48_000, true);
   view.setUint32(16, 256, true);
   view.setUint32(20, 1, true);
@@ -143,7 +160,7 @@ test('decodes the native Product telemetry ABI', () => {
   view.setFloat32(972, 0.5, true);
   view.setFloat32(14076, 120, true);
   const telemetry = decodeMacNativeProductTelemetry(Buffer.from(bytes).toString('base64'));
-  assert.equal(telemetry.schemaHash, 0xc602ab76);
+  assert.equal(telemetry.schemaHash, KESSHO_PRODUCT_SCHEMA_HASH);
   assert.equal(telemetry.sampleRate, 48_000);
   assert.equal(telemetry.blockSize, 256);
   assert.equal(telemetry.transportRunning, true);
@@ -167,6 +184,114 @@ test('decodes compact native interaction event records', () => {
   assert.equal(events[0]?.type, 7);
   assert.equal(events[0]?.sampleFrame, 96_128);
   assert.ok(Math.abs((events[0]?.strength ?? 0) - 0.8) < 0.00001);
+});
+
+test('commits synth variation banks and publishes compact native runtime indices', async () => {
+  const { calls, plugin } = makeNativePluginFixture();
+  let nativeRevision = 0;
+  plugin.setNativeSynthSequenceVariationBank = (options: unknown) => {
+    calls.push({ method: 'setNativeSynthSequenceVariationBank', options });
+    nativeRevision = 1;
+    return Promise.resolve({ result: 1, nativeRevision });
+  };
+  plugin.getNativeSynthSequenceVariationRuntime = (options: unknown) => {
+    calls.push({ method: 'getNativeSynthSequenceVariationRuntime', options });
+    return Promise.resolve({ runtimeBase64: makeVariationRuntimeBase64(nativeRevision, 2) });
+  };
+  installMacNativePlugin(plugin);
+  const globalWithWindow = globalThis as { window?: Window };
+  const previousWindow = globalWithWindow.window;
+
+  try {
+    const decoded = decodeMacNativeSynthSequenceVariationRuntime(makeVariationRuntimeBase64(7, 3));
+    assert.deepEqual(decoded, {
+      schemaVersion: 1,
+      activeVariation: 3,
+      chainPosition: 0,
+      activeStep: 0,
+      revision: 7,
+      nextBoundaryFrame: 0,
+    });
+
+    const runtime = MacNativeProductRuntime.createIfAvailable();
+    assert.ok(runtime);
+    await runtime.resume();
+    assert.equal(await runtime.commitSynthSequenceVariationBank(0, null), true);
+
+    const observed: Array<readonly (number | null)[]> = [];
+    const unsubscribe = runtime.subscribeSynthSequenceVariationRuntime((indices) => {
+      observed.push([...indices]);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    unsubscribe();
+    await runtime.suspend();
+
+    assert.deepEqual(observed[observed.length - 1], [2, 2, 2, 2]);
+    assert.ok(calls.some(({ method }) => method === 'setNativeSynthSequenceVariationBank'));
+    assert.ok(calls.filter(({ method }) => method === 'getNativeSynthSequenceVariationRuntime').length >= 5);
+  } finally {
+    if (previousWindow === undefined) delete globalWithWindow.window;
+    else Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow });
+  }
+});
+
+test('waits for a delayed native variation boundary and rejects superseded receipts', async () => {
+  const { plugin } = makeNativePluginFixture();
+  let nativeRevision = 0;
+  let runtimeReads = 0;
+  let supersede = false;
+  plugin.setNativeSynthSequenceVariationBank = () => {
+    nativeRevision += 1;
+    return Promise.resolve({ result: 1, nativeRevision });
+  };
+  plugin.getNativeSynthSequenceVariationRuntime = () => {
+    runtimeReads += 1;
+    const revision = supersede
+      ? nativeRevision + 1
+      : runtimeReads >= 40 ? nativeRevision : 0;
+    return Promise.resolve({ runtimeBase64: makeVariationRuntimeBase64(revision) });
+  };
+  installMacNativePlugin(plugin);
+  const globalWithWindow = globalThis as { window?: Window };
+  const previousWindow = globalWithWindow.window;
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousDateNow = Date.now;
+  let fakeNow = previousDateNow();
+  const startFakeNow = fakeNow;
+  let runtime: MacNativeProductRuntime | null = null;
+
+  try {
+    runtime = MacNativeProductRuntime.createIfAvailable();
+    assert.ok(runtime);
+    await runtime.resume();
+
+    Date.now = (() => fakeNow) as typeof Date.now;
+    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number) => {
+      fakeNow += Number(timeout) || 0;
+      queueMicrotask(() => {
+        if (typeof handler === 'function') {
+          (handler as (...args: unknown[]) => void)();
+        }
+      });
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout;
+
+    assert.equal(await runtime.commitSynthSequenceVariationBank(0, null), true);
+    assert.ok(runtimeReads >= 40);
+    assert.ok(fakeNow - startFakeNow > 1_280);
+
+    supersede = true;
+    await assert.rejects(
+      runtime.commitSynthSequenceVariationBank(0, null),
+      /superseded by revision/,
+    );
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    Date.now = previousDateNow;
+    await runtime?.suspend();
+    if (previousWindow === undefined) delete globalWithWindow.window;
+    else Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow });
+  }
 });
 
 test('routes the macOS Product runtime lifecycle through the plugin boundary', async () => {

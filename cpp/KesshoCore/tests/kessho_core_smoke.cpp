@@ -154,6 +154,164 @@ int main() {
   }
 
   {
+    using kessho::spectral_freeze::SpectralFreezeEngine;
+    using kessho::spectral_freeze::SpectralFreezeMode;
+    using kessho::spectral_freeze::SpectralFreezeParams;
+    using kessho::spectral_freeze::SpectralFreezeRuntimeState;
+    using kessho::spectral_freeze::SpectralScanDirection;
+
+    constexpr int test_sample_rate = 48000;
+    constexpr int test_block_size = 128;
+    constexpr int capture_blocks = 400;
+    constexpr float pi = 3.14159265358979323846f;
+    SpectralFreezeEngine cached;
+    SpectralFreezeEngine baseline;
+    require(cached.prepare(test_sample_rate), "spectral cache engine prepare failed");
+    require(baseline.prepare(test_sample_rate), "spectral cache baseline prepare failed");
+    cached.debugSetCaptureAnalysisCacheEnabled(true);
+    baseline.debugSetCaptureAnalysisCacheEnabled(false);
+    cached.debugResetCaptureAnalysisCounters();
+    baseline.debugResetCaptureAnalysisCounters();
+
+    SpectralFreezeParams params;
+    params.mode = SpectralFreezeMode::Stretch;
+    params.stretch_speed = 0.0f;
+    params.direction = SpectralScanDirection::Forward;
+    params.position = 0.42f;
+    params.refresh = 0.0f;
+    params.input_sensitivity = 0.5f;
+    params.diffusion = 0.45f;
+    params.tone = -0.15f;
+    params.width = 0.85f;
+    params.sustain = 1.0f;
+    params.mix = 1.0f;
+    params.transition_seconds = 0.01f;
+    cached.setParams(params);
+    baseline.setParams(params);
+
+    std::array<float, test_block_size> input_l{};
+    std::array<float, test_block_size> input_r{};
+    std::array<float, test_block_size> cached_l{};
+    std::array<float, test_block_size> cached_r{};
+    std::array<float, test_block_size> baseline_l{};
+    std::array<float, test_block_size> baseline_r{};
+    int rendered_samples = 0;
+    float synthesis_peak = 0.0f;
+    auto render = [&](int blocks, float amplitude) {
+      for (int block = 0; block < blocks; ++block) {
+        for (int frame = 0; frame < test_block_size; ++frame) {
+          const float time = static_cast<float>(rendered_samples + frame) /
+              static_cast<float>(test_sample_rate);
+          input_l[static_cast<size_t>(frame)] = amplitude * (
+              0.31f * std::sin(2.0f * pi * 220.0f * time) +
+              0.17f * std::sin(2.0f * pi * 311.0f * time));
+          input_r[static_cast<size_t>(frame)] = amplitude * (
+              0.27f * std::sin(2.0f * pi * 220.0f * time + 0.2f) +
+              0.13f * std::cos(2.0f * pi * 173.0f * time));
+        }
+        cached.process(
+            input_l.data(), input_r.data(), cached_l.data(), cached_r.data(), test_block_size);
+        baseline.process(
+            input_l.data(), input_r.data(), baseline_l.data(), baseline_r.data(), test_block_size);
+        for (int frame = 0; frame < test_block_size; ++frame) {
+          const size_t index = static_cast<size_t>(frame);
+          require(std::isfinite(cached_l[index]) && std::isfinite(cached_r[index]),
+              "spectral cache output was not finite");
+          require(std::isfinite(baseline_l[index]) && std::isfinite(baseline_r[index]),
+              "spectral cache baseline output was not finite");
+          require(std::fabs(cached_l[index] - baseline_l[index]) < 1.0e-7f,
+              "spectral capture cache changed left PCM");
+          require(std::fabs(cached_r[index] - baseline_r[index]) < 1.0e-7f,
+              "spectral capture cache changed right PCM");
+          synthesis_peak = std::max(
+              synthesis_peak,
+              std::max(std::fabs(cached_l[index]), std::fabs(cached_r[index])));
+        }
+        rendered_samples += test_block_size;
+      }
+    };
+
+    render(capture_blocks, 0.4f);
+    require(cached.validCaptureSamples() >= test_sample_rate,
+        "spectral cache fixture did not capture a full second");
+    params.active = true;
+    params.capture_serial = 1;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(16, 0.12f);
+    require(cached.runtimeState() == SpectralFreezeRuntimeState::Frozen,
+        "spectral cache fixture did not freeze");
+    const uint64_t stationary_analyses = cached.debugCaptureForwardAnalysisCount();
+    require(stationary_analyses == 1u,
+        "stationary spectral capture did not fill exactly one analysis result");
+    require(cached.debugCaptureAnalysisCacheHitCount() > 0u,
+        "stationary spectral capture did not hit its analysis cache");
+    const uint64_t baseline_stationary_analyses = baseline.debugCaptureForwardAnalysisCount();
+    require(baseline_stationary_analyses > stationary_analyses,
+        "uncached stationary spectral baseline did not repeat forward analysis");
+
+    params.mode = SpectralFreezeMode::LivingStretch;
+    params.refresh = 0.5f;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(64, 0.2f);
+    require(cached.debugCaptureForwardAnalysisCount() == stationary_analyses,
+        "Living Stretch refresh invalidated stationary capture analysis");
+
+    params.mode = SpectralFreezeMode::Stretch;
+    params.refresh = 0.0f;
+    params.position += 0.02f;
+    cached.setParams(params);
+    baseline.setParams(params);
+    const uint64_t before_position_move = cached.debugCaptureForwardAnalysisCount();
+    render(8, 0.15f);
+    require(cached.debugCaptureForwardAnalysisCount() > before_position_move,
+        "tiny spectral position move reused an exact-position cache entry");
+
+    params.active = false;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(8, 0.0f);
+    require(cached.runtimeState() == SpectralFreezeRuntimeState::Recording,
+        "spectral cache fixture did not finish release");
+    const uint64_t before_recapture = cached.debugCaptureForwardAnalysisCount();
+    params.active = true;
+    params.capture_serial = 2;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(16, 0.14f);
+    require(cached.debugCaptureForwardAnalysisCount() > before_recapture,
+        "spectral recapture reused a prior generation analysis");
+
+    cached.reset();
+    baseline.reset();
+    cached.debugResetCaptureAnalysisCounters();
+    baseline.debugResetCaptureAnalysisCounters();
+    params.active = false;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(capture_blocks, 0.35f);
+    params.active = true;
+    params.capture_serial = 3;
+    cached.setParams(params);
+    baseline.setParams(params);
+    render(16, 0.14f);
+    require(cached.debugCaptureForwardAnalysisCount() == 1u,
+        "spectral reset did not invalidate the next capture analysis");
+    require(cached.debugCaptureAnalysisCacheHitCount() > 0u,
+        "spectral cache did not refill after reset");
+    require(synthesis_peak > 1.0e-5f, "spectral cache synthesis became silent");
+    std::cout << "KesshoCore spectral capture cache checks passed"
+              << " (stationary analyses cached/baseline="
+              << stationary_analyses << "/" << baseline_stationary_analyses
+              << ", position/recapture invalidated, reset refilled, cache bytes=32816)\n";
+  }
+
+  if (std::getenv("KESSHO_SPECTRAL_FREEZE_FOCUSED_ONLY") != nullptr) {
+    return 0;
+  }
+
+  {
     using kessho::spectral_freeze::SpectralFreezeScanHead;
     using kessho::spectral_freeze::SpectralScanDirection;
     SpectralFreezeScanHead scan;

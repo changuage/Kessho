@@ -1,3 +1,4 @@
+import { cycleSequencerRatchet } from '../../audio/seqEvolveCore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
@@ -16,17 +17,41 @@ import SequencerChainRail, {
   sequencerChainBadgeLabel,
   useSequencerChainUiPosition,
 } from '../sequencer/SequencerChainRail';
-import { liveOverdubTargetStep, useLiveOverdubRecorder } from '../sequencer/useLiveOverdubRecorder';
 import { stepOverridesForEngineSubLaneState } from '../sequencer/engineStepOverrides';
-import { NUDGE_EPSILON, clampNudge, computeNudgeFromContinuousStep } from '../sequencer/nudgeTiming';
+import { clampNudge } from '../sequencer/nudgeTiming';
 import { serializeStepOverrides } from '../sequencer/stepOverrideSerialization';
+import {
+  createBitmapTriggerClip,
+  deserializeTriggerClip,
+  resolveTriggerClip,
+  serializeTriggerClip,
+  setTriggerClipStep,
+} from '../sequencer/triggerClip';
+import {
+  SYNTH_SEQUENCE_VARIATION_IDS,
+  autoPrintSynthSequenceVariation,
+  isCurrentSynthVariationCommit,
+  rotateSynthSequenceVariation,
+  selectSynthSequenceVariationInBank,
+  withSynthVariationStepLength,
+  synthVariationStepLengthMax,
+  settleSynthVariationCommit,
+  variationLaneValuesAfterTriggerToggle,
+  type SynthLocalChordPayload,
+  type SynthSequenceVariation,
+  type SynthSequenceVariationBank,
+  type SynthSequenceVariationBanks,
+} from '../sequencer/synthSequenceVariations';
 import { shouldShowTriggerSourceBadge, triggerSourceDisplayLabel } from '../sequencer/triggerSourceLabel';
 import AnchorWalkerSequencerBody from '../sequencer/AnchorWalkerSequencerBody';
 import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
-import SequencerCapturePreviewOverlay from '../sequencer/SequencerCapturePreviewOverlay';
+import SequencerVariationRail, { type SequencerVariationId } from '../sequencer/SequencerVariationRail';
 import { sequencerTriggerPatternSyncKey } from '../sequencer/sequencerTriggerPatternSyncKey';
-import { useGeneratedSequenceCapture } from '../sequencer/useGeneratedSequenceCapture';
-import type { CapturedPitchReference } from '../sequencer/generatedSequencerCapturePitch';
+import { useRecordedNoteCapture, sourceForMode } from '../sequencer/useRecordedNoteCapture';
+import type {
+  RecordedNoteCaptureStartRequest,
+  RecordedNoteCaptureSubscription,
+} from '../sequencer/recordedNoteCaptureTypes';
 import {
   normalizeSynthSequencerFaceState,
   type SequencerMode,
@@ -59,12 +84,15 @@ import {
   sequencerGridCellCount,
   sequencerGridColumnCount,
 } from '../sequencer/sequencerLimits';
-import { seqEuclidean } from '../../audio/euclideanPatterns';
 // DrumStepOverrides no longer needed — SynthPage uses StepOverrides from the shared hook
 import DragNumber from '../drums/DragNumber';
 import SeqLane from '../drums/SeqLane';
 import SeqSparkline from '../drums/SeqSparkline';
 import SeqMiniOverview from '../drums/SeqMiniOverview';
+import SeqStepDetailPanel, { type SeqStepDetailMode } from './SeqStepDetailPanel';
+import HarmonyCompactChordRow from '../harmony/shared/HarmonyCompactChordRow';
+import LiveChordKeyboard from '../harmony/live/LiveChordKeyboard';
+import { deriveHarmonyPitchAxis } from '../harmony/shared/harmonyPitchAxis';
 import {
   SCALES,
   clampMidiNote,
@@ -227,7 +255,7 @@ import { generateHarmonySuggestionBank } from '../../audio/harmony/chordSuggesti
 
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
 import { productSourceIdForManualSynthSource } from '../../audio/productSourceCapabilities';
-import { sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
+import { sequencerClockDivisionToNumericValue, sequencerClockDivisionToSeconds } from '../../audio/sequencerClockDivisions';
 import {
   SAMPLE_DYNAMIC_KEYS,
   SAMPLE_DYNAMIC_MODES,
@@ -243,10 +271,7 @@ import {
   readSampleSlotState,
   SAMPLE_SLOT_LIBRARY_DEFAULT_NUMERIC_KEYS,
 } from '../../audio/sampleLibraries/sampleSlotState';
-import type {
-  ProductGeneratedSequencerCaptureRequest,
-  ProductRuntimeSynthPageEvents,
-} from '../useProductRuntimeSynthPageEvents';
+import type { ProductRuntimeSynthPageEvents } from '../useProductRuntimeSynthPageEvents';
 
 const OV_PROB_DRAG_PX = 80;
 
@@ -426,29 +451,6 @@ type EvolvedSequencerPatch = {
   subLaneStates?: Partial<Record<SubLaneKind, Partial<SubLaneState>>>;
 };
 
-type SynthLiveOverdubCaptureEvent = {
-  targetStepIndex: number;
-  targetStepFloat: number;
-  pitchValue: number;
-  eventOrder: number;
-};
-
-type SynthLiveOverdubCaptureSession = {
-  laneIndex: number;
-  events: SynthLiveOverdubCaptureEvent[];
-  nextEventOrder: number;
-  pitchSettings: PitchSettings;
-};
-
-type GeneratedCaptureStartArm = {
-  sourceLaneIndex: number;
-  targetLaneIndex: number;
-  sourceMode: 'anchorWalker' | 'orbit';
-  phase: 'waitingForStart';
-  waitingForBoundary: boolean;
-  previousStep: number | null;
-};
-
 const STEP_OVERRIDE_VALUE_KEYS = ['expression', 'morph', 'distance', 'probability', 'ratchet', 'trigCondition', 'pitch', 'nudge'] as const;
 const STEP_OVERRIDE_RANGE_KEYS = ['expressionRanges', 'morphRanges', 'distanceRanges'] as const;
 const STEP_OVERRIDE_DIRECTION_KEYS = ['expressionDirection', 'pitchDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection'] as const;
@@ -478,99 +480,6 @@ function stepOverrideLaneSignature(overrides: StepOverrides, laneIndex: number):
     morphDirection: overrides.morphDirection[laneIndex] ?? null,
     distanceDirection: overrides.distanceDirection[laneIndex] ?? null,
   });
-}
-
-function canPreserveSynthLiveCaptureTriggerSteps(
-  events: readonly SynthLiveOverdubCaptureEvent[],
-  stepCount: number,
-): boolean {
-  const eventSteps = events.map((event) => event.targetStepIndex);
-  const uniqueSteps = new Set(eventSteps);
-  return events.length > 0 && events.length <= stepCount && uniqueSteps.size === events.length;
-}
-
-function synthLiveCaptureTriggerPattern(
-  events: readonly SynthLiveOverdubCaptureEvent[],
-  stepCount: number,
-): boolean[] {
-  if (canPreserveSynthLiveCaptureTriggerSteps(events, stepCount)) {
-    const pattern = new Array(stepCount).fill(false);
-    for (const event of events) {
-      if (event.targetStepIndex >= 0 && event.targetStepIndex < stepCount) {
-        pattern[event.targetStepIndex] = true;
-      }
-    }
-    return pattern;
-  }
-
-  return seqEuclidean(stepCount, Math.min(stepCount, events.length), 0);
-}
-
-function synthLiveTriggerSteps(pattern: readonly boolean[]): number[] {
-  const steps: number[] = [];
-  pattern.forEach((enabled, step) => {
-    if (enabled) steps.push(step);
-  });
-  return steps;
-}
-
-function synthLiveAdjacentTriggerSteps(
-  triggerSteps: readonly number[],
-  currentStep: number,
-  stepCount: number,
-): { previous: number; next: number } {
-  if (triggerSteps.length <= 1) {
-    return {
-      previous: currentStep - stepCount,
-      next: currentStep + stepCount,
-    };
-  }
-  let previous = triggerSteps[triggerSteps.length - 1]! - stepCount;
-  let next = triggerSteps[0]! + stepCount;
-  for (const step of triggerSteps) {
-    if (step < currentStep) previous = step;
-    if (step > currentStep) {
-      next = step;
-      break;
-    }
-  }
-  return { previous, next };
-}
-
-function nearestContinuousStep(targetStepFloat: number, currentStep: number, stepCount: number): number {
-  let target = Number.isFinite(targetStepFloat) ? targetStepFloat : currentStep;
-  const halfCycle = Math.max(1, stepCount) * 0.5;
-  while (target - currentStep > halfCycle) target -= stepCount;
-  while (currentStep - target > halfCycle) target += stepCount;
-  return target;
-}
-
-function synthLiveNudgeValues(
-  events: readonly SynthLiveOverdubCaptureEvent[],
-  triggerPattern: readonly boolean[],
-  preserveTriggerSteps: boolean,
-): number[] {
-  if (!preserveTriggerSteps) return new Array(events.length).fill(0);
-  const stepCount = Math.max(1, triggerPattern.length);
-  const triggerSteps = synthLiveTriggerSteps(triggerPattern);
-  return events.map((event) => {
-    const currentStep = event.targetStepIndex;
-    const { previous, next } = synthLiveAdjacentTriggerSteps(triggerSteps, currentStep, stepCount);
-    return computeNudgeFromContinuousStep(
-      nearestContinuousStep(event.targetStepFloat, currentStep, stepCount),
-      previous,
-      currentStep,
-      next,
-    );
-  });
-}
-
-function normalizedRecorderStep(playheadStep: number | undefined, stepCount: number): number {
-  const safeStepCount = Math.max(1, Math.round(stepCount));
-  const source = typeof playheadStep === 'number' && Number.isFinite(playheadStep)
-    ? Math.floor(playheadStep)
-    : 0;
-  return ((source % safeStepCount) + safeStepCount) % safeStepCount;
 }
 
 function applyEvolvedStepOverridePatch(
@@ -812,6 +721,128 @@ function getKeyboardCursorMarkerStyle(color: string): React.CSSProperties {
     '--cursor-color': color,
     '--cursor-accent': getComplementaryHex(color),
   } as React.CSSProperties;
+}
+
+function variationTriggerPattern(variation: SynthSequenceVariation | null | undefined): boolean[] {
+  if (!variation) return [];
+  const serializedClip = variation.lane.overrides.triggerClips?.[0] ?? null;
+  if (serializedClip) {
+    const clip = deserializeTriggerClip(serializedClip);
+    if (clip) return resolveTriggerClip(clip).slice(0, variation.steps);
+  }
+  return Array.from({ length: variation.steps }, (_, step) => (
+    Object.prototype.hasOwnProperty.call(variation.stepMetadata, String(step))
+  ));
+}
+
+function variationHitCount(variation: SynthSequenceVariation | null | undefined): number {
+  if (!variation) return 0;
+  return Object.keys(variation.stepMetadata).length;
+}
+
+function variationNoteCount(variation: SynthSequenceVariation | null | undefined): number {
+  if (!variation) return 0;
+  return Object.values(variation.stepMetadata).reduce((count, metadata) => (
+    count + (metadata.mode === 'chord' ? Math.max(1, metadata.chord?.intervals.length ?? 1) : 1)
+  ), 0);
+}
+
+function variationHitIndex(variation: SynthSequenceVariation, step: number): number {
+  return Object.keys(variation.stepMetadata)
+    .map(Number)
+    .filter(Number.isInteger)
+    .sort((left, right) => left - right)
+    .indexOf(step);
+}
+
+type VariationValueLane = 'pitch' | 'expression' | 'morph' | 'distance' | 'nudge';
+
+const SYNTH_TRIG_CONDITION_CYCLE: readonly (readonly [number, number])[] = [
+  [1, 1], [1, 2], [2, 2], [1, 3], [2, 3], [3, 3], [1, 4], [2, 4], [3, 4], [4, 4],
+];
+
+function nextSynthTrigCondition(current: readonly [number, number] | null | undefined): [number, number] {
+  const index = SYNTH_TRIG_CONDITION_CYCLE.findIndex((condition) => condition[0] === (current?.[0] ?? 1) && condition[1] === (current?.[1] ?? 1));
+  const next = SYNTH_TRIG_CONDITION_CYCLE[(index + 1) % SYNTH_TRIG_CONDITION_CYCLE.length]!;
+  return [next[0], next[1]];
+}
+
+function variationLaneUsesTriggerHits(variation: SynthSequenceVariation, lane: VariationValueLane): boolean {
+  if (lane === 'pitch') return variation.lane.state.pitchBindingMode !== 'sequence';
+  return lane === 'expression' || lane === 'nudge'
+    ? variation.lane.state.subLaneStates?.[lane]?.followTriggerHits === true
+    : false;
+}
+
+function variationLaneIndex(variation: SynthSequenceVariation, lane: VariationValueLane, step: number): number {
+  if (!variationLaneUsesTriggerHits(variation, lane)) return Math.max(0, Math.round(step));
+  return variationHitIndex(variation, step);
+}
+
+function variationLaneValue(
+  variation: SynthSequenceVariation | null | undefined,
+  lane: VariationValueLane,
+  step: number,
+): number | null {
+  if (!variation) return null;
+  const index = variationLaneIndex(variation, lane, step);
+  const values = variation.lane.overrides[lane]?.[0];
+  if (index < 0 || !Array.isArray(values)) return null;
+  const value = values[index % Math.max(1, values.length)];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function variationPitchMidi(variation: SynthSequenceVariation | null | undefined, pitchValue: number | null): number {
+  const settings = variation?.lane.state.pitchSettings;
+  const root = settings?.root ?? 60;
+  if (pitchValue == null) return clampMidiNote(root);
+  const scale = settings?.scale ? (SCALES[settings.scale] ?? SCALES.Chromatic) : SCALES.Chromatic;
+  const offset = settings?.mode === 'notes'
+    ? scaleDegreeToSemitone(pitchValue, scale)
+    : pitchValue;
+  return clampMidiNote(root + offset);
+}
+
+function variationForBankClock(variation: SynthSequenceVariation, clockDiv: ClockDivision): SynthSequenceVariation {
+  const stepBeats = 4 / sequencerClockDivisionToNumericValue(clockDiv, 8);
+  return {
+    ...variation,
+    spanBeats: variation.steps * stepBeats,
+    lane: { ...variation.lane, state: { ...variation.lane.state, clockDiv } },
+  };
+}
+
+function variationHitLaneValues(
+  variation: SynthSequenceVariation | null | undefined,
+  lane: VariationValueLane,
+  steps: number | undefined,
+): number[] {
+  const values = variation?.lane.overrides[lane]?.[0];
+  const count = Math.max(1, Math.round(steps ?? values?.length ?? 1));
+  // Serialized pitch overrides are root-relative (including the printed
+  // `notes` mode), so an empty hit starts at degree/semitone zero.
+  const fallback = lane === 'pitch' ? 0 : lane === 'expression' ? 1 : 0;
+  return Array.from({ length: count }, (_, index) => (
+    Array.isArray(values) && typeof values[index % Math.max(1, values.length)] === 'number'
+      ? values[index % Math.max(1, values.length)] as number
+      : fallback
+  ));
+}
+
+function variationHitStep(variation: SynthSequenceVariation, step: number): number {
+  const hitSteps = Object.keys(variation.stepMetadata)
+    .map(Number)
+    .filter(Number.isInteger)
+    .sort((left, right) => left - right);
+  if (hitSteps.length === 0) return Math.max(0, Math.min(variation.steps - 1, Math.round(step)));
+  return hitSteps[((Math.round(step) % hitSteps.length) + hitSteps.length) % hitSteps.length] ?? hitSteps[0]!;
+}
+
+function variationStepMetadata(
+  variation: SynthSequenceVariation | null | undefined,
+  step: number,
+) {
+  return variation?.stepMetadata[String(step)] ?? null;
 }
 
 type KeyboardInputMode = 'play' | 'sequence';
@@ -1641,35 +1672,6 @@ function resolvePitchSettingsForHarmony(settings: PitchSettings, harmony: Harmon
   };
 }
 
-function harmonyCapturePitchReference(harmony: HarmonyState | null | undefined): CapturedPitchReference {
-  const resolved = resolvePitchSettingsForHarmony(SYNTH_DEFAULT_PITCH_SETTINGS, harmony);
-  return {
-    root: resolved.root,
-    scale: HARMONY_PITCH_SCALE,
-    scaleIntervals: resolved.scaleIntervals,
-  };
-}
-
-function generatedCapturePitchReferenceForSlot(
-  mode: SequencerMode,
-  slot: SequencerSlotModeState | undefined,
-  harmony: HarmonyState | null | undefined,
-): CapturedPitchReference | null {
-  if (!slot) return null;
-  if (mode === 'anchorWalker') {
-    return slot.anchorWalker.snapSource === 'harmonyEngine'
-      ? harmonyCapturePitchReference(harmony)
-      : null;
-  }
-  if (mode === 'orbit') {
-    const usesHarmonyPitch = slot.orbit.quantizeToHarmony || slot.orbit.notes.some((note) => (
-      note.enabled && note.pitchMode !== 'fixedMidi'
-    ));
-    return usesHarmonyPitch ? harmonyCapturePitchReference(harmony) : null;
-  }
-  return null;
-}
-
 function synthSourceSelectValue(source: unknown): string {
   const normalized = normalizeSynthEuclidSource(source);
   if (normalized.startsWith('synth')) return 'pad1';
@@ -1768,15 +1770,6 @@ function convertSynthPitchValuesForMode(
     const midi = pitchOffsetToMidi(value, currentSettings, harmony);
     return midi == null ? Math.round(value) : midiToPitchOffsetForSettings(midi, nextSettings, harmony);
   });
-}
-
-function fixedKeyboardRecordPitchSettings(settings: PitchSettings, harmony?: HarmonyState | null): PitchSettings {
-  const resolved = resolvePitchSettingsForHarmony(settings, harmony);
-  return {
-    mode: 'semitones',
-    root: resolved.root,
-    scale: 'Chromatic',
-  };
 }
 
 function finiteWalkerMidi(value: number, valid = true): number | null {
@@ -1935,10 +1928,21 @@ export interface SynthPageProps {
   /** Fire a one-shot manual audition note using a temporary, non-UI preset state */
   onAuditionPresetPreview?: (note: ManualSynthNoteOptions, externalState: SliderState) => void | Promise<void>;
   sendProductAnchorWalkerPerformanceEvent?: ProductRuntimeSynthPageEvents['sendProductAnchorWalkerPerformanceEvent'];
-  setProductGeneratedSequencerCaptureEnabled?: ProductRuntimeSynthPageEvents['setProductGeneratedSequencerCaptureEnabled'];
-  commitProductGeneratedSequencerCaptureToStep?: ProductRuntimeSynthPageEvents['commitProductGeneratedSequencerCaptureToStep'];
-  getProductGeneratedSequencerCaptureTelemetry?: ProductRuntimeSynthPageEvents['getProductGeneratedSequencerCaptureTelemetry'];
+  /** Lossless timed-note capture control and subscription. */
+  setRecordedNoteCapture?: (request: RecordedNoteCaptureStartRequest) => void;
+  subscribeRecordedNoteCapture?: RecordedNoteCaptureSubscription;
+  getRecordedNoteCaptureClockBeat?: () => number | null;
+  recordedNoteCaptureAvailable?: ProductRuntimeSynthPageEvents['recordedNoteCaptureAvailable'];
   getProductArpAudibleTelemetry?: ProductRuntimeSynthPageEvents['getProductArpAudibleTelemetry'];
+  /** Runtime telemetry for the variation currently driving each synth lane. */
+  activeSynthSequenceVariationIndices?: readonly (number | null)[];
+  /** Optional atomic Product Core handoff for an auto-printed variation bank. */
+  commitSynthSequenceVariationBank?: (laneIndex: number, bank: SynthSequenceVariationBank) => Promise<boolean>;
+  /** Functional state bridge keeps bank edits based on the latest App state. */
+  onSynthSequenceVariationBankChange?: (
+    laneIndex: number,
+    updater: (bank: SynthSequenceVariationBank | null) => SynthSequenceVariationBank | null,
+  ) => void;
   /** Current harmony snapshot for keyboard note coloring */
   harmonyState?: HarmonyState | null;
   /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
@@ -2011,10 +2015,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onLiveNoteStop,
     onAuditionPresetPreview,
     sendProductAnchorWalkerPerformanceEvent,
-    setProductGeneratedSequencerCaptureEnabled,
-    commitProductGeneratedSequencerCaptureToStep,
-    getProductGeneratedSequencerCaptureTelemetry,
+    setRecordedNoteCapture,
+    subscribeRecordedNoteCapture,
+    getRecordedNoteCaptureClockBeat,
+    recordedNoteCaptureAvailable,
     getProductArpAudibleTelemetry,
+    activeSynthSequenceVariationIndices,
+    commitSynthSequenceVariationBank,
+    onSynthSequenceVariationBankChange,
     harmonyState,
     onHarmonyLiveLayerChange,
     commitHarmonyAuthoredStateChange: commitHarmonyAuthoredStateChangeProp,
@@ -2048,6 +2056,34 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [linkedTriggerStampSummary, setLinkedTriggerStampSummary] = useState('');
   const [showKeyboard, setShowKeyboard] = useState(initialKeyboardUiState?.open ?? false);
   const [keyboardInputMode, setKeyboardInputMode] = useState<KeyboardInputMode>(initialKeyboardUiState?.inputMode ?? 'play');
+  const [variationCommitPending, setVariationCommitPending] = useState(false);
+  const [variationCommitError, setVariationCommitError] = useState<string | null>(null);
+  const [variationPrintSuccess, setVariationPrintSuccess] = useState<{
+    laneIndex: number;
+    steps: number;
+    noteCount: number;
+  } | null>(null);
+  const [recordedCaptureStartPendingLane, setRecordedCaptureStartPendingLane] = useState<number | null>(null);
+  const keyboardCaptureGroupRef = useRef<{
+    id: string;
+    firstAtMs: number;
+    laneIndex: number;
+    sourceId: number;
+  } | null>(null);
+  const variationCaptureArmRef = useRef<{
+    laneIndex: number;
+    phraseBeats: number;
+    clockDiv: ClockDivision;
+    baseLane: {
+      overrides: SerializedStepOverrides;
+      state: SerializedSequenceLanePresetState;
+    };
+  } | null>(null);
+  const variationCommitSerialRef = useRef<number[]>([]);
+  useEffect(() => () => {
+    variationCommitSerialRef.current = [];
+    variationCaptureArmRef.current = null;
+  }, []);
   const [keyboardSource, setKeyboardSource] = useState<ManualSynthSource>(initialKeyboardUiState?.source ?? 'lead1');
   const [keyboardOctave, setKeyboardOctave] = useState(initialKeyboardUiState?.octave ?? 4);
   const [pitchBindingModes, setPitchBindingModes] = useState<PitchBindingMode[]>(() =>
@@ -2327,13 +2363,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       previousLiveNoteBridgeRef.current = { onLiveNoteStart, onLiveNoteStop };
     }
   }, [liveNoteInput, onLiveNoteStart, onLiveNoteStop]);
-  const synthLiveOverdubCaptureRef = useRef<SynthLiveOverdubCaptureSession | null>(null);
-  const [synthRecorderMetronomeEnabled, setSynthRecorderMetronomeEnabled] = useState(true);
-  const [generatedCaptureStartArm, setGeneratedCaptureStartArm] = useState<GeneratedCaptureStartArm | null>(null);
-  const generatedCaptureStartArmRef = useRef<GeneratedCaptureStartArm | null>(null);
-  useEffect(() => {
-    generatedCaptureStartArmRef.current = generatedCaptureStartArm;
-  }, [generatedCaptureStartArm]);
   const [pad1Variation, setPad1Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
   const [pad2Variation, setPad2Variation] = useState<PadVariationSession>(EMPTY_PAD_VARIATION_SESSION);
 
@@ -3867,6 +3896,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [playConfigs, setPlayConfigs] = useState<ProductPlayConfig[]>(() => normalizeProductPlayConfigs(initialPlayConfigs, 4));
   const [arpUiPlayheads, setArpUiPlayheads] = useState<number[]>(() => [0, 0, 0, 0]);
   const [selectedArpSteps, setSelectedArpSteps] = useState<number[]>(() => [0, 0, 0, 0]);
+  // Edit selection is intentionally separate from the runtime's audible bank.
+  // Variation callbacks may replace this state with the native bank selection
+  // once that schema is available; keyboard cursors remain independent below.
+  const [selectedDetailSteps, setSelectedDetailSteps] = useState<number[]>(() => [0, 0, 0, 0]);
+  const [stepDetailModes, setStepDetailModes] = useState<SeqStepDetailMode[]>(() => ['note', 'note', 'note', 'note']);
+  const [selectedVariations, setSelectedVariations] = useState<SequencerVariationId[]>(() => ['A', 'A', 'A', 'A']);
+  const [queuedVariations, setQueuedVariations] = useState<Array<SequencerVariationId | null>>(() => [null, null, null, null]);
+  const [showAllChordChoices, setShowAllChordChoices] = useState(false);
   const [seqDrafts, setSeqDrafts] = useState<HarmonyDraftChord[]>(() => [0, 1, 2, 3].map(() => emptyHarmonyDraft()));
   const [seqDraftSlots, setSeqDraftSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
   const [seqLiveSlots, setSeqLiveSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
@@ -4196,12 +4233,515 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     ) as unknown as SliderState, 'Save Seq suggestion');
   }, [arpHarmonyContext, commitHarmonyAuthoredStateChange, props.harmonyProjection.bank, seqSlotWriteLocked]);
   const selectArpStep = useCallback((laneIdx: number, step: number) => {
+    const normalized = Math.max(0, Math.min(15, Math.round(step)));
     setSelectedArpSteps((current) => {
       const next = [...current];
-      next[laneIdx] = Math.max(0, Math.min(15, Math.round(step)));
+      next[laneIdx] = normalized;
       return next;
     });
+    setSelectedDetailSteps((current) => current.map((value, index) => index === laneIdx ? normalized : value));
   }, []);
+
+  const selectStepDetail = useCallback((laneIdx: number, step: number, count?: number) => {
+    const safeCount = Math.max(1, Math.round(count ?? seq.sequencerModels[laneIdx]?.trigger.steps ?? 1));
+    const normalized = ((Math.round(step) % safeCount) + safeCount) % safeCount;
+    setSelectedDetailSteps((current) => current.map((value, index) => index === laneIdx ? normalized : value));
+    setSelectedArpSteps((current) => current.map((value, index) => index === laneIdx ? Math.min(15, normalized) : value));
+    setTriggerKeyboardSteps((current) => current.map((value, index) => index === laneIdx ? normalized : value));
+    seq.setActiveTab(laneIdx);
+  }, [seq]);
+
+  const setStepDetailMode = useCallback((laneIdx: number, mode: SeqStepDetailMode) => {
+    setStepDetailModes((current) => current.map((value, index) => index === laneIdx ? mode : value));
+  }, []);
+
+  const createVariationBankFromCurrentLane = useCallback((laneIdx: number): SynthSequenceVariationBank => {
+    const model = seq.sequencerModels[laneIdx];
+    const steps = Math.max(2, Math.min(32, Math.round(model?.trigger.steps ?? 16)));
+    const clockDiv = seq.clockDivs[laneIdx] ?? '1/16';
+    const stepBeats = 4 / sequencerClockDivisionToNumericValue(clockDiv, 8);
+    const phraseBeats = steps * stepBeats;
+    const overrides = serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIdx)) ?? {};
+    const pattern = (model?.trigger.pattern ?? []).slice(0, steps);
+    // Freeze the currently audible pattern into the new bank. A generated
+    // Euclidean lane may have no serialized bitmap yet; carrying only its
+    // legacy parameters would make the first printed variation appear empty.
+    overrides.triggerClips = [serializeTriggerClip(createBitmapTriggerClip({
+      steps,
+      bits: Array.from({ length: steps }, (_, index) => Boolean(pattern[index])),
+      origin: 'manual',
+      label: 'Variation source',
+    }))];
+    const stepMetadata = Object.fromEntries(
+      pattern.map((hit, step) => hit ? [String(step), { mode: 'note' as const, gateBeats: stepBeats }] : null).filter(Boolean) as [string, { mode: 'note'; gateBeats: number }][],
+    );
+    const variation: SynthSequenceVariation = {
+      id: 'A',
+      steps,
+      spanBeats: phraseBeats,
+      lane: {
+        overrides,
+        state: copySequenceLaneStateForPreset({
+          laneIdx,
+          subLaneStates: seq.subLaneStates,
+          clockDivs: seq.clockDivs,
+          swings: seq.swings,
+          linked: seq.linked,
+          evolveConfigs: seq.evolveConfigs,
+          pitchSettings: seq.pitchSettings,
+          pitchBindingModes,
+        }),
+      },
+      stepMetadata,
+    };
+    return {
+      schemaVersion: 1,
+      phraseBeats,
+      clockDiv,
+      chainEnabled: false,
+      playVariation: 0,
+      chainOrder: ['A'],
+      variations: { A: variation },
+    };
+  }, [pitchBindingModes, seq]);
+
+  const createEmptyVariationForLane = useCallback((laneIdx: number, id: SequencerVariationId): SynthSequenceVariation => {
+    const bank = createVariationBankFromCurrentLane(laneIdx);
+    const base = bank.variations.A!;
+    const emptyOverrides = { ...base.lane.overrides };
+    emptyOverrides.triggerClips = [serializeTriggerClip(createBitmapTriggerClip({
+      steps: base.steps,
+      bits: Array.from({ length: base.steps }, () => false),
+      origin: 'manual',
+      label: `Variation ${id}`,
+    }))];
+    emptyOverrides.triggerToggles = [[]];
+    emptyOverrides.pitch = [[]];
+    emptyOverrides.expression = [[]];
+    emptyOverrides.nudge = [[]];
+    return {
+      ...base,
+      id,
+      lane: { ...base.lane, overrides: emptyOverrides },
+      stepMetadata: {},
+    };
+  }, [createVariationBankFromCurrentLane]);
+
+  const selectVariationForEdit = useCallback((laneIdx: number, variation: SequencerVariationId) => {
+    setSelectedVariations((current) => current.map((value, index) => index === laneIdx ? variation : value));
+    const currentBank = state.synthSequenceVariationBanks?.[laneIdx] ?? null;
+    const bank = currentBank ?? createVariationBankFromCurrentLane(laneIdx);
+    const selected = bank.variations[variation];
+    const persistBank = (nextBank: SynthSequenceVariationBank) => {
+      if (onSynthSequenceVariationBankChange) {
+        onSynthSequenceVariationBankChange(laneIdx, () => nextBank);
+        return;
+      }
+      onSelectChange('synthSequenceVariationBanks', Array.from(
+        { length: Math.max(SYNTH_EUCLIDEAN_LANE_COUNT, state.synthSequenceVariationBanks?.length ?? 0) },
+        (_, index) => index === laneIdx ? nextBank : state.synthSequenceVariationBanks?.[index] ?? null,
+      ) as SliderState[keyof SliderState]);
+    };
+    if (!selected) {
+      const empty = variationForBankClock(createEmptyVariationForLane(laneIdx, variation), bank.clockDiv);
+      const variations = { ...bank.variations, [variation]: empty };
+      const nextBank: SynthSequenceVariationBank = {
+        ...bank,
+        phraseBeats: Object.values(variations).reduce((sum, item) => sum + (item?.spanBeats ?? 0), 0),
+        variations,
+        chainOrder: bank.chainOrder.includes(variation) ? bank.chainOrder : [...bank.chainOrder, variation],
+      };
+      persistBank(selectSynthSequenceVariationInBank(nextBank, variation));
+      setQueuedVariations((current) => current.map((value, index) => index === laneIdx ? variation : value));
+      return;
+    }
+    if (bank.chainEnabled) return;
+    const variationIndex = SYNTH_SEQUENCE_VARIATION_IDS.indexOf(variation);
+    if (variationIndex < 0) return;
+    const nextBank = selectSynthSequenceVariationInBank(bank, variation);
+    if (!currentBank || nextBank !== bank) persistBank(nextBank);
+    // The bank update owns selection; telemetry confirms when it is sounding.
+    setQueuedVariations((current) => current.map((value, index) => index === laneIdx ? variation : value));
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, onSelectChange, onSynthSequenceVariationBankChange, state.synthSequenceVariationBanks]);
+
+  const updateSynthVariationBank = useCallback((
+    laneIdx: number,
+    updater: (bank: SynthSequenceVariationBank | null) => SynthSequenceVariationBank | null,
+  ) => {
+    if (onSynthSequenceVariationBankChange) {
+      onSynthSequenceVariationBankChange(laneIdx, updater);
+      return;
+    }
+    const currentBanks = state.synthSequenceVariationBanks ?? [];
+    const nextBanks: SynthSequenceVariationBanks = Array.from(
+      { length: Math.max(SYNTH_EUCLIDEAN_LANE_COUNT, currentBanks.length) },
+      (_, index) => currentBanks[index] ?? null,
+    );
+    nextBanks[laneIdx] = updater(currentBanks[laneIdx] ?? null);
+    onSelectChange('synthSequenceVariationBanks', nextBanks as SliderState[keyof SliderState]);
+  }, [onSelectChange, onSynthSequenceVariationBankChange, state.synthSequenceVariationBanks]);
+
+  const toggleVariationChain = useCallback(() => {
+    if (!state.synthSequenceVariationBanks?.[seq.activeTab]) return;
+    updateSynthVariationBank(seq.activeTab, (bank) => bank
+      ? { ...bank, chainEnabled: !bank.chainEnabled }
+      : bank);
+  }, [seq.activeTab, state.synthSequenceVariationBanks, updateSynthVariationBank]);
+
+  const updateSelectedVariationTrigger = useCallback((step: number, nextValue?: boolean) => {
+    const safeStep = Math.max(0, Math.round(step));
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variationId = selectedVariations[seq.activeTab] ?? 'A';
+      const variation = nextBank.variations[variationId]
+        ?? (variationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, variationId), nextBank.clockDiv));
+      if (!variation || safeStep >= variation.steps) return nextBank;
+      const pattern = variationTriggerPattern(variation);
+      const desired = nextValue ?? !Boolean(pattern[safeStep]);
+      const currentClip = deserializeTriggerClip(variation.lane.overrides.triggerClips?.[0])
+        ?? createBitmapTriggerClip({ steps: variation.steps, bits: pattern, origin: 'manual', label: `Variation ${variation.id}` });
+      const nextClip = setTriggerClipStep(currentClip, safeStep, desired);
+      const nextPattern = resolveTriggerClip(nextClip);
+      const overrides = { ...variation.lane.overrides, triggerClips: [serializeTriggerClip(nextClip)], triggerToggles: [[]] };
+      for (const field of ['pitch', 'expression', 'nudge'] as const) {
+        const previousValues = variation.lane.overrides[field]?.[0] ?? [];
+        const compactToHits = field === 'pitch'
+          ? variation.lane.state.pitchBindingMode !== 'sequence'
+          : variation.lane.state.subLaneStates?.[field]?.followTriggerHits === true;
+        overrides[field] = [variationLaneValuesAfterTriggerToggle(
+          previousValues,
+          pattern,
+          nextPattern,
+          compactToHits,
+          field === 'pitch' ? 0 : field === 'expression' ? 1 : 0,
+        )];
+      }
+      const metadata = { ...variation.stepMetadata };
+      if (desired && !metadata[String(safeStep)]) {
+        metadata[String(safeStep)] = { mode: 'note', gateBeats: variation.spanBeats / Math.max(1, variation.steps) };
+      } else if (!desired) {
+        delete metadata[String(safeStep)];
+      }
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [variation.id]: { ...variation, lane: { ...variation.lane, overrides }, stepMetadata: metadata },
+        },
+      };
+    });
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, seq.activeTab, selectedVariations, updateSynthVariationBank]);
+
+  const updateSelectedVariationTriggerField = useCallback((field: 'probability' | 'ratchet' | 'trigCondition', step: number, value: number | [number, number]) => {
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variationId = selectedVariations[seq.activeTab] ?? 'A';
+      const variation = nextBank.variations[variationId]
+        ?? (variationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, variationId), nextBank.clockDiv));
+      if (!variation || step < 0 || step >= variation.steps) return nextBank;
+      const overrides = { ...variation.lane.overrides };
+      if (field === 'trigCondition') {
+        const values = Array.isArray(overrides.trigCondition?.[0]) ? [...overrides.trigCondition[0]] : Array.from({ length: variation.steps }, () => [1, 1] as [number, number]);
+        values[step] = value as [number, number];
+        overrides.trigCondition = [values];
+      } else {
+        const values = Array.isArray(overrides[field]?.[0]) ? [...overrides[field]![0]!] as number[] : Array.from({ length: variation.steps }, () => field === 'probability' ? 1 : 0);
+        values[step] = value as number;
+        overrides[field] = [values];
+      }
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [variation.id]: { ...variation, lane: { ...variation.lane, overrides } },
+        },
+      };
+    });
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, seq.activeTab, selectedVariations, updateSynthVariationBank]);
+
+  const updateSelectedVariationLaneState = useCallback((lane: SubLaneKind, patch: Partial<SubLaneState>) => {
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variationId = selectedVariations[seq.activeTab] ?? 'A';
+      const variation = nextBank.variations[variationId]
+        ?? (variationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, variationId), nextBank.clockDiv));
+      if (!variation) return nextBank;
+      const states = variation.lane.state.subLaneStates ?? {};
+      const current = states[lane] ?? { enabled: false, steps: 1, direction: 'forward' as const };
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [variation.id]: {
+            ...variation,
+            lane: {
+              ...variation.lane,
+              state: {
+                ...variation.lane.state,
+                subLaneStates: {
+                  ...states,
+                  [lane]: { ...current, ...patch },
+                },
+              },
+            },
+          },
+        },
+      };
+    });
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, selectedVariations, seq.activeTab, updateSynthVariationBank]);
+
+  const updateSelectedVariationLaneDirection = useCallback((lane: SubLaneKind) => {
+    const current = state.synthSequenceVariationBanks?.[seq.activeTab]
+      ?.variations[selectedVariations[seq.activeTab] ?? 'A']
+      ?.lane.state.subLaneStates?.[lane]?.direction ?? 'forward';
+    const order: SubLaneState['direction'][] = ['forward', 'reverse', 'pingpong'];
+    const index = order.indexOf(current as SubLaneState['direction']);
+    updateSelectedVariationLaneState(lane, { direction: order[(index + 1 + order.length) % order.length] });
+  }, [selectedVariations, seq.activeTab, state.synthSequenceVariationBanks, updateSelectedVariationLaneState]);
+
+  const updateSelectedVariationPitchSettings = useCallback((patch: Partial<PitchSettings>) => {
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variationId = selectedVariations[seq.activeTab] ?? 'A';
+      const variation = nextBank.variations[variationId]
+        ?? (variationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, variationId), nextBank.clockDiv));
+      if (!variation) return nextBank;
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [variation.id]: {
+            ...variation,
+            lane: {
+              ...variation.lane,
+              state: {
+                ...variation.lane.state,
+                pitchSettings: { ...(variation.lane.state.pitchSettings ?? { mode: 'notes', root: 60, scale: 'Chromatic' }), ...patch },
+              },
+            },
+          },
+        },
+      };
+    });
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, selectedVariations, seq.activeTab, updateSynthVariationBank]);
+
+  const updateSelectedVariationPitchBinding = useCallback((mode: PitchBindingMode) => {
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variationId = selectedVariations[seq.activeTab] ?? 'A';
+      const variation = nextBank.variations[variationId]
+        ?? (variationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, variationId), nextBank.clockDiv));
+      if (!variation) return nextBank;
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [variation.id]: {
+            ...variation,
+            lane: { ...variation.lane, state: { ...variation.lane.state, pitchBindingMode: mode } },
+          },
+        },
+      };
+    });
+  }, [createEmptyVariationForLane, createVariationBankFromCurrentLane, selectedVariations, seq.activeTab, updateSynthVariationBank]);
+
+  const savedVariationBank = state.synthSequenceVariationBanks?.[seq.activeTab] ?? null;
+  const activeVariationBank = activeSequencerMode === 'euclid' ? savedVariationBank : null;
+  const selectedVariationId = selectedVariations[seq.activeTab] ?? 'A';
+  const selectedVariation = activeVariationBank?.variations[selectedVariationId] ?? null;
+  const activeVariationClockDiv = activeVariationBank?.clockDiv ?? seq.clockDivs[seq.activeTab];
+  const updateActiveVariationClock = useCallback((clockDiv: ClockDivision) => {
+    if (!activeVariationBank) {
+      seq.setClockDiv(seq.activeTab, clockDiv);
+      return;
+    }
+    const stepBeats = 4 / sequencerClockDivisionToNumericValue(clockDiv, 8);
+    updateSynthVariationBank(seq.activeTab, (bank) => bank ? {
+      ...bank,
+      clockDiv,
+      phraseBeats: Object.values(bank.variations).reduce((sum, variation) => sum + (variation?.steps ?? 0) * stepBeats, 0),
+      variations: Object.fromEntries(Object.entries(bank.variations).map(([id, variation]) => [
+        id,
+        variation ? {
+          ...variation,
+          spanBeats: variation.steps * stepBeats,
+          lane: { ...variation.lane, state: { ...variation.lane.state, clockDiv } },
+        } : variation,
+      ])) as SynthSequenceVariationBank['variations'],
+    } : bank);
+  }, [activeVariationBank, seq, updateSynthVariationBank]);
+  const resizeActiveVariation = useCallback((steps: number) => {
+    const nextSteps = Math.max(2, Math.min(32, Math.round(steps)));
+    if (!activeVariationBank) {
+      seq.setParam(seq.activeTab, 'Steps', nextSteps);
+      return;
+    }
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      if (!bank) return bank;
+      const id = selectedVariationId;
+      const current = bank.variations[id] ?? variationForBankClock(createEmptyVariationForLane(seq.activeTab, id), bank.clockDiv);
+      const currentPattern = variationTriggerPattern(current);
+      const nextPattern = Array.from({ length: nextSteps }, (_, index) => Boolean(currentPattern[index]));
+      const stepBeats = 4 / sequencerClockDivisionToNumericValue(bank.clockDiv, 8);
+      const nextVariation: SynthSequenceVariation = {
+        ...current,
+        steps: nextSteps,
+        spanBeats: nextSteps * stepBeats,
+        lane: {
+          ...current.lane,
+          overrides: {
+            ...current.lane.overrides,
+            triggerClips: [serializeTriggerClip(createBitmapTriggerClip({
+              steps: nextSteps,
+              bits: nextPattern,
+              origin: 'manual',
+              label: `Variation ${id}`,
+            }))],
+          },
+        },
+        stepMetadata: Object.fromEntries(
+          Object.entries(current.stepMetadata).filter(([step]) => Number(step) < nextSteps),
+        ),
+      };
+      const variations = { ...bank.variations, [id]: nextVariation };
+      const phraseBeats = Object.values(variations).reduce((sum, variation) => sum + (variation?.spanBeats ?? 0), 0);
+      return { ...bank, phraseBeats, variations };
+    });
+  }, [activeVariationBank, createEmptyVariationForLane, selectedVariationId, seq, updateSynthVariationBank]);
+  const rotateActiveVariation = useCallback((delta: number) => {
+    if (!activeVariationBank) {
+      seq.rotateSequence(seq.activeTab, delta < 0 ? -1 : 1);
+      return;
+    }
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const variation = bank?.variations[selectedVariationId];
+      if (!bank || !variation) return bank;
+      return {
+        ...bank,
+        variations: {
+          ...bank.variations,
+          [selectedVariationId]: rotateSynthSequenceVariation(variation, delta),
+        },
+      };
+    });
+  }, [activeVariationBank, selectedVariationId, seq, updateSynthVariationBank]);
+  const updateActiveVariationSwing = useCallback((value: number) => {
+    if (!activeVariationBank) {
+      seq.setSwing(seq.activeTab, value);
+      return;
+    }
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const variation = bank?.variations[selectedVariationId];
+      if (!bank || !variation) return bank;
+      return {
+        ...bank,
+        variations: {
+          ...bank.variations,
+          [selectedVariationId]: {
+            ...variation,
+            lane: { ...variation.lane, state: { ...variation.lane.state, swing: value } },
+          },
+        },
+      };
+    });
+  }, [activeVariationBank, selectedVariationId, seq, updateSynthVariationBank]);
+  const toggleActiveVariationEvolve = useCallback(() => {
+    const enabled = activeVariationBank
+      ? !(selectedVariation?.lane.state.evolveConfig?.enabled ?? false)
+      : !(seq.evolveConfigs[seq.activeTab]?.enabled ?? false);
+    if (!activeVariationBank) {
+      seq.setEvolveConfigs((current) => current.map((config, index) => index === seq.activeTab ? { ...config, enabled } : config));
+      return;
+    }
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const variation = bank?.variations[selectedVariationId];
+      if (!bank || !variation) return bank;
+      return {
+        ...bank,
+        variations: {
+          ...bank.variations,
+          [selectedVariationId]: {
+            ...variation,
+            lane: {
+              ...variation.lane,
+              state: {
+                ...variation.lane.state,
+                evolveConfig: {
+                  ...(variation.lane.state.evolveConfig ?? seq.evolveConfigs[seq.activeTab]),
+                  enabled,
+                },
+              },
+            },
+          },
+        },
+      };
+    });
+  }, [activeVariationBank, selectedVariation, selectedVariationId, seq, updateSynthVariationBank]);
+  const activeVariationPlaybackPhraseBeats = useMemo(() => {
+    if (!activeVariationBank) return null;
+    if (activeVariationBank.chainEnabled) {
+      return activeVariationBank.chainOrder.reduce((sum, id) => sum + (activeVariationBank.variations[id]?.spanBeats ?? 0), 0)
+        || activeVariationBank.phraseBeats;
+    }
+    const id = SYNTH_SEQUENCE_VARIATION_IDS[activeVariationBank.playVariation] ?? 'A';
+    return activeVariationBank.variations[id]?.spanBeats ?? activeVariationBank.phraseBeats;
+  }, [activeVariationBank]);
+  const activeVariationIndex = activeSynthSequenceVariationIndices?.[seq.activeTab] ?? null;
+  const audibleVariation = activeVariationIndex != null && activeVariationIndex >= 0 && activeVariationIndex < SYNTH_SEQUENCE_VARIATION_IDS.length
+    ? SYNTH_SEQUENCE_VARIATION_IDS[activeVariationIndex]
+    : null;
+  const selectedVariationPlayhead = activeVariationBank && selectedVariationId !== audibleVariation
+    ? -1 : (seq.playheads[seq.activeTab] ?? 0);
+  const variationSummaries = useMemo(() => SYNTH_SEQUENCE_VARIATION_IDS.map((id) => {
+    const variation = activeVariationBank?.variations[id];
+    const currentModel = seq.sequencerModels[seq.activeTab];
+    return {
+      id: id as SequencerVariationId,
+      steps: variation?.steps ?? (id === 'A' ? currentModel?.trigger.steps ?? 0 : 0),
+      noteCount: variation ? variationNoteCount(variation) : (id === 'A' ? currentModel?.trigger.hits ?? 0 : 0),
+      hitCount: variation ? variationHitCount(variation) : (id === 'A' ? currentModel?.trigger.hits ?? 0 : 0),
+      phraseLabel: variation
+        ? `${variation.spanBeats} beats`
+        : id === 'A' && currentModel
+          ? `${currentModel.trigger.steps * (4 / sequencerClockDivisionToNumericValue(seq.clockDivs[seq.activeTab] ?? '1/16', 8))} beats`
+          : undefined,
+      // Empty banks remain selectable so the next print can target a chosen tab.
+      available: true,
+    };
+  }), [activeVariationBank, seq.activeTab, seq.clockDivs, seq.sequencerModels]);
+  const variationOverview = useMemo(() => Array.from(
+    { length: seq.sequencerModels.length },
+    (_, laneIndex) => {
+      if ((sequencerFaceState.slots[laneIndex]?.mode ?? 'euclid') !== 'euclid') return null;
+      const bank = state.synthSequenceVariationBanks?.[laneIndex] ?? null;
+      const id = selectedVariations[laneIndex] ?? 'A';
+      const variation = bank?.variations[id];
+      return variation ? {
+        pattern: variationTriggerPattern(variation),
+        label: `Printed ${id}`,
+        noteCount: variationNoteCount(variation),
+        hitCount: variationHitCount(variation),
+        phraseBeats: bank?.chainEnabled ? bank.phraseBeats : variation.spanBeats,
+      } : null;
+    },
+  ), [selectedVariations, seq.sequencerModels.length, sequencerFaceState, state.synthSequenceVariationBanks]);
+  const variationOverviewPlayheads = useMemo(() => seq.playheads.map((step, laneIndex) => {
+    const audibleIndex = activeSynthSequenceVariationIndices?.[laneIndex];
+    return variationOverview[laneIndex] && (audibleIndex == null || selectedVariations[laneIndex] !== SYNTH_SEQUENCE_VARIATION_IDS[audibleIndex])
+      ? -1 : step;
+  }), [activeSynthSequenceVariationIndices, selectedVariations, seq.playheads, variationOverview]);
+  const variationOverviewPatterns = useMemo(() => variationOverview.map((item) => item?.pattern ?? null), [variationOverview]);
+  const variationOverviewLabels = useMemo(() => variationOverview.map((item) => item?.label ?? null), [variationOverview]);
+  const variationOverviewNoteCounts = useMemo(() => variationOverview.map((item) => item?.noteCount ?? null), [variationOverview]);
+  const variationOverviewHitCounts = useMemo(() => variationOverview.map((item) => item?.hitCount ?? null), [variationOverview]);
+  const variationOverviewPhraseBeats = useMemo(() => variationOverview.map((item) => item?.phraseBeats ?? null), [variationOverview]);
+  useEffect(() => {
+    const queued = queuedVariations[seq.activeTab];
+    if (!queued) return;
+    const audible = activeVariationIndex == null ? null : SYNTH_SEQUENCE_VARIATION_IDS[activeVariationIndex];
+    if (!activeVariationBank?.chainEnabled && queued !== audible) return;
+    setQueuedVariations((current) => current.map((value, index) => index === seq.activeTab ? null : value));
+  }, [activeVariationBank?.chainEnabled, activeVariationIndex, queuedVariations, seq.activeTab]);
 
   const initialPlayConfigsSignature = JSON.stringify(initialPlayConfigs);
   useEffect(() => {
@@ -4337,6 +4877,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   useEffect(() => {
     if (presetVersion === undefined || presetVersion === previousPresetVersionRef.current) return;
     previousPresetVersionRef.current = presetVersion;
+    variationCommitSerialRef.current = [];
+    variationCaptureArmRef.current = null;
+    setVariationCommitPending(false);
+    setVariationCommitError(null);
+    setVariationPrintSuccess(null);
     setPitchBindingModes(normalizeSequencerPitchBindingModes(initialPitchBindingModes, SYNTH_EUCLIDEAN_LANE_COUNT));
     setTriggerKeyboardSteps(normalizeKeyboardStepArray());
     setPitchKeyboardSteps(normalizeKeyboardStepArray());
@@ -4372,6 +4917,27 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       setSynthPitchMode(laneIdx, 'semitones');
     }
   }, [seq.pitchSettings, setSynthPitchMode]);
+
+  const updateActiveVariationPitchBinding = useCallback((mode: PitchBindingMode) => {
+    if (!activeVariationBank) {
+      setPitchBindingMode(seq.activeTab, mode);
+      return;
+    }
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const selected = bank?.variations[selectedVariationId];
+      if (!bank || !selected) return bank;
+      return {
+        ...bank,
+        variations: {
+          ...bank.variations,
+          [selectedVariationId]: {
+            ...selected,
+            lane: { ...selected.lane, state: { ...selected.lane.state, pitchBindingMode: mode } },
+          },
+        },
+      };
+    });
+  }, [activeVariationBank, selectedVariationId, seq.activeTab, setPitchBindingMode, updateSynthVariationBank]);
 
   const setSharedSequencerBpm = useCallback((bpm: number) => {
     onParamChange('sequencerMasterBPM' as keyof SliderState, bpm);
@@ -4800,6 +5366,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   }, [sequenceHomeCaptureVersion, captureEvolveHome]);
 
   const activeSeq = seq.activeSeq;
+  const selectedDetailStep = selectedDetailSteps[seq.activeTab] ?? 0;
+  const selectedVariationStepCount = selectedVariation?.steps ?? activeSeq.trigger.steps;
+  const selectedVariationMetadata = variationStepMetadata(selectedVariation, selectedDetailStep);
+  const selectedVariationPitch = variationLaneValue(selectedVariation, 'pitch', selectedDetailStep);
+  const selectedVariationVelocity = variationLaneValue(selectedVariation, 'expression', selectedDetailStep);
+  const selectedVariationNudge = variationLaneValue(selectedVariation, 'nudge', selectedDetailStep);
   const triggerSourceIsEuclidean = (activeSeq.trigger.sourceOrigin ?? 'euclidean') === 'euclidean';
   const triggerSourceModeLabel = triggerSourceIsEuclidean ? 'Euclid' : 'Step';
   const [walkerEnsemblePreset, setWalkerEnsemblePreset] = useState<WalkerEnsemblePreset>('off');
@@ -4903,70 +5475,258 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     onSelectChange('synthSequencerFaces' as keyof SliderState, next as SliderState[keyof SliderState]);
   }, [onSelectChange, sequencerFaceState, walkerEnsemblePreset]);
 
-  const lastGeneratedCaptureTelemetryEventIdRef = useRef(0);
-  const setGeneratedSequencerCaptureEnabled = useCallback((
-    request: ProductGeneratedSequencerCaptureRequest,
-  ): void => {
-    if (request.enabled) {
-      lastGeneratedCaptureTelemetryEventIdRef.current = 0;
-    }
-    setProductGeneratedSequencerCaptureEnabled?.(request);
-  }, [setProductGeneratedSequencerCaptureEnabled]);
-  const setGeneratedCaptureSequencerMode = useCallback((laneIndex: number, mode: 'euclid'): void => {
-    setSequencerMode(laneIndex, mode);
-  }, [setSequencerMode]);
-  const setGeneratedCapturePitchBindingMode = useCallback((laneIndex: number, mode: PitchBindingMode): void => {
-    setPitchBindingMode(laneIndex, mode);
-  }, [setPitchBindingMode]);
-  const generatedCapturePitchReference = useMemo(
-    () => generatedCapturePitchReferenceForSlot(activeSequencerMode, activeSequencerSlot, harmonyState),
-    [activeSequencerMode, activeSequencerSlot, harmonyState],
+  const recordedCaptureDefaultDurationBeats = Math.max(
+    1,
+    Math.min(
+      64,
+      (activeSeq?.trigger.steps ?? 16) * 4 / sequencerClockDivisionToNumericValue(seq.clockDivs[seq.activeTab], 8),
+    ),
   );
-  const generatedSequenceCapture = useGeneratedSequenceCapture({
-    isRunning,
+  const recordedCaptureLengthBeats = activeVariationPlaybackPhraseBeats ?? recordedCaptureDefaultDurationBeats;
+  const recordedCaptureGridSteps = activeVariationBank
+    ? activeVariationBank.chainEnabled
+      ? activeVariationBank.chainOrder.reduce((sum, id) => sum + (activeVariationBank.variations[id]?.steps ?? 0), 0)
+      : activeVariationBank.variations[SYNTH_SEQUENCE_VARIATION_IDS[activeVariationBank.playVariation] ?? 'A']?.steps ?? 16
+    : Math.max(2, Math.min(32, Math.round(Number(seq.getParam(seq.activeTab, 'Steps')) || 16)));
+  const recordedCaptureAvailable = recordedNoteCaptureAvailable === true && Boolean(
+    setRecordedNoteCapture && subscribeRecordedNoteCapture && commitSynthSequenceVariationBank,
+  );
+  const recordedNoteCapture = useRecordedNoteCapture({
     activeLaneIndex: seq.activeTab,
-    activeLaneMode: activeSequencerMode,
-    seq,
-    setSequencerMode: setGeneratedCaptureSequencerMode,
-    setPitchBindingMode: setGeneratedCapturePitchBindingMode,
-    capturePitchReference: generatedCapturePitchReference,
-    setProductCaptureEnabled: setGeneratedSequencerCaptureEnabled,
-    onStepCommit: commitProductGeneratedSequencerCaptureToStep,
+    activeSource: sourceForMode(activeSequencerMode),
+    defaultDurationBeats: recordedCaptureLengthBeats,
+    defaultGridSteps: Math.max(2, Math.min(32, Math.round(Number(seq.getParam(seq.activeTab, 'Steps')) || 16))),
+    setCaptureEnabled: recordedCaptureAvailable ? setRecordedNoteCapture : undefined,
+    subscribeCapture: recordedCaptureAvailable ? subscribeRecordedNoteCapture : undefined,
+    getCaptureClockBeat: recordedCaptureAvailable ? getRecordedNoteCaptureClockBeat : undefined,
   });
   const {
-    session: generatedCaptureSession,
-    isCapturing: generatedCaptureIsCapturing,
-    capturedCount: generatedCaptureCount,
-    startCapture: startGeneratedCapture,
-    stopAndCommit: stopGeneratedCapture,
-    cancelCapture: cancelGeneratedCapture,
-    captureManualNote: captureGeneratedManualNote,
-    ingestProductEvents: ingestGeneratedCaptureEvents,
-  } = generatedSequenceCapture;
+    view: recordedCaptureView,
+    isCapturing: recordedCaptureIsCapturing,
+    capturedCount: recordedCaptureCount,
+    start: startRecordedCapture,
+    stopNow: stopRecordedCaptureNow,
+    cancel: cancelRecordedCapture,
+    recordNoteOn: recordRecordedNoteOn,
+    recordNoteOff: recordRecordedNoteOff,
+  } = recordedNoteCapture;
+  const variationCaptureLocked = recordedCaptureIsCapturing || variationCommitPending;
 
-  useVisibleInterval(() => {
-    if (!generatedCaptureIsCapturing) return;
-    const telemetry = getProductGeneratedSequencerCaptureTelemetry?.();
-    const events = telemetry?.events ?? [];
-    const freshEvents = events.filter((event) => (
-      event.eventId > lastGeneratedCaptureTelemetryEventIdRef.current
-    ));
-    if (freshEvents.length > 0) {
-      for (const event of freshEvents) {
-        lastGeneratedCaptureTelemetryEventIdRef.current = Math.max(
-          lastGeneratedCaptureTelemetryEventIdRef.current,
-          event.eventId,
-        );
+  const updateSelectedVariationStep = useCallback((patch: {
+    mode?: SynthSequenceVariation['stepMetadata'][string]['mode'];
+    pitch?: number;
+    velocity?: number;
+    morph?: number;
+    distance?: number;
+    nudge?: number;
+    gateBeats?: number;
+    followHarmony?: boolean;
+    chord?: SynthLocalChordPayload;
+    arpSpanBeats?: number;
+    arpConfig?: Partial<ProductArpConfig>;
+  }, stepOverride?: number) => {
+    const step = stepOverride ?? selectedDetailSteps[seq.activeTab] ?? 0;
+    updateSynthVariationBank(seq.activeTab, (bank) => {
+      const nextBank = bank ?? createVariationBankFromCurrentLane(seq.activeTab);
+      const variation = nextBank.variations[selectedVariationId]
+        ?? (selectedVariationId === 'A' ? nextBank.variations.A : variationForBankClock(createEmptyVariationForLane(seq.activeTab, selectedVariationId), nextBank.clockDiv));
+      if (!variation || step < 0 || step >= variation.steps) return nextBank;
+      const pitchIndex = variationLaneIndex(variation, 'pitch', step);
+      const expressionIndex = variationLaneIndex(variation, 'expression', step);
+      const morphIndex = variationLaneIndex(variation, 'morph', step);
+      const distanceIndex = variationLaneIndex(variation, 'distance', step);
+      const nudgeIndex = variationLaneIndex(variation, 'nudge', step);
+      const overrides = { ...variation.lane.overrides };
+      const writeLaneValue = (field: VariationValueLane, index: number, value: number) => {
+        const record = overrides as unknown as Record<string, unknown>;
+        const lanes = Array.isArray(record[field]) ? [...record[field] as unknown[]] : [];
+        const values = Array.isArray(lanes[0]) ? [...lanes[0] as unknown[]] : [];
+        values[index] = value;
+        lanes[0] = values;
+        record[field] = lanes;
+      };
+      if (patch.pitch != null) writeLaneValue('pitch', pitchIndex, patch.pitch);
+      if (patch.velocity != null) writeLaneValue('expression', expressionIndex, patch.velocity);
+      if (patch.morph != null) writeLaneValue('morph', morphIndex, patch.morph);
+      if (patch.distance != null) writeLaneValue('distance', distanceIndex, patch.distance);
+      if (patch.nudge != null) writeLaneValue('nudge', nudgeIndex, clampNudge(patch.nudge));
+      const metadata = variation.stepMetadata[String(step)];
+      const sharedHarmonyChord = props.harmonyProjection.slots.find((slot) => slot.chord)?.chord;
+      const nextMode = patch.mode ?? metadata?.mode;
+      const chordBase = patch.chord ?? metadata?.chord;
+      let nextChord = nextMode === 'chord' && chordBase
+        ? {
+            ...chordBase,
+            ...(patch.followHarmony == null ? {} : { followHarmony: patch.followHarmony }),
+            ...(patch.followHarmony && sharedHarmonyChord ? { sharedChord: sharedHarmonyChord } : {}),
+            ...(patch.followHarmony === false ? { sharedChord: undefined } : {}),
+          }
+        : nextMode === 'chord' && metadata
+        ? {
+            intervals: [{ intervalSemitones: 0, velocity: selectedVariationVelocity ?? 1, gateBeats: metadata.gateBeats }],
+            followHarmony: patch.followHarmony ?? false,
+          }
+        : metadata?.chord;
+      const lengthMetadata = patch.gateBeats != null && metadata
+        ? withSynthVariationStepLength({ ...metadata, chord: nextChord }, patch.gateBeats)
+        : metadata;
+      if (patch.gateBeats != null) nextChord = lengthMetadata?.chord;
+      const nextArp = nextMode === 'arp' && metadata && !metadata.arp
+        ? {
+            config: normalizeProductArpConfig({ ...activeArpConfig, ...(patch.arpConfig ?? {}) }),
+            spanBeats: patch.arpSpanBeats ?? (selectedVariation?.spanBeats ?? 1) / Math.max(1, selectedVariation?.steps ?? 1),
+          }
+        : metadata?.arp && (patch.arpSpanBeats != null || patch.arpConfig)
+        ? {
+            ...metadata.arp,
+            config: normalizeProductArpConfig({ ...metadata.arp.config, ...(patch.arpConfig ?? {}) }),
+              ...(patch.arpSpanBeats == null
+              ? {}
+              : { spanBeats: Math.max(0.01, patch.arpSpanBeats) }),
+          }
+        : metadata?.arp;
+      const hasPatch = patch.mode != null || patch.gateBeats != null || patch.followHarmony != null || patch.chord != null || patch.arpSpanBeats != null || patch.arpConfig != null;
+      const stepMetadata = !hasPatch || !metadata
+        ? variation.stepMetadata
+        : {
+            ...variation.stepMetadata,
+            [String(step)]: {
+              ...metadata,
+              ...(nextMode ? { mode: nextMode } : {}),
+              gateBeats: lengthMetadata?.gateBeats ?? metadata.gateBeats,
+              ...(nextChord ? { chord: nextChord } : {}),
+              ...(patch.followHarmony == null ? {} : { followHarmony: patch.followHarmony }),
+              ...(nextArp ? { arp: nextArp } : {}),
+            },
+          };
+      return {
+        ...nextBank,
+        variations: {
+          ...nextBank.variations,
+          [selectedVariationId]: {
+            ...variation,
+            lane: { ...variation.lane, overrides },
+            stepMetadata,
+          },
+        },
+      };
+    });
+  }, [activeArpConfig, createEmptyVariationForLane, createVariationBankFromCurrentLane, props.harmonyProjection.slots, selectedDetailSteps, selectedVariationId, selectedVariationVelocity, seq.activeTab, updateSynthVariationBank]);
+
+  const updateSelectedVariationChordNotes = useCallback((notes: readonly number[]) => {
+    if (!selectedVariationMetadata?.chord) return;
+    const rootMidi = variationPitchMidi(selectedVariation, selectedVariationPitch);
+    const existingIntervals = new Map(selectedVariationMetadata.chord.intervals.map((interval) => [interval.intervalSemitones, interval]));
+    const intervals = Array.from(new Set(notes.map((note) => Math.max(0, Math.min(127, Math.round(note))))))
+      .sort((left, right) => left - right)
+      .map((note) => {
+        const intervalSemitones = note - rootMidi;
+        const existing = existingIntervals.get(intervalSemitones);
+        return {
+          intervalSemitones,
+          velocity: existing?.velocity ?? selectedVariationVelocity ?? 1,
+          gateBeats: existing?.gateBeats ?? selectedVariationMetadata.gateBeats,
+        };
+      });
+    if (intervals.length === 0) return;
+    updateSelectedVariationStep({
+      mode: 'chord',
+      followHarmony: false,
+      chord: { ...selectedVariationMetadata.chord, intervals, followHarmony: false, sharedChord: undefined },
+    });
+  }, [selectedVariation, selectedVariationMetadata, selectedVariationPitch, selectedVariationVelocity, updateSelectedVariationStep]);
+
+  const commitPrintedVariationTake = useCallback(async () => {
+    const view = recordedCaptureView;
+    const draft = view?.recorder.draft ?? view?.recorder.committedClip;
+    const arm = variationCaptureArmRef.current;
+    const laneIndex = arm?.laneIndex ?? view?.targetLaneIndex ?? -1;
+    if (
+      !draft
+      || !arm
+      || view?.targetLaneIndex !== laneIndex
+      || view.recorder.phase === 'error'
+      || view.overflowCount > 0
+      || variationCommitPending
+      || variationCaptureLocked
+    ) return;
+    if (!commitSynthSequenceVariationBank) {
+      setVariationCommitError('The audio runtime is not ready to accept this printed take. Keep is disabled until it is connected.');
+      return;
+    }
+    const commitSerial = (variationCommitSerialRef.current[laneIndex] ?? 0) + 1;
+    variationCommitSerialRef.current[laneIndex] = commitSerial;
+    const isCurrentCommit = () => (
+      isCurrentSynthVariationCommit(
+        variationCommitSerialRef.current[laneIndex] ?? 0,
+        commitSerial,
+        variationCaptureArmRef.current,
+        arm,
+      )
+    );
+    setVariationCommitPending(true);
+    setVariationCommitError(null);
+    try {
+      const result = autoPrintSynthSequenceVariation({
+        phraseBeats: arm.phraseBeats,
+        baseLane: arm.baseLane,
+        notes: draft.notes.map((note) => ({
+          id: String(note.id),
+          onsetBeats: note.onsetBeats,
+          durationBeats: note.durationBeats,
+          pitch: note.pitch,
+          velocity: note.velocity,
+          ...(note.sourceId == null ? {} : { sourceId: note.sourceId }),
+          ...(note.chordGroupId === undefined ? {} : { chordGroupId: note.chordGroupId }),
+          ...(note.mode === undefined ? {} : { mode: note.mode }),
+          ...(note.chord === undefined ? {} : { chord: note.chord }),
+          ...(note.arp === undefined ? {} : { arp: note.arp }),
+        })),
+        clockDiv: arm.clockDiv,
+      });
+      if (!result.accepted || !result.bank) {
+        throw new Error(result.message ?? 'The take could not fit the supported phrase grids.');
       }
+      if (!await commitSynthSequenceVariationBank(laneIndex, result.bank)) {
+        throw new Error('The audio runtime rejected the printed variation bank.');
+      }
+      const settlement = settleSynthVariationCommit(
+        variationCommitSerialRef.current[laneIndex] ?? 0,
+        commitSerial,
+        variationCaptureArmRef.current,
+        arm,
+      );
+      if (!settlement.accepted) return;
+      // The async runtime receipt may arrive after another lane edit. Apply the
+      // accepted bank through the functional host bridge so that newer edits are
+      // retained while this take was printing.
+      updateSynthVariationBank(laneIndex, () => result.bank);
+      if (settlement.clearPending) setVariationCommitPending(false);
+      if (settlement.clearCapture) variationCaptureArmRef.current = null;
+      cancelRecordedCapture();
+      const printedVariationId = SYNTH_SEQUENCE_VARIATION_IDS.find((id) => variationTriggerPattern(result.bank!.variations[id]).some(Boolean))
+        ?? SYNTH_SEQUENCE_VARIATION_IDS[result.bank.playVariation] ?? 'A';
+      const printedVariation = result.bank.variations[printedVariationId] ?? result.bank.variations.A;
+      setQueuedVariations((current) => current.map((value, index) => index === laneIndex ? null : value));
+      setSequencerMode(laneIndex, 'euclid');
+      seq.setViewMode('detail');
+      setSelectedVariations((current) => current.map((value, index) => index === laneIndex ? printedVariationId : value));
+      const firstPrintedStep = Math.max(0, variationTriggerPattern(printedVariation).findIndex(Boolean));
+      selectStepDetail(laneIndex, firstPrintedStep, printedVariation?.steps);
+      setStepDetailMode(laneIndex, printedVariation?.stepMetadata[String(firstPrintedStep)]?.mode ?? 'note');
+      setVariationPrintSuccess({
+        laneIndex,
+        steps: printedVariation?.steps ?? recordedCaptureView?.gridSteps ?? 0,
+        noteCount: draft.notes.length,
+      });
+    } catch (error) {
+      if (isCurrentCommit()) {
+        setVariationCommitError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (isCurrentCommit()) setVariationCommitPending(false);
     }
-    const overflowCount = telemetry?.overflowCount ?? 0;
-    if (freshEvents.length > 0 || overflowCount > 0) {
-      ingestGeneratedCaptureEvents(freshEvents, overflowCount);
-    }
-  }, generatedCaptureIsCapturing ? 50 : null, {
-    enabled: generatedCaptureIsCapturing,
-    immediate: true,
-  });
+  }, [cancelRecordedCapture, commitSynthSequenceVariationBank, recordedCaptureView, seq, selectStepDetail, setSequencerMode, setStepDetailMode, updateSynthVariationBank, variationCaptureArmRef, variationCaptureLocked, variationCommitPending]);
 
   // ── Source key helpers ──
   const getSourceKey = (laneIdx: number): keyof SliderState =>
@@ -5749,494 +6509,136 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     state.leadRandomEnabled,
   ]);
 
-  const startSynthPlaybackForLaneRecording = useCallback((laneIdx: number) => {
-    const safeLaneIdx = Math.max(0, Math.min(LANE_CONFIGS.length - 1, Math.round(laneIdx)));
-    const startPatch: Partial<SliderState> = {
-      synthEuclideanMasterEnabled: true,
-      synthSequencerFaces: sequencerFaceState,
-    };
-    const activeLaneEnabledKey = SYNTH_LANE_ENABLED_KEYS[safeLaneIdx] ?? SYNTH_LANE_ENABLED_KEYS[0];
+  const recordedCapturePhase = recordedCaptureView?.recorder.phase ?? 'idle';
+  const hasPrintedTake = variationPrintSuccess?.laneIndex === seq.activeTab && recordedCapturePhase === 'cancelled';
+  const recordedCaptureProgress = recordedCaptureView
+    ? Math.max(0, Math.min(1, (recordedCaptureView.currentClockBeat - recordedCaptureView.originBeat) / Math.max(1e-6, recordedCaptureView.passDurationBeats)))
+    : 0;
+  const recordedCaptureStatusNoteCount = hasPrintedTake
+    ? (variationPrintSuccess?.noteCount ?? 0)
+    : recordedCaptureCount;
+  const recordedCaptureStatus = recordedCaptureView?.recorder.error
+    ? recordedCaptureView.recorder.error.message
+    : hasPrintedTake
+      ? 'Take printed'
+    : recordedCapturePhase === 'pending'
+      ? 'Printing take…'
+      : recordedCapturePhase === 'finishing'
+        ? 'Finishing recording…'
+          : recordedCapturePhase === 'ready'
+          ? 'Ready to print'
+          : recordedCapturePhase === 'committed'
+            ? 'Printed variation bank'
+            : recordedCapturePhase === 'cancelled'
+              ? 'Cancelled; take discarded'
+                : recordedCapturePhase === 'recording'
+                  ? 'Recording'
+                  : recordedCaptureStartPendingLane === seq.activeTab
+                    ? 'Starting transport…'
+                    : (!isRunning ? 'Play transport to record' : 'Ready');
+  const cancelRecordedCaptureForActiveLane = useCallback(() => {
+    if (variationCommitPending) return;
+    setVariationPrintSuccess(null);
+    const targetLaneIndex = recordedCaptureView?.targetLaneIndex ?? variationCaptureArmRef.current?.laneIndex ?? seq.activeTab;
+    variationCommitSerialRef.current[targetLaneIndex] = (variationCommitSerialRef.current[targetLaneIndex] ?? 0) + 1;
+    variationCaptureArmRef.current = null;
+    cancelRecordedCapture();
+  }, [cancelRecordedCapture, recordedCaptureView?.targetLaneIndex, seq.activeTab, variationCommitPending]);
 
-    enableSourceValueForPlayback(String(state[getSourceKey(safeLaneIdx)] ?? 'lead1'), startPatch);
-    if (!Boolean(state[activeLaneEnabledKey])) {
-      onSelectChange(activeLaneEnabledKey, true);
-      startPatch[activeLaneEnabledKey] = true;
-    }
-    if (!state.synthEuclideanMasterEnabled) {
-      onSelectChange('synthEuclideanMasterEnabled' as keyof SliderState, true);
-    }
-    onRequestPlaybackStart?.(startPatch);
-  }, [
-    enableSourceValueForPlayback,
-    getSourceKey,
-    onRequestPlaybackStart,
-    onSelectChange,
-    state.synthEuclid1Enabled,
-    state.synthEuclid1Source,
-    state.synthEuclid2Enabled,
-    state.synthEuclid2Source,
-    state.synthEuclid3Enabled,
-    state.synthEuclid3Source,
-    state.synthEuclid4Enabled,
-    state.synthEuclid4Source,
-    state.synthEuclideanMasterEnabled,
-    sequencerFaceState,
-  ]);
-
-  const startSynthPlaybackForOverdub = useCallback(() => {
-    startSynthPlaybackForLaneRecording(seq.activeTab);
-  }, [seq.activeTab, startSynthPlaybackForLaneRecording]);
-
-  const synthRecorderCountInBeats = useMemo(() => (
-    Math.max(1, Math.round(Number(state.transportBeatsPerBar ?? 4) || 4))
-  ), [state.transportBeatsPerBar]);
-
-  const toggleSynthRecorderMetronome = useCallback(() => {
-    setSynthRecorderMetronomeEnabled((enabled) => !enabled);
-  }, []);
-
-  const startGeneratedCaptureAfterCountIn = useCallback(() => {
-    const arm = generatedCaptureStartArmRef.current;
-    if (!arm) return;
-
+  const startRecordedCaptureForActiveLane = useCallback(() => {
+    if (recordedCaptureIsCapturing || variationCommitPending) return;
+    const laneIndex = seq.activeTab;
     if (!isRunning) {
-      setGeneratedCaptureStartArm({
-        ...arm,
-        phase: 'waitingForStart',
-        waitingForBoundary: true,
-        previousStep: null,
-      });
-      startSynthPlaybackForLaneRecording(arm.targetLaneIndex);
+      if (onRequestPlaybackStart) setRecordedCaptureStartPendingLane(laneIndex);
+      onRequestPlaybackStart?.();
       return;
     }
-
-    const stepCount = getTriggerStepCountForLane(arm.targetLaneIndex);
-    const currentStep = normalizedRecorderStep(seq.playheads[arm.targetLaneIndex], stepCount);
-    setGeneratedCaptureStartArm({
-      ...arm,
-      phase: 'waitingForStart',
-      waitingForBoundary: true,
-      previousStep: currentStep,
-    });
-  }, [
-    getTriggerStepCountForLane,
-    isRunning,
-    seq.playheads,
-    startSynthPlaybackForLaneRecording,
-  ]);
-
-  const generatedCaptureCountIn = useLiveOverdubRecorder({
-    bpm: Number(state.sequencerMasterBPM ?? state.synthEuclidBaseBPM ?? 120),
-    countInBeats: synthRecorderCountInBeats,
-    metronomeEnabled: synthRecorderMetronomeEnabled,
-    onMetronomeEnabledChange: setSynthRecorderMetronomeEnabled,
-    onCountInComplete: startGeneratedCaptureAfterCountIn,
-  });
-
-  useEffect(() => {
-    const arm = generatedCaptureStartArm;
-    if (!arm?.waitingForBoundary || !isRunning) return;
-
-    const stepCount = getTriggerStepCountForLane(arm.targetLaneIndex);
-    const currentStep = normalizedRecorderStep(seq.playheads[arm.targetLaneIndex], stepCount);
-    const previousStep = arm.previousStep;
-    const crossedStart = previousStep !== null &&
-      previousStep !== 0 &&
-      (currentStep === 0 || currentStep < previousStep);
-
-    if (currentStep === 0 || crossedStart) {
-      startGeneratedCapture({
-        sourceLaneIndex: arm.sourceLaneIndex,
-        targetLaneIndex: arm.targetLaneIndex,
-        sourceMode: arm.sourceMode,
-      });
-      setGeneratedCaptureStartArm(null);
-      generatedCaptureCountIn.stop();
-      return;
-    }
-
-    if (previousStep !== currentStep) {
-      setGeneratedCaptureStartArm((current) => (
-        current === arm
-          ? { ...current, previousStep: currentStep }
-          : current
-      ));
-    }
-  }, [
-    generatedCaptureCountIn.stop,
-    generatedCaptureStartArm,
-    getTriggerStepCountForLane,
-    isRunning,
-    seq.playheads,
-    startGeneratedCapture,
-  ]);
-
-  const synthLiveOverdub = useLiveOverdubRecorder({
-    bpm: Number(state.sequencerMasterBPM ?? state.synthEuclidBaseBPM ?? 120),
-    countInBeats: synthRecorderCountInBeats,
-    metronomeEnabled: synthRecorderMetronomeEnabled,
-    onMetronomeEnabledChange: setSynthRecorderMetronomeEnabled,
-    onCountInComplete: startSynthPlaybackForOverdub,
-  });
-
-  const writeSynthLiveOverdubCaptureNote = useCallback((
-    laneIdx: number,
-    triggerStep: number,
-    targetStepFloat: number,
-    pitchValue: number,
-  ) => {
-    const triggerStepCount = getTriggerStepCountForLane(laneIdx);
-    if (triggerStepCount <= 0) {
-      return { pitchStep: 0, pitchStepCount: 1, nudgeStepCount: 1, hasNudge: false };
-    }
-    const normalizedTriggerStep = ((triggerStep % triggerStepCount) + triggerStepCount) % triggerStepCount;
-    let session = synthLiveOverdubCaptureRef.current;
-    if (!session || session.laneIndex !== laneIdx) {
-      const pitchSettings = fixedKeyboardRecordPitchSettings(
-        seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS,
-        harmonyState,
-      );
-      session = { laneIndex: laneIdx, events: [], nextEventOrder: 0, pitchSettings };
-      synthLiveOverdubCaptureRef.current = session;
-      seq.setPitchSettings((previous) => previous.map((settings, index) => (
-        index === laneIdx ? pitchSettings : settings
-      )));
-    }
-
-    const event: SynthLiveOverdubCaptureEvent = {
-      targetStepIndex: normalizedTriggerStep,
-      targetStepFloat,
-      pitchValue,
-      eventOrder: session.nextEventOrder,
-    };
-    session.nextEventOrder += 1;
-    session.events.push(event);
-    const committedEventLimit = clampEuclideanSubLaneSteps(session.events.length);
-    const rawCapturedEvents = session.events.slice(0, committedEventLimit);
-    const preserveTriggerSteps = canPreserveSynthLiveCaptureTriggerSteps(rawCapturedEvents, triggerStepCount);
-    const capturedEvents = preserveTriggerSteps
-      ? [...rawCapturedEvents].sort((left, right) => (
-          left.targetStepIndex - right.targetStepIndex || left.eventOrder - right.eventOrder
-        ))
-      : rawCapturedEvents;
-    const pitchStepCount = clampEuclideanSubLaneSteps(Math.max(1, capturedEvents.length));
-    const pitchValues = capturedEvents.map((capturedEvent) => capturedEvent.pitchValue);
-    const triggerPattern = synthLiveCaptureTriggerPattern(capturedEvents, triggerStepCount);
-    const nudgeValues = synthLiveNudgeValues(capturedEvents, triggerPattern, preserveTriggerSteps);
-    const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
-    const pitchStep = Math.max(0, capturedEvents.findIndex((capturedEvent) => capturedEvent.eventOrder === event.eventOrder));
-
-    seq.setStepOverrides((previous) => {
-      const triggerMap = new Map<number, boolean>();
-      for (let step = 0; step < triggerStepCount; step += 1) {
-        triggerMap.set(step, triggerPattern[step] === true);
-      }
-      return {
-        ...previous,
-        triggerToggles: previous.triggerToggles.map((map, index) => (
-          index === laneIdx ? triggerMap : map
-        )),
-        pitch: previous.pitch.map((values, index) => (
-          index === laneIdx ? pitchValues : values
-        )),
-        nudge: previous.nudge.map((values, index) => (
-          index === laneIdx ? nudgeValues : values
-        )),
-        pitchDirection: previous.pitchDirection.map((direction, index) => (
-          index === laneIdx ? 'forward' : direction
-        )),
-        nudgeDirection: previous.nudgeDirection.map((direction, index) => (
-          index === laneIdx ? 'forward' : direction
-        )),
+    const start = () => {
+      setVariationPrintSuccess(null);
+      variationCommitSerialRef.current[laneIndex] = (variationCommitSerialRef.current[laneIndex] ?? 0) + 1;
+      variationCaptureArmRef.current = {
+        laneIndex,
+        phraseBeats: recordedCaptureLengthBeats,
+        clockDiv: activeVariationBank?.clockDiv ?? seq.clockDivs[laneIndex] ?? '1/16',
+        baseLane: {
+          overrides: serializeStepOverrides(copySequenceLaneForPreset(seq.stepOverrides, laneIndex)) ?? {},
+          state: copySequenceLaneStateForPreset({
+            laneIdx: laneIndex,
+            subLaneStates: seq.subLaneStates,
+            clockDivs: seq.clockDivs,
+            swings: seq.swings,
+            linked: seq.linked,
+            evolveConfigs: seq.evolveConfigs,
+            pitchSettings: seq.pitchSettings,
+            pitchBindingModes,
+          }),
+        },
       };
-    });
-
-    return { pitchStep, pitchStepCount, nudgeStepCount: pitchStepCount, hasNudge };
-  }, [getTriggerStepCountForLane, harmonyState, seq]);
-
-  const recordSynthLiveOverdubNote = useCallback((midi: number) => {
-    const laneIdx = seq.activeTab;
-    const triggerStepCount = getTriggerStepCountForLane(laneIdx);
-    if (triggerStepCount <= 0) return;
-    const playheadStep = seq.playheads[laneIdx];
-    const rawTargetStep = typeof playheadStep === 'number' && Number.isFinite(playheadStep)
-      ? playheadStep
-      : activeTriggerCursorStep;
-    const targetStep = liveOverdubTargetStep(playheadStep, activeTriggerCursorStep, triggerStepCount);
-    const session = synthLiveOverdubCaptureRef.current;
-    const currentSettings = session?.laneIndex === laneIdx
-      ? session.pitchSettings
-      : fixedKeyboardRecordPitchSettings(seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS, harmonyState);
-
-    if ((pitchBindingModes[laneIdx] ?? 'polyrhythmic') !== 'polyrhythmic') {
-      setPitchBindingMode(laneIdx, 'polyrhythmic');
-    }
-    const pitchValue = midiToPitchOffsetForSettings(midi, currentSettings, null);
-    const compactTarget = writeSynthLiveOverdubCaptureNote(laneIdx, targetStep, rawTargetStep, pitchValue);
-    seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
-      index === laneIdx
-        ? {
-            ...laneState,
-            pitch: {
-              ...laneState.pitch,
-              enabled: true,
-              steps: compactTarget.pitchStepCount,
-            },
-            nudge: {
-              ...laneState.nudge,
-              enabled: compactTarget.hasNudge,
-              steps: compactTarget.nudgeStepCount,
-              direction: 'forward',
-              followTriggerHits: true,
-            },
-          }
-        : laneState
-    )));
-    setKeyboardSequenceCursorTarget('trigger');
-    setTriggerKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? targetStep : value));
-    setPitchKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? compactTarget.pitchStep : value));
-    setNudgeKeyboardSteps((prev) => prev.map((value, index) => index === laneIdx ? compactTarget.pitchStep : value));
-    seq.setViewMode('detail');
-    seq.setOpenLane('pitch');
-  }, [
-    activeTriggerCursorStep,
-    getTriggerStepCountForLane,
-    harmonyState,
-    pitchBindingModes,
-    seq,
-    setPitchBindingMode,
-    writeSynthLiveOverdubCaptureNote,
-  ]);
-
-  const toggleSynthLiveOverdub = useCallback(() => {
-    if (synthLiveOverdub.isArmed) {
-      synthLiveOverdubCaptureRef.current = null;
-      synthLiveOverdub.stop();
-      return;
-    }
-    const laneIdx = seq.activeTab;
-    const triggerStepCount = getTriggerStepCountForLane(laneIdx);
-    const recordPitchSettings = fixedKeyboardRecordPitchSettings(
-      seq.pitchSettings[laneIdx] ?? SYNTH_DEFAULT_PITCH_SETTINGS,
-      harmonyState,
-    );
-    synthLiveOverdubCaptureRef.current = {
-      laneIndex: laneIdx,
-      events: [],
-      nextEventOrder: 0,
-      pitchSettings: recordPitchSettings,
+      startRecordedCapture({
+        sourceLaneIndex: laneIndex,
+        targetLaneIndex: laneIndex,
+        source: sourceForMode(activeSequencerMode),
+        mode: 'replace',
+        durationBeats: recordedCaptureLengthBeats,
+        gridSteps: Math.max(2, Math.min(32, Math.round(recordedCaptureGridSteps || 16))),
+      });
     };
-    setShowKeyboard(true);
-    setKeyboardInputMode('sequence');
-    setKeyboardSequenceCursorTarget('trigger');
-    setPitchBindingMode(laneIdx, 'polyrhythmic');
-    seq.setPitchSettings((previous) => previous.map((settings, index) => (
-      index === laneIdx ? recordPitchSettings : settings
-    )));
-    seq.setParamSelect(laneIdx, 'Preset', 'custom' as never);
-    seq.setViewMode('detail');
-    seq.setOpenLane('pitch');
-    if (triggerStepCount > 0) {
-      seq.setSubLaneStates((prev) => prev.map((laneState, index) => (
-        index === laneIdx
-          ? {
-              ...laneState,
-              pitch: {
-                ...laneState.pitch,
-                enabled: true,
-                steps: 1,
-              },
-              nudge: {
-                ...laneState.nudge,
-                enabled: false,
-                steps: 1,
-                direction: 'forward',
-                followTriggerHits: true,
-              },
-            }
-          : laneState
-      )));
-      seq.setStepOverrides((previous) => {
-        const triggerMap = new Map<number, boolean>();
-        for (let step = 0; step < triggerStepCount; step += 1) {
-          triggerMap.set(step, false);
-        }
-        return {
-          ...previous,
-          triggerToggles: previous.triggerToggles.map((map, index) => (
-            index === laneIdx ? triggerMap : map
-          )),
-          pitch: previous.pitch.map((values, index) => (
-            index === laneIdx ? [0] : values
-          )),
-          nudge: previous.nudge.map((values, index) => (
-            index === laneIdx ? [0] : values
-          )),
-          pitchDirection: previous.pitchDirection.map((direction, index) => (
-            index === laneIdx ? 'forward' : direction
-          )),
-          nudgeDirection: previous.nudgeDirection.map((direction, index) => (
-            index === laneIdx ? 'forward' : direction
-          )),
-        };
-      });
-    }
-    synthLiveOverdub.start();
-  }, [
-    getTriggerStepCountForLane,
-    harmonyState,
-    seq,
-    setPitchBindingMode,
-    synthLiveOverdub.isArmed,
-    synthLiveOverdub.start,
-    synthLiveOverdub.stop,
-  ]);
-
-  const synthLiveOverdubStatus = synthLiveOverdub.status === 'count-in'
-    ? `Count ${synthLiveOverdub.countInRemaining}`
-    : synthLiveOverdub.status === 'recording'
-      ? 'Recording'
-      : 'Ready';
-
-  const activeLaneUsesGeneratedRecorder =
-    activeSequencerMode === 'anchorWalker' || activeSequencerMode === 'orbit';
-  const generatedCaptureSessionForActiveLane =
-    generatedCaptureSession &&
-    (generatedCaptureSession.sourceLaneIndex === seq.activeTab ||
-      generatedCaptureSession.targetLaneIndex === seq.activeTab)
-      ? generatedCaptureSession
-      : null;
-  const generatedCaptureStartArmForActiveLane =
-    generatedCaptureStartArm &&
-    (generatedCaptureStartArm.sourceLaneIndex === seq.activeTab ||
-      generatedCaptureStartArm.targetLaneIndex === seq.activeTab)
-      ? generatedCaptureStartArm
-      : null;
-  const generatedRecorderActive =
-    (
-      generatedCaptureSessionForActiveLane?.active === true &&
-      generatedCaptureSessionForActiveLane.sourceLaneIndex === seq.activeTab
-    ) ||
-    (
-      generatedCaptureCountIn.isArmed &&
-      generatedCaptureStartArmForActiveLane?.sourceLaneIndex === seq.activeTab
-    );
-  const synthRecorderActive = activeLaneUsesGeneratedRecorder
-    ? generatedRecorderActive
-    : synthLiveOverdub.isArmed;
-  const synthRecorderStatus = (
-    activeLaneUsesGeneratedRecorder &&
-    generatedCaptureCountIn.status === 'count-in' &&
-    generatedCaptureStartArmForActiveLane
-  )
-    ? `Count ${generatedCaptureCountIn.countInRemaining}`
-    : (
-        activeLaneUsesGeneratedRecorder &&
-        generatedCaptureStartArmForActiveLane?.phase === 'waitingForStart'
-      )
-      ? 'Sync start'
-      : generatedCaptureSessionForActiveLane?.status === 'committing'
-        ? `Saving ${generatedCaptureCount} notes`
-        : generatedCaptureSessionForActiveLane?.status === 'finishing'
-          ? `Finishing ${generatedCaptureCount} notes`
-        : generatedCaptureSessionForActiveLane?.status === 'waitingFirstTrigger'
-          ? 'Waiting trigger'
-        : generatedCaptureSessionForActiveLane?.status === 'committed'
-          ? 'Saved to Step'
-          : generatedCaptureSessionForActiveLane?.status === 'empty'
-            ? 'No notes captured'
-            : generatedRecorderActive
-              ? `Capturing ${generatedCaptureCount} notes`
-              : activeLaneUsesGeneratedRecorder
-                ? `${activeSequencerMode === 'orbit' ? 'Orbit' : 'Walker'} capture`
-                : synthLiveOverdubStatus;
-
-  const toggleSynthRecorder = useCallback(() => {
-    if (!activeLaneUsesGeneratedRecorder) {
-      toggleSynthLiveOverdub();
-      return;
-    }
-    if (generatedCaptureSession?.status === 'committing') return;
-    if (generatedCaptureStartArm) {
-      setGeneratedCaptureStartArm(null);
-      generatedCaptureCountIn.stop();
-      if (generatedCaptureSession?.active) {
-        cancelGeneratedCapture();
-      }
-      return;
-    }
-    if (generatedCaptureSession?.active) {
-      generatedCaptureCountIn.stop();
-      if (generatedCaptureSession.sourceLaneIndex === seq.activeTab) {
-        stopGeneratedCapture();
-      } else {
-        cancelGeneratedCapture();
-      }
-      return;
-    }
-    const sourceMode = activeSequencerMode === 'anchorWalker'
-      ? 'anchorWalker'
-      : activeSequencerMode === 'orbit'
-        ? 'orbit'
-        : null;
-    if (!sourceMode) return;
-    if (sourceMode === 'orbit') {
-      startGeneratedCapture({
-        sourceLaneIndex: seq.activeTab,
-        targetLaneIndex: seq.activeTab,
-        sourceMode,
-        startMode: 'firstEvent',
-      });
-      if (!isRunning) {
-        startSynthPlaybackForLaneRecording(seq.activeTab);
-      }
-      return;
-    }
-    setGeneratedCaptureStartArm({
-      sourceLaneIndex: seq.activeTab,
-      targetLaneIndex: seq.activeTab,
-      sourceMode,
-      phase: 'waitingForStart',
-      waitingForBoundary: false,
-      previousStep: null,
-    });
-    generatedCaptureCountIn.start();
-  }, [
-    activeLaneUsesGeneratedRecorder,
-    activeSequencerMode,
-    cancelGeneratedCapture,
-    generatedCaptureCountIn,
-    generatedCaptureSession,
-    generatedCaptureStartArm,
-    isRunning,
-    seq.activeTab,
-    startGeneratedCapture,
-    startSynthPlaybackForLaneRecording,
-    stopGeneratedCapture,
-    toggleSynthLiveOverdub,
-  ]);
-
-  const generatedSequencerCaptureControls = activeLaneUsesGeneratedRecorder ? (
-    <div className={`live-overdub-controls generated-face-capture${synthRecorderActive ? ' active' : ''}`}>
-      <button
-        type="button"
-        className={`live-overdub-btn record${synthRecorderActive ? ' active' : ''}`}
-        onClick={toggleSynthRecorder}
-        aria-pressed={synthRecorderActive}
-      >
-        REC
-      </button>
-      <button
-        type="button"
-        className={`live-overdub-btn${synthRecorderMetronomeEnabled ? ' active' : ''}`}
-        onClick={toggleSynthRecorderMetronome}
-        aria-pressed={synthRecorderMetronomeEnabled}
-      >
-        Metro
-      </button>
-      <span className="live-overdub-status">{synthRecorderStatus}</span>
+    start();
+  }, [activeSequencerMode, activeVariationBank, isRunning, onRequestPlaybackStart, pitchBindingModes, recordedCaptureGridSteps, recordedCaptureIsCapturing, recordedCaptureLengthBeats, seq, startRecordedCapture, variationCommitPending]);
+  useEffect(() => {
+    const laneIndex = recordedCaptureStartPendingLane;
+    if (laneIndex === null || !isRunning) return;
+    setRecordedCaptureStartPendingLane(null);
+    if (laneIndex === seq.activeTab) startRecordedCaptureForActiveLane();
+  }, [isRunning, recordedCaptureStartPendingLane, seq.activeTab, startRecordedCaptureForActiveLane]);
+  const recordedCaptureControls = recordedCaptureAvailable ? (
+    <div className={`live-overdub-controls recorded-note-capture${recordedCaptureIsCapturing ? ' active' : ''}`}>
+      <div className="recorded-note-capture-toolbar">
+        <span className="recorded-note-capture-mode">Auto print</span>
+        <span className="recorded-note-capture-length" title="The existing lane phrase sets the recording length">
+          Phrase {recordedCaptureLengthBeats.toFixed(2)} beats
+        </span>
+        {recordedCapturePhase === 'pending' || variationCommitPending ? (
+          <button type="button" className="live-overdub-btn" disabled>Printing…</button>
+        ) : recordedCaptureIsCapturing ? (
+          <>
+            <button type="button" className="live-overdub-btn" onClick={stopRecordedCaptureNow}>Stop</button>
+            <button type="button" className="live-overdub-btn" onClick={cancelRecordedCaptureForActiveLane}>Discard</button>
+          </>
+        ) : recordedCapturePhase === 'ready' ? (
+          <>
+            <button type="button" className="live-overdub-btn record active" onClick={() => void commitPrintedVariationTake()}>Keep take</button>
+            <button type="button" className="live-overdub-btn" onClick={cancelRecordedCaptureForActiveLane} disabled={variationCommitPending}>Discard</button>
+          </>
+        ) : recordedCapturePhase === 'error' ? (
+          <>
+            {recordedCaptureView?.recorder.error?.kind !== 'capacity' ? (
+              <button type="button" className="live-overdub-btn" onClick={() => void commitPrintedVariationTake()} disabled={variationCommitPending}>Retry print</button>
+            ) : null}
+            <button type="button" className="live-overdub-btn" onClick={cancelRecordedCaptureForActiveLane} disabled={variationCommitPending}>Discard</button>
+          </>
+        ) : (
+          <button type="button" className="live-overdub-btn record" onClick={startRecordedCaptureForActiveLane} disabled={variationCommitPending || recordedCaptureStartPendingLane === seq.activeTab || (!isRunning && !onRequestPlaybackStart)} title={!isRunning && !onRequestPlaybackStart ? 'Start the sequencer transport before recording' : undefined}>REC</button>
+        )}
+      </div>
+      {recordedCaptureView ? (
+        <>
+          <div className="recorded-note-capture-progress" role="progressbar" aria-valuemin={0} aria-valuemax={1} aria-valuenow={recordedCaptureProgress}>
+            <span style={{ width: `${recordedCaptureProgress * 100}%` }} />
+          </div>
+          <span className="live-overdub-status">
+            {variationCommitError ?? recordedCaptureStatus} · {recordedCaptureStatusNoteCount} notes · {hasPrintedTake ? `${variationPrintSuccess?.steps ?? recordedCaptureView.gridSteps} cells` : recordedCapturePhase === 'recording' || recordedCapturePhase === 'finishing' ? 'Auto resolution' : `${recordedCaptureView.gridSteps} cells`}
+          </span>
+        </>
+      ) : (
+        <span className="live-overdub-status">Auto print ready</span>
+      )}
     </div>
-  ) : null;
+  ) : (
+    <div className="live-overdub-controls recorded-note-capture unavailable">
+      <span className="live-overdub-status">Auto print unavailable</span>
+    </div>
+  );
 
   const enterKeyboardSequenceMode = useCallback(() => {
     setKeyboardInputMode('sequence');
@@ -6279,47 +6681,52 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       velocity: MANUAL_KEYBOARD_VELOCITY,
     });
     if (startResult.status !== 'started') return;
-    if (generatedCaptureIsCapturing) {
-      const targetLaneIndex = generatedCaptureSession?.targetLaneIndex ?? seq.activeTab;
-      const targetStepCount = generatedCaptureSession?.targetStepCount ?? getTriggerStepCountForLane(targetLaneIndex);
-      const targetStep = liveOverdubTargetStep(
-        seq.playheads[targetLaneIndex],
-        activeTriggerCursorStep,
-        targetStepCount,
+    if (recordedCaptureIsCapturing && recordedCaptureView?.source === 'keyboard') {
+      const sourceId = productSourceIdForManualSynthSource(effectiveKeyboardSource);
+      const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const previousGroup = keyboardCaptureGroupRef.current;
+      const sameAttackWindow = previousGroup
+        && previousGroup.laneIndex === seq.activeTab
+        && previousGroup.sourceId === sourceId
+        && nowMs - previousGroup.firstAtMs <= 20;
+      const group = sameAttackWindow
+        ? previousGroup
+        : {
+            id: `keyboard-${seq.activeTab}-${sourceId}-${Math.round(nowMs * 1000)}`,
+            firstAtMs: nowMs,
+            laneIndex: seq.activeTab,
+            sourceId,
+          };
+      keyboardCaptureGroupRef.current = group;
+      recordRecordedNoteOn(
+        inputId,
+        midi,
+        MANUAL_KEYBOARD_VELOCITY,
+        undefined,
+        sourceId,
+        { chordGroupId: group.id, mode: 'note' },
       );
-      captureGeneratedManualNote({
-        midiNote: midi,
-        velocity: MANUAL_KEYBOARD_VELOCITY,
-        gateSeconds: 0.18,
-        targetStepIndex: targetStep,
-      });
-    } else if (synthLiveOverdub.isRecording) {
-      recordSynthLiveOverdubNote(midi);
-    } else if (!synthLiveOverdub.isArmed && keyboardInputMode === 'sequence' && canWriteSequenceNotes) {
+    } else if (keyboardInputMode === 'sequence' && canWriteSequenceNotes) {
       writeKeyboardSequenceNote(seq.activeTab, midi);
     }
   }, [
     activeTriggerCursorStep,
     canWriteSequenceNotes,
-    captureGeneratedManualNote,
     effectiveKeyboardSource,
-    generatedCaptureIsCapturing,
-    generatedCaptureSession?.targetLaneIndex,
-    generatedCaptureSession?.targetStepCount,
-    getTriggerStepCountForLane,
+    recordedCaptureIsCapturing,
+    recordedCaptureView?.source,
+    recordRecordedNoteOn,
     keyboardBaseMidi,
     keyboardInputMode,
+    keyboardCaptureGroupRef,
     liveNoteInput,
-    recordSynthLiveOverdubNote,
     seq.activeTab,
-    seq.playheads,
-    synthLiveOverdub.isArmed,
-    synthLiveOverdub.isRecording,
     writeKeyboardSequenceNote,
   ]);
   const releaseKeyboardNote = useCallback((inputId: string) => {
+    recordRecordedNoteOff({ inputId });
     liveNoteInput.noteOff(inputId);
-  }, [liveNoteInput]);
+  }, [liveNoteInput, recordRecordedNoteOff]);
   const toggleKeyboardPanel = useCallback(() => {
     setShowKeyboard((prev) => {
       const next = !prev;
@@ -8680,25 +9087,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                 Keys
               </button>
             )}
-            <div className={`live-overdub-controls${synthRecorderActive ? ' active' : ''}`}>
-              <button
-                type="button"
-                className={`live-overdub-btn record${synthRecorderActive ? ' active' : ''}`}
-                onClick={toggleSynthRecorder}
-                aria-pressed={synthRecorderActive}
-              >
-                REC
-              </button>
-              <button
-                type="button"
-                className={`live-overdub-btn${synthRecorderMetronomeEnabled ? ' active' : ''}`}
-                onClick={toggleSynthRecorderMetronome}
-                aria-pressed={synthRecorderMetronomeEnabled}
-              >
-                Metro
-              </button>
-              <span className="live-overdub-status">{synthRecorderStatus}</span>
-            </div>
+            {recordedCaptureControls}
             <div className="seq-view-toggle">
               <button
                 className={`seq-view-btn${seq.viewMode === 'simple' ? ' active' : ''}`}
@@ -8835,6 +9224,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           {/* ══════ SIMPLE MODE ══════ */}
           {seq.viewMode === 'simple' && (
             <div className="synth-simple-seq">
+              <>
               <div className="synth-simple-section">
                 <div className="synth-simple-header">
                   <span>Chord Generator</span>
@@ -8998,6 +9388,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   </OptionalVisualizerGate>
                 </div>
               </div>
+              </>
             </div>
           )}
 
@@ -9034,6 +9425,17 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
 
               {/* Seq body */}
               <div className={`seq-body${seq.evolveFlashing[seq.activeTab] ? ' seq-evolve-flash' : ''}`} style={{ '--sc': activeSeq.color } as React.CSSProperties}>
+
+                {activeSequencerMode === 'euclid' && <SequencerVariationRail
+                  variations={variationSummaries}
+                  selectedVariation={selectedVariationId}
+                  audibleVariation={audibleVariation as SequencerVariationId | null}
+                  queuedVariation={queuedVariations[seq.activeTab] ?? null}
+                  chainEnabled={activeVariationBank?.chainEnabled ?? false}
+                  onSelectVariation={(variation) => selectVariationForEdit(seq.activeTab, variation)}
+                  onToggleChain={activeVariationBank ? toggleVariationChain : undefined}
+                  disabled={variationCaptureLocked}
+                />}
 
                 {/* ── Source selector + per-seq controls ── */}
                 <div className="seq-sources">
@@ -9073,6 +9475,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         ))}
                       </span>
                     </label>
+                    {savedVariationBank ? (
+                      <span className="seq-bank-authority-label">
+                        {activeVariationBank ? 'Printed steps' : 'Printed steps saved · select Step to play'}
+                      </span>
+                    ) : null}
                     {activeLaneUsesPadVoiceMask && (
                       <label className="seq-clock-label">
                         Voices
@@ -9105,8 +9512,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       Clock
                       <select
                         className="seq-clock-select"
-                        value={seq.clockDivs[seq.activeTab]}
-                        onChange={(e) => seq.setClockDiv(seq.activeTab, e.target.value as any)}
+                        value={activeVariationClockDiv}
+                        onChange={(e) => updateActiveVariationClock(e.target.value as ClockDivision)}
                         {...bindHelp('synthSeqClockSelect')}
                       >
                         <option value="1/4">1/4</option>
@@ -9117,6 +9524,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         <option value="1/16T">1/16T</option>
                         <option value="1/32">1/32</option>
                         <option value="1/32T">1/32T</option>
+                        <option value="1/64">1/64</option>
                       </select>
                     </label>
                     <label className="seq-swing-label">
@@ -9127,10 +9535,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         min={0}
                         max={0.75}
                         step={0.05}
-                        value={seq.swings[seq.activeTab] ?? 0}
-                        onChange={(event) => seq.setSwing(seq.activeTab, Number.parseFloat(event.currentTarget.value))}
+                        value={activeVariationBank?.variations[selectedVariationId]?.lane.state.swing ?? seq.swings[seq.activeTab] ?? 0}
+                        onChange={(event) => updateActiveVariationSwing(Number.parseFloat(event.currentTarget.value))}
                       />
-                      <span className="seq-swing-val">{Math.round((seq.swings[seq.activeTab] ?? 0) * 100)}%</span>
+                      <span className="seq-swing-val">{Math.round(((activeVariationBank?.variations[selectedVariationId]?.lane.state.swing ?? seq.swings[seq.activeTab] ?? 0)) * 100)}%</span>
                     </label>
                     {activeSequencerMode === 'euclid' && (
                       <>
@@ -9138,8 +9546,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           Pitch
                           <select
                             className="seq-pitch-bind-select"
-                            value={activePitchBindingMode}
-                            onChange={(e) => setPitchBindingMode(seq.activeTab, e.target.value as PitchBindingMode)}
+                            value={selectedVariation?.lane.state.pitchBindingMode ?? activePitchBindingMode}
+                            onChange={(e) => updateActiveVariationPitchBinding(e.target.value as PitchBindingMode)}
                           >
                             {PITCH_BINDING_MODE_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -9147,11 +9555,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           </select>
                         </label>
                         <button
-                          className={`seq-evolve-btn${seq.evolveConfigs[seq.activeTab]?.enabled ? ' on' : ''}`}
+                          className={`seq-evolve-btn${(activeVariationBank ? selectedVariation?.lane.state.evolveConfig?.enabled : seq.evolveConfigs[seq.activeTab]?.enabled) ? ' on' : ''}`}
                           onClick={() => {
-                            seq.setEvolveConfigs(prev => prev.map((cfg, idx) => (
-                              idx === seq.activeTab ? { ...cfg, enabled: !cfg.enabled } : cfg
-                            )));
+                            toggleActiveVariationEvolve();
                           }}
                           {...bindHelp('synthSeqEvolve')}
                         >
@@ -9359,22 +9765,35 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <div className="seq-source-mode-toggle" aria-label="Trigger pattern source">
                         <button
                           type="button"
-                          className={`seq-source-mode-button ${triggerSourceIsEuclidean ? 'euclid' : 'step'}`}
-                          title={`Switch to ${triggerSourceIsEuclidean ? 'Step' : 'Euclid'}`}
+                          className={`seq-source-mode-button ${selectedVariation ? 'step' : triggerSourceIsEuclidean ? 'euclid' : 'step'}`}
+                          title={selectedVariation ? 'Printed variations use their authored Step bitmap' : `Switch to ${triggerSourceIsEuclidean ? 'Step' : 'Euclid'}`}
+                          disabled={Boolean(selectedVariation)}
                           onClick={() => seq.setTriggerClipEuclideanEnabled(seq.activeTab, !triggerSourceIsEuclidean)}
                         >
-                          {triggerSourceModeLabel}
+                          {selectedVariation ? 'Step' : triggerSourceModeLabel}
                         </button>
                       </div>
+                      {selectedVariation ? (
+                        <span className="seq-printed-variation-heading" title="Editing the selected printed variation">
+                          Printed {selectedVariationId} · {variationNoteCount(selectedVariation)} notes{variationHitCount(selectedVariation) !== variationNoteCount(selectedVariation) ? ` / ${variationHitCount(selectedVariation)} hits` : ''} · {selectedVariation.spanBeats.toFixed(2)} beats
+                        </span>
+                      ) : null}
                       <DragNumber
-                        value={activeSeq.trigger.steps}
+                        value={selectedVariation?.steps ?? activeVariationBank?.variations[selectedVariationId]?.steps ?? activeSeq.trigger.steps}
                         min={2}
                         max={EUCLIDEAN_STEP_MAX}
                         label="Steps"
                         shapeByDrag
-                        onChange={(v) => seq.setParam(seq.activeTab, 'Steps', v)}
+                        onChange={(v) => resizeActiveVariation(v)}
                       />
-                      {activeSeq.trigger.sourceOrigin && activeSeq.trigger.sourceOrigin !== 'euclidean' ? (
+                      {selectedVariation ? (
+                        <span
+                          className="seq-ov-readonly-hits"
+                          title="Printed variation hits"
+                        >
+                          Hits {variationTriggerPattern(selectedVariation).filter(Boolean).length}
+                        </span>
+                      ) : activeSeq.trigger.sourceOrigin && activeSeq.trigger.sourceOrigin !== 'euclidean' ? (
                         <span
                           className="seq-ov-readonly-hits"
                           title="Step patterns preserve the written trigger cells. Switch to Euclid to reshape by hit count."
@@ -9391,9 +9810,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                         />
                       )}
                       <div className="seq-rotation-control">
-                        <button onClick={() => seq.rotateSequence(seq.activeTab, -1)}>{'\u2190'}</button>
-                        <span className="seq-rotation-val">{activeSeq.trigger.rotation}</span>
-                        <button onClick={() => seq.rotateSequence(seq.activeTab, 1)}>{'\u2192'}</button>
+                        <button onClick={() => rotateActiveVariation(-1)}>{'\u2190'}</button>
+                        <span className="seq-rotation-val">{activeVariationBank ? '0' : activeSeq.trigger.rotation}</span>
+                        <button onClick={() => rotateActiveVariation(1)}>{'\u2192'}</button>
                       </div>
                       <button
                         type="button"
@@ -9413,29 +9832,269 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     sequencer={activeSeq}
                     lane="trigger"
                     color={activeSeq.color}
-                    playhead={seq.playheads[seq.activeTab] ?? 0}
+                    playhead={selectedVariationPlayhead}
                     hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                    stepCountOverride={selectedVariation?.steps}
+                    valueOverride={selectedVariation ? variationTriggerPattern(selectedVariation).map((hit) => hit ? 1 : 0) : undefined}
+                    probabilityOverride={selectedVariation?.lane.overrides.probability?.[0] ?? undefined}
+                    ratchetOverride={selectedVariation?.lane.overrides.ratchet?.[0] ?? undefined}
+                    trigConditionOverride={selectedVariation?.lane.overrides.trigCondition?.[0] ?? undefined}
                     onToggleTriggerStep={(step) => {
-                      if (linkedTriggerStampPickSource) {
+                      if (linkedTriggerStampPickSource && !selectedVariation && !activeVariationBank) {
                         selectTriggerSequenceStep(seq.activeTab, step);
                         if (activeSeq.trigger.pattern[step] === true) copyLinkedTriggerStampAtStep(step);
                         return;
                       }
-                      if (linkedTriggerStampMode && pasteLinkedTriggerStampAtStep(step)) return;
-                      seq.toggleTriggerStep(seq.activeTab, step);
+                      if (linkedTriggerStampMode && !selectedVariation && !activeVariationBank && pasteLinkedTriggerStampAtStep(step)) return;
+                      // The rail selects A before a bank exists. Create that
+                      // first variation and apply the same click atomically so
+                      // the first manual edit cannot land in the discarded
+                      // legacy lane snapshot.
+                      updateSelectedVariationTrigger(step);
+                      // The selected variation is the trigger authority while
+                      // the variation rail is active. Linked trigger stamping
+                      // remains an explicit legacy-lane tool above.
                     }}
-                    selectedStep={activeTriggerCursorStep}
+                    selectedStep={selectedVariation ? selectedDetailStep : activeTriggerCursorStep}
                     selectedStepLabel={keyboardTriggerTargetVisible ? keyboardTargetLabel : '⌖'}
                     selectedStepKeyboardFocus={keyboardTriggerTargetVisible}
                     onSelectStep={(step) => {
                       selectTriggerSequenceStep(seq.activeTab, step);
+                      selectStepDetail(seq.activeTab, step, selectedVariation?.steps ?? activeSeq.trigger.steps);
                     }}
-                    onSetProbability={(step, value) => seq.setStepProbability(seq.activeTab, step, value)}
-                    onResetProbability={(step) => seq.resetStepProbability(seq.activeTab, step)}
-                    onCycleRatchet={(step) => seq.cycleStepRatchet(seq.activeTab, step)}
-                    onCycleTrigCondition={(step) => seq.cycleTrigCondition(seq.activeTab, step)}
+                    onSetProbability={(step, value) => activeVariationBank
+                      ? updateSelectedVariationTriggerField('probability', step, value)
+                      : seq.setStepProbability(seq.activeTab, step, value)}
+                    onResetProbability={(step) => activeVariationBank
+                      ? updateSelectedVariationTriggerField('probability', step, 1)
+                      : seq.resetStepProbability(seq.activeTab, step)}
+                    onCycleRatchet={(step) => activeVariationBank
+                      ? updateSelectedVariationTriggerField('ratchet', step, cycleSequencerRatchet(selectedVariation?.lane.overrides.ratchet?.[0]?.[step]))
+                      : seq.cycleStepRatchet(seq.activeTab, step)}
+                    onCycleTrigCondition={(step) => activeVariationBank
+                      ? updateSelectedVariationTriggerField(
+                        'trigCondition',
+                        step,
+                        nextSynthTrigCondition(selectedVariation?.lane.overrides.trigCondition?.[0]?.[step]),
+                      )
+                      : seq.cycleTrigCondition(seq.activeTab, step)}
                   />
                 </div>
+
+                <SeqStepDetailPanel
+                  selectedStep={selectedDetailStep}
+                  stepCount={selectedVariationStepCount}
+                  mode={stepDetailModes[seq.activeTab] ?? 'note'}
+                  variationLabel={selectedVariationId}
+                  audibleVariationLabel={audibleVariation as SequencerVariationId | null}
+                  disabled={variationCaptureLocked}
+                  onModeChange={(mode) => {
+                    if (!activeVariationBank) selectVariationForEdit(seq.activeTab, selectedVariationId);
+                    setStepDetailMode(seq.activeTab, mode);
+                    if (selectedVariationMetadata) updateSelectedVariationStep({ mode });
+                  }}
+                  sharedControls={selectedVariationMetadata ? (
+                    <div className="seq-variation-note-editor">
+                      <label>Length
+                        <input
+                          type="number"
+                          min={0}
+                          max={synthVariationStepLengthMax(selectedVariationMetadata)}
+                          step={0.01}
+                          value={selectedVariationMetadata.gateBeats}
+                          disabled={variationCaptureLocked}
+                          onChange={(event) => updateSelectedVariationStep({ gateBeats: Number(event.currentTarget.value) })}
+                        />
+                        <span>beats</span>
+                      </label>
+                    </div>
+                  ) : null}
+                  note={(
+                    <div className="seq-variation-note-editor">
+                      {!activeVariationBank ? (
+                        <span className="seq-step-detail-empty">Select a trigger step to start authoring variation A, or record a take to auto print A–D.</span>
+                      ) : !selectedVariation ? (
+                        <span className="seq-step-detail-empty">Variation {selectedVariationId} is empty. Select it to author the next print.</span>
+                      ) : !selectedVariationMetadata ? (
+                        <span className="seq-step-detail-empty">Rest · no note at this step.</span>
+                      ) : (
+                        <>
+                          <div className="seq-variation-note-readout" aria-label="Printed note values">
+                            <span>Pitch <strong>{formatMidiNoteName(variationPitchMidi(selectedVariation, selectedVariationPitch))}</strong></span>
+                            <span>Velocity <strong>{Math.round((selectedVariationVelocity ?? 1) * 100)}%</strong></span>
+                            <span>Nudge <strong>{(selectedVariationNudge ?? 0) === 0 ? '0 on step' : `${(selectedVariationNudge ?? 0) > 0 ? '+' : ''}${(selectedVariationNudge ?? 0).toFixed(2)} grid cells`}</strong></span>
+                          </div>
+
+                        </>
+                      )}
+                    </div>
+                  )}
+                  chord={(
+                    <div className="seq-variation-chord-editor">
+                      {(() => {
+                        const rootMidi = variationPitchMidi(selectedVariation, selectedVariationPitch);
+                        const selectedNotes = selectedVariationMetadata?.chord?.intervals.map((interval) => rootMidi + interval.intervalSemitones) ?? [];
+                        const comparisonNotes = activeSuggestionBank.map((suggestion) => suggestion?.exactMidiNotes ?? []);
+                        const axis = deriveHarmonyPitchAxis([selectedNotes, ...comparisonNotes].filter((notes) => notes.length > 0));
+                        return (
+                          <>
+                            {selectedVariationMetadata?.chord ? (
+                              <>
+                                <HarmonyCompactChordRow
+                                  indexLabel={`Step ${selectedDetailStep + 1}`}
+                                  slotLabel={selectedVariationMetadata.chord.sharedChord ? 'Harmony' : 'Local'}
+                                  title={selectedVariationMetadata.chord.sharedChord?.recognizedLabel ?? 'Local chord'}
+                                  meta={`${selectedNotes.length} notes · ${selectedVariationMetadata.gateBeats.toFixed(2)} beats`}
+                                  notes={selectedNotes}
+                                  axis={axis}
+                                  selected
+                                  disabled={variationCaptureLocked}
+                                  onSelect={() => setStepDetailMode(seq.activeTab, 'chord')}
+                                />
+                                <LiveChordKeyboard
+                                  scope={{ kind: 'draft', owner: 'harmony-detail' }}
+                                  notes={selectedNotes}
+                                  rootNote={rootMidi}
+                                  previewRootNote={rootMidi}
+                                  scaleRootMidi={rootMidi}
+                                  octave={Math.floor(rootMidi / 12) - 1}
+                                  active={!variationCaptureLocked}
+                                  disabled={variationCaptureLocked}
+                                  onNoteDown={() => undefined}
+                                  onNoteUp={() => undefined}
+                                  onToggleExactNote={(midi, present) => {
+                                    const nextNotes = present ? [...selectedNotes, midi] : selectedNotes.filter((note) => note !== midi);
+                                    updateSelectedVariationChordNotes(nextNotes);
+                                  }}
+                                  onMoveExactNote={(midi, octaves) => {
+                                    updateSelectedVariationChordNotes(selectedNotes.map((note) => note === midi ? note + octaves * 12 : note));
+                                  }}
+                                />
+                                <label className="seq-variation-follow-harmony">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(selectedVariationMetadata.followHarmony ?? selectedVariationMetadata.chord.followHarmony)}
+                                    disabled={variationCaptureLocked}
+                                    onChange={(event) => updateSelectedVariationStep({ followHarmony: event.currentTarget.checked })}
+                                  />
+                                  Follow Harmony
+                                </label>
+                              </>
+                            ) : <span className="seq-step-detail-empty">This step has no chord payload.</span>}
+                            <button type="button" className="seq-variation-compare" onClick={() => setShowAllChordChoices((value) => !value)}>
+                              {showAllChordChoices ? 'Hide comparisons' : 'Compare all'}
+                            </button>
+                            {showAllChordChoices ? (
+                              <div className="seq-variation-chord-comparisons" aria-label="All nearby chord choices">
+                                {activeSuggestionBank.map((suggestion) => suggestion ? (
+                                  <HarmonyCompactChordRow
+                                    key={suggestion.id}
+                                    indexLabel=""
+                                    slotLabel="Nearby"
+                                    title={suggestion.label}
+                                    meta={`${suggestion.exactMidiNotes.length} notes`}
+                                    notes={suggestion.exactMidiNotes}
+                                    axis={axis}
+                                    disabled={variationCaptureLocked || !selectedVariationMetadata}
+                                    onSelect={selectedVariationMetadata ? () => {
+                                      const existingIntervals = new Map(selectedVariationMetadata.chord?.intervals.map((interval) => [interval.intervalSemitones, interval]) ?? []);
+                                      const intervals = Array.from(new Set(suggestion.exactMidiNotes.map((note) => Math.round(note))))
+                                        .sort((left, right) => left - right)
+                                        .map((note) => {
+                                          const intervalSemitones = note - rootMidi;
+                                          const existing = existingIntervals.get(intervalSemitones);
+                                          return {
+                                            intervalSemitones,
+                                            velocity: existing?.velocity ?? selectedVariationVelocity ?? 1,
+                                            gateBeats: existing?.gateBeats ?? selectedVariationMetadata.gateBeats,
+                                          };
+                                        });
+                                      if (intervals.length > 0) {
+                                        updateSelectedVariationStep({ mode: 'chord', followHarmony: false, chord: { intervals, followHarmony: false } });
+                                        setStepDetailMode(seq.activeTab, 'chord');
+                                      }
+                                    } : undefined}
+                                  />
+                                ) : null)}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  arp={(
+                    <div className="seq-variation-arp-editor">
+                      {selectedVariationMetadata?.arp ? (
+                        (() => {
+                          const arp = selectedVariationMetadata.arp!;
+                          const config = arp.config;
+                          const length = Math.max(1, Math.min(16, Math.round(config.length)));
+                          const stepBeats = selectedVariation?.spanBeats ? selectedVariation.spanBeats / Math.max(1, selectedVariation.steps) : 1;
+                          return (
+                            <>
+                              <div className="seq-variation-arp-fields">
+                                <label><span>Rate</span>
+                                  <select
+                                    value={config.rate}
+                                    disabled={variationCaptureLocked}
+                                    onChange={(event) => updateSelectedVariationStep({ arpConfig: { rate: Number(event.currentTarget.value) as ProductArpRate } })}
+                                  >
+                                    {ARP_RATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                                <label><span>Length</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={16}
+                                    step={1}
+                                    value={length}
+                                    disabled={variationCaptureLocked}
+                                    onChange={(event) => {
+                                      const nextLength = Number.parseInt(event.currentTarget.value, 10);
+                                      if (Number.isFinite(nextLength)) updateSelectedVariationStep({ arpConfig: { length: Math.max(1, Math.min(16, nextLength)) } });
+                                    }}
+                                  />
+                                </label>
+                                <label><span>Span</span>
+                                  <input
+                                    type="number"
+                                    min={0.01}
+                                    max={activeVariationBank?.phraseBeats ?? selectedVariation?.spanBeats ?? 1}
+                                    step={0.01}
+                                    value={arp.spanBeats ?? stepBeats}
+                                    disabled={variationCaptureLocked}
+                                    onChange={(event) => updateSelectedVariationStep({ arpSpanBeats: Number(event.currentTarget.value) })}
+                                  />
+                                  <small>beats</small>
+                                </label>
+                              </div>
+                              <div className="seq-variation-arp-pattern" aria-label="Arp pulse pattern">
+                                {Array.from({ length }, (_, step) => {
+                                  const active = (config.pulseMask & (1 << step)) !== 0;
+                                  return (
+                                    <button
+                                      key={step}
+                                      type="button"
+                                      className={active ? 'active' : ''}
+                                      disabled={variationCaptureLocked}
+                                      aria-label={`Arp pulse ${step + 1} ${active ? 'on' : 'off'}`}
+                                      aria-pressed={active}
+                                      onClick={() => updateSelectedVariationStep({ arpConfig: { pulseMask: config.pulseMask ^ (1 << step) } })}
+                                    >
+                                      {step + 1}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          );
+                        })()
+                      ) : <span className="seq-step-detail-empty">This step has no arp payload. Use the existing Play lane for arp rate and pattern.</span>}
+                    </div>
+                  )}
+                />
 
                 {/* ── Sub-lane sparklines: pitch, expression, morph, distance ── */}
                 <div className="seq-spark-container">
@@ -9462,7 +10121,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                           mode={playConfig.mode === 'arp' ? 'signed' : undefined}
                           enabled={playConfig.enabled}
                           expanded={openLane === 'arp'}
-                          onClick={() => seq.setOpenLane((openLane === 'arp' ? 'trigger' : 'arp') as never)}
+                          onClick={() => {
+                            setStepDetailMode(seq.activeTab, playConfig.mode === 'chord' ? 'chord' : 'arp');
+                            selectStepDetail(seq.activeTab, selectedArpStep, productPlayLiveLength(playConfig));
+                            seq.setOpenLane((openLane === 'arp' ? 'trigger' : 'arp') as never);
+                          }}
                           onToggleEnabled={() => updatePlayConfig(seq.activeTab, { enabled: !playConfig.enabled })}
                           selectedStep={selectedArpStep}
                         />
@@ -9497,7 +10160,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 resolvedSteps={activeArpResolvedSteps}
                                 selectedStep={selectedArpStep}
                                 playStep={isRunning && playConfig.enabled ? activeArpUiPlayhead : null}
-                                onSelectStep={(step) => selectArpStep(seq.activeTab, step)}
+                                onSelectStep={(step) => {
+                                  setStepDetailMode(seq.activeTab, 'arp');
+                                  selectArpStep(seq.activeTab, step);
+                                }}
                                 onToggleEnabled={() => updatePlayConfig(seq.activeTab, { enabled: !playConfig.enabled })}
                                 onUpdateConfig={(patch) => updateArpConfig(seq.activeTab, patch)}
                                 onSetContour={(step, value) => setArpContour(seq.activeTab, step, value)}
@@ -9509,7 +10175,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               />
                             ) : (
                               <>
-                              <SeqChordChoiceLane config={playConfig.chord} harmony={arpHarmonyContext} resolvedSteps={activeChordResolvedSteps} selectedStep={selectedArpStep} activeChoiceIndex={activeChordChoiceIndex} onSelectStep={(step) => selectArpStep(seq.activeTab, step)} onLoadSlot={(slotId) => loadSeqDraftSlot(seq.activeTab, slotId)} onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)} />
+                              <SeqChordChoiceLane config={playConfig.chord} harmony={arpHarmonyContext} resolvedSteps={activeChordResolvedSteps} selectedStep={selectedArpStep} activeChoiceIndex={activeChordChoiceIndex} onSelectStep={(step) => { setStepDetailMode(seq.activeTab, 'chord'); selectArpStep(seq.activeTab, step); }} onLoadSlot={(slotId) => loadSeqDraftSlot(seq.activeTab, slotId)} onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)} />
                               <SeqChordInteractionBay
                                 seqId={seq.activeTab}
                                 draft={seqDrafts[seq.activeTab] ?? emptySeqHarmonyDraft()}
@@ -9581,10 +10247,26 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     );
                   })()}
                   {(['pitch', 'expression', 'morph', 'distance', 'nudge'] as const).map((laneKind) => {
+                    const variationEditableLane = Boolean(activeVariationBank);
                     const subState = seq.subLaneStates[seq.activeTab]?.[laneKind];
+                    const selectedVariationSubState = selectedVariation?.lane.state.subLaneStates?.[laneKind];
+                    const effectiveSubState = selectedVariationSubState ?? subState;
                     const laneColor = SEQUENCER_SUB_LANE_COLORS[laneKind];
-                    const activePlayhead = seq.playheads[seq.activeTab] ?? 0;
+                    const activePlayhead = selectedVariationPlayhead;
                     const sparkHitCount = seq.hitCounts[seq.activeTab] ?? 0;
+                    const lanePlayheadMode = selectedVariation
+                      ? (variationLaneUsesTriggerHits(selectedVariation, laneKind) ? 'hit' : 'step')
+                      : laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit';
+                    const printedValues = selectedVariation
+                      ? variationHitLaneValues(selectedVariation, laneKind, effectiveSubState?.steps)
+                      : null;
+                    const selectedPitchSettings = selectedVariation?.lane.state.pitchSettings;
+                    const selectedPitchDisplayRoot = selectedPitchSettings?.root ?? activeResolvedPitchSettings.root;
+                    const selectedPitchDisplayScale = selectedPitchSettings?.scale === 'Harmony'
+                      ? activeResolvedPitchSettings.scaleIntervals
+                      : selectedPitchSettings?.scale
+                        ? (SCALES[selectedPitchSettings.scale] ?? activeResolvedPitchSettings.scaleIntervals)
+                        : activeResolvedPitchSettings.scaleIntervals;
 
                     const noteMinKey = `synthEuclid${seq.activeTab + 1}NoteMin` as keyof SliderState;
                     const noteMaxKey = `synthEuclid${seq.activeTab + 1}NoteMax` as keyof SliderState;
@@ -9593,39 +10275,39 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                       <React.Fragment key={laneKind}>
                         <SeqSparkline
                           label={`${laneKind.charAt(0).toUpperCase()}:`}
-                          steps={subState?.steps ?? 5}
+                          steps={effectiveSubState?.steps ?? 5}
                           values={
                             laneKind === 'pitch'
-                              ? activeSeq.pitch.offsets.map(off =>
+                              ? printedValues ?? activeSeq.pitch.offsets.map(off =>
                                   activeSeq.pitch.mode === 'semitones'
                                     ? normalizeNoteDegreeOffset(off)
                                     : activeSeq.pitch.mode === 'noteRange'
                                       ? 0.5
                                       : clampMidiNote(off) / 127
                                 )
-                              : laneKind === 'expression' && subState?.valueMode === 'range'
-                                ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.75) + (subState.rangeMax ?? 1)) * 0.5)
+                              : laneKind === 'expression' && effectiveSubState?.valueMode === 'range'
+                                ? new Array(effectiveSubState.steps).fill(((effectiveSubState.rangeMin ?? 0.75) + (effectiveSubState.rangeMax ?? 1)) * 0.5)
                                 : laneKind === 'expression'
-                                  ? activeSeq.expression.velocities
-                                  : laneKind === 'morph' && subState?.valueMode === 'range'
-                                    ? new Array(subState.steps).fill(((subState.rangeMin ?? 0.25) + (subState.rangeMax ?? 0.75)) * 0.5)
+                                  ? printedValues ?? activeSeq.expression.velocities
+                                  : laneKind === 'morph' && effectiveSubState?.valueMode === 'range'
+                                    ? new Array(effectiveSubState.steps).fill(((effectiveSubState.rangeMin ?? 0.25) + (effectiveSubState.rangeMax ?? 0.75)) * 0.5)
                                     : laneKind === 'morph'
                                       ? activeSeq.morph.values
-                                      : laneKind === 'distance' && subState?.valueMode === 'range'
-                                        ? new Array(subState.steps).fill(((subState.rangeMin ?? 0) + (subState.rangeMax ?? 1)) * 0.5)
+                                      : laneKind === 'distance' && effectiveSubState?.valueMode === 'range'
+                                        ? new Array(effectiveSubState.steps).fill(((effectiveSubState.rangeMin ?? 0) + (effectiveSubState.rangeMax ?? 1)) * 0.5)
                                         : laneKind === 'distance'
                                           ? activeSeq.distance.values
-                                          : activeSeq.nudge.values
+                                        : printedValues ?? activeSeq.nudge.values
                           }
                           color={laneColor}
                           playhead={activePlayhead}
                           hitCount={sparkHitCount}
-                          playheadMode={laneKind === 'pitch' && activePitchBindingMode === 'sequence' ? 'step' : 'hit'}
-                          direction={subState?.direction ?? 'forward'}
+                          playheadMode={lanePlayheadMode}
+                          direction={effectiveSubState?.direction ?? 'forward'}
                           bipolar={laneKind === 'morph'}
                           mode={laneKind === 'nudge' ? 'signed' : undefined}
                           invertFill={laneKind === 'expression'}
-                          enabled={subState?.enabled ?? false}
+                          enabled={effectiveSubState?.enabled ?? false}
                           expanded={seq.openLane === laneKind}
                           selectedStep={keyboardTargetVisible ? (
                             laneKind === 'pitch'
@@ -9647,9 +10329,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                     : activeKeyboardEditLane === 'nudge'
                                       ? activeNudgeCursorStep
                                       : null
-                          ) : null}
-                          onClick={() => seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind)}
-                          onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
+                          ) : selectedDetailStep}
+                          onClick={() => {
+                            setStepDetailMode(seq.activeTab, 'note');
+                            seq.setOpenLane(seq.openLane === laneKind ? 'trigger' : laneKind);
+                          }}
+                          onToggleEnabled={() => variationEditableLane
+                            ? updateSelectedVariationLaneState(laneKind, { enabled: !(effectiveSubState?.enabled ?? false) })
+                            : seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
                         />
                         {seq.openLane === laneKind && (
                           <div className="seq-lane-editor-wrap">
@@ -9657,8 +10344,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               sequencer={activeSeq}
                               lane={laneKind}
                               color={laneColor}
-                              playhead={seq.playheads[seq.activeTab] ?? 0}
+                              playhead={selectedVariationPlayhead}
                               hitCount={seq.hitCounts[seq.activeTab] ?? 0}
+                              playheadMode={lanePlayheadMode}
                               selectedStep={keyboardTargetVisible ? (
                                 laneKind === 'pitch'
                                   ? activeKeyboardEditLane === 'pitch'
@@ -9679,40 +10367,90 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         : activeKeyboardEditLane === 'nudge'
                                           ? activeNudgeCursorStep
                                           : null
-                              ) : null}
+                              ) : selectedDetailStep}
                               selectedStepLabel={keyboardTargetLabel}
-                              onSelectStep={keyboardTargetVisible
-                                ? (step) => selectSynthKeyboardLaneStep(seq.activeTab, laneKind, step)
-                                : undefined}
-                              enabled={subState?.enabled ?? false}
-                              direction={subState?.direction ?? 'forward'}
-                              onToggleEnabled={() => seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
-                              onChangeSteps={(v) => seq.setSubLaneSteps(seq.activeTab, laneKind, v)}
-                              onCycleDirection={() => seq.cycleSubLaneDirection(seq.activeTab, laneKind)}
-                              onChangeValue={(step, value) => seq.changeStepValue(seq.activeTab, laneKind, step, value)}
-                              valueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.valueMode ?? 'sequence' : undefined}
-                              rangeMin={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMin : undefined}
-                              rangeMax={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? subState?.rangeMax : undefined}
+                              onSelectStep={(step) => {
+                                if (keyboardTargetVisible) selectSynthKeyboardLaneStep(seq.activeTab, laneKind, step);
+                                setStepDetailMode(seq.activeTab, 'note');
+                                selectStepDetail(seq.activeTab, step, effectiveSubState?.steps ?? activeSeq.trigger.steps);
+                              }}
+                              enabled={effectiveSubState?.enabled ?? false}
+                              stepCountOverride={printedValues ? effectiveSubState?.steps : undefined}
+                              valueOverride={printedValues ?? undefined}
+                              direction={effectiveSubState?.direction ?? 'forward'}
+                              onToggleEnabled={() => variationEditableLane
+                                ? updateSelectedVariationLaneState(laneKind, { enabled: !(effectiveSubState?.enabled ?? false) })
+                                : seq.toggleSubLaneEnabled(seq.activeTab, laneKind)}
+                              onChangeSteps={(v) => variationEditableLane
+                                ? updateSelectedVariationLaneState(laneKind, { steps: v })
+                                : seq.setSubLaneSteps(seq.activeTab, laneKind, v)}
+                              onCycleDirection={() => variationEditableLane
+                                ? updateSelectedVariationLaneDirection(laneKind)
+                                : seq.cycleSubLaneDirection(seq.activeTab, laneKind)}
+                              onChangeValue={(step, value) => {
+                                if (variationEditableLane) {
+                                  const targetStep = selectedVariation && (laneKind === 'expression' || laneKind === 'nudge')
+                                    ? variationHitStep(selectedVariation, step)
+                                    : step;
+                                  updateSelectedVariationStep(
+                                    laneKind === 'pitch'
+                                      ? { pitch: value }
+                                      : laneKind === 'expression'
+                                        ? { velocity: value }
+                                        : laneKind === 'morph'
+                                          ? { morph: value }
+                                          : laneKind === 'distance'
+                                            ? { distance: value }
+                                            : { nudge: value },
+                                    targetStep,
+                                  );
+                                  return;
+                                }
+                                seq.changeStepValue(seq.activeTab, laneKind, step, value);
+                              }}
+                              valueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? effectiveSubState?.valueMode ?? 'sequence' : undefined}
+                              rangeMin={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? effectiveSubState?.rangeMin : undefined}
+                              rangeMax={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance' ? effectiveSubState?.rangeMax : undefined}
                               onChangeValueMode={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
-                                ? (mode) => seq.setSubLaneValueMode(seq.activeTab, laneKind, mode)
+                                ? (mode) => variationEditableLane
+                                  ? updateSelectedVariationLaneState(laneKind, { valueMode: mode })
+                                  : seq.setSubLaneValueMode(seq.activeTab, laneKind, mode)
                                 : undefined}
                               onChangeRange={laneKind === 'expression' || laneKind === 'morph' || laneKind === 'distance'
-                                ? (min, max) => seq.setSubLaneRange(seq.activeTab, laneKind, min, max)
+                                ? (min, max) => variationEditableLane
+                                  ? updateSelectedVariationLaneState(laneKind, { rangeMin: min, rangeMax: max })
+                                  : seq.setSubLaneRange(seq.activeTab, laneKind, min, max)
                                 : undefined}
-                              linked={laneKind === 'pitch' && activePitchBindingMode !== 'polyrhythmic'}
+                              linked={laneKind === 'pitch' && (selectedVariation?.lane.state.pitchBindingMode ?? activePitchBindingMode) !== 'polyrhythmic'}
                               {...(laneKind === 'expression' ? {
-                                onCycleRatchet: (step: number) => seq.cycleStepRatchet(seq.activeTab, step),
+                                onCycleRatchet: (step: number) => variationEditableLane
+                                  ? updateSelectedVariationTriggerField('ratchet', selectedVariation ? variationHitStep(selectedVariation, step) : step, cycleSequencerRatchet(selectedVariation?.lane.overrides.ratchet?.[0]?.[selectedVariation ? variationHitStep(selectedVariation, step) : step]))
+                                  : seq.cycleStepRatchet(seq.activeTab, step),
                               } : {})}
                               {...(laneKind === 'pitch' ? {
-                                onChangePitchMode: (mode) => setSynthPitchMode(seq.activeTab, mode),
-                                pitchBindingMode: activePitchBindingMode,
-                                onChangePitchBindingMode: (mode: PitchBindingMode) => setPitchBindingMode(seq.activeTab, mode),
-                                onChangePitchRoot: (root) => seq.setPitchRoot(seq.activeTab, root),
-                                onChangePitchScale: (scale) => seq.setPitchScale(seq.activeTab, scale),
+                                onChangePitchMode: (mode) => {
+                                  if (variationEditableLane) updateSelectedVariationPitchSettings({ mode });
+                                  else setSynthPitchMode(seq.activeTab, mode);
+                                },
+                                pitchBindingMode: selectedVariation?.lane.state.pitchBindingMode ?? activePitchBindingMode,
+                                onChangePitchBindingMode: (mode: PitchBindingMode) => {
+                                  if (variationEditableLane) updateSelectedVariationPitchBinding(mode);
+                                  else setPitchBindingMode(seq.activeTab, mode);
+                                },
+                                onChangePitchRoot: (root) => {
+                                  if (variationEditableLane) updateSelectedVariationPitchSettings({ root });
+                                  else seq.setPitchRoot(seq.activeTab, root);
+                                },
+                                onChangePitchScale: (scale) => {
+                                  if (variationEditableLane) updateSelectedVariationPitchSettings({ scale });
+                                  else seq.setPitchScale(seq.activeTab, scale);
+                                },
                                 allowHarmonyPitchScale: true,
-                                pitchDisplayRoot: activeResolvedPitchSettings.root,
-                                pitchDisplayScaleIntervals: activeResolvedPitchSettings.scaleIntervals,
-                                hidePitchNoteRange: activePitchBindingMode === 'sequence',
+                                pitchDisplayRoot: selectedPitchDisplayRoot,
+                                pitchDisplayScaleIntervals: selectedPitchDisplayScale,
+                                pitchModeOverride: selectedPitchSettings?.mode,
+                                pitchValuesAreScaleDegrees: variationEditableLane,
+                                hidePitchNoteRange: (selectedVariation?.lane.state.pitchBindingMode ?? activePitchBindingMode) === 'sequence',
                                 pitchNoteMin: liveSynthNoteMins[seq.activeTab] ?? (state[noteMinKey] as number),
                                 pitchNoteMax: liveSynthNoteMaxs[seq.activeTab] ?? (state[noteMaxKey] as number),
                                 onChangePitchNoteMin: (v: number) => onParamChange(noteMinKey, v),
@@ -9753,7 +10491,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     color={activeSeq.color}
                     harmonyState={harmonyState}
                     runtimeState={activeAnchorWalkerRuntimeState}
-                    captureSlot={generatedSequencerCaptureControls}
+                    captureSlot={null}
                     onChange={(nextConfig) => updateAnchorWalkerSlot(seq.activeTab, nextConfig)}
                     onPerformanceEvent={(event) => sendAnchorWalkerPerformanceEvent(seq.activeTab, event)}
                   />
@@ -9765,7 +10503,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     harmonyState={harmonyState}
                     isRunning={isRunning}
                     runtimeVisualState={orbitVisualStates[seq.activeTab] ?? null}
-                    captureSlot={generatedSequencerCaptureControls}
+                    captureSlot={null}
                     onChange={(nextConfig) => updateSequencerSlot(seq.activeTab, (slot) => ({
                       ...slot,
                       orbit: nextConfig,
@@ -9774,17 +10512,18 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     ) : null}
                   </>
                 )}
-                <SequencerCapturePreviewOverlay
-                  session={generatedCaptureSession}
-                  laneIndex={seq.activeTab}
-                />
               </div>
               {/* Mini overview at bottom */}
               <SeqMiniOverview
                 patterns={seq.miniPatterns}
-                playheads={seq.playheads}
+                playheads={variationOverviewPlayheads}
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
+                variationPatterns={variationOverviewPatterns}
+                variationLabels={variationOverviewLabels}
+                variationNoteCounts={variationOverviewNoteCounts}
+                variationHitCounts={variationOverviewHitCounts}
+                variationPhraseBeats={variationOverviewPhraseBeats}
                 onRowClick={(idx) => {
                   seq.setActiveTab(idx);
                 }}
@@ -9811,6 +10550,9 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                   const source = synthSourceSelectValue(state[getSourceKey(row)] ?? 'lead1');
                   const sourceInfo = SYNTH_SOURCES.find(s => s.value === source);
                   const chainBadge = sequencerChainBadgeLabel(state.synthSequencerChain, row);
+                  const printedVariation = variationOverview[row];
+                  const overviewPattern = printedVariation?.pattern ?? seqModel.trigger.pattern;
+                  const overviewSteps = overviewPattern.length;
                   return (
                     <div
                       key={seqModel.id}
@@ -9827,7 +10569,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             {chainBadge}
                           </span>
                         )}
-                        <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
+                        {printedVariation ? (
+                          <span className="seq-ov-printed-badge">
+                            {printedVariation.label} · {printedVariation.pattern.length} steps · {printedVariation.noteCount} notes{printedVariation.hitCount !== printedVariation.noteCount ? ` / ${printedVariation.hitCount} hits` : ''} · {printedVariation.phraseBeats.toFixed(2)} beats
+                          </span>
+                        ) : <div className="seq-ov-controls" onClick={(e) => e.stopPropagation()}>
                           <DragNumber
                             value={seqModel.trigger.steps}
                             min={2} max={EUCLIDEAN_STEP_MAX} label="S" shapeByDrag
@@ -9857,6 +10603,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             <option value="1/16T">1/16T</option>
                             <option value="1/32">1/32</option>
                             <option value="1/32T">1/32T</option>
+                            <option value="1/64">1/64</option>
                           </select>
                           {/* Source dropdown */}
                           <select
@@ -9878,20 +10625,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                             className={`ov-solo-btn${seqModel.solo ? ' on' : ''}`}
                             onClick={(e) => { e.stopPropagation(); seq.toggleSolo(row); }}
                           >S</button>
-                        </div>
+                        </div>}
                       </div>
                       {/* Trigger grid */}
                       <div className="seq-ov-grid-wrap">
                         {(() => {
-                          const visibleCells = sequencerGridCellCount(seqModel.trigger.steps);
-                          const columnCount = sequencerGridColumnCount(seqModel.trigger.steps);
+                          const visibleCells = sequencerGridCellCount(overviewSteps);
+                          const columnCount = sequencerGridColumnCount(overviewSteps);
                           return (
                             <div className="seq-step-grid" style={{ '--seq-grid-base-columns': columnCount } as React.CSSProperties}>
                               {new Array(visibleCells).fill(0).map((_, step) => {
-                                const inRange = step < seqModel.trigger.steps;
-                                const hit = inRange ? (seqModel.trigger.pattern[step] ?? false) : false;
-                                const isPlayhead = inRange && ((seq.playheads[row] ?? 0) % seqModel.trigger.steps === step);
-                                const prob = inRange ? (seqModel.trigger.probability[step] ?? 1.0) : 1.0;
+                                const inRange = step < overviewSteps;
+                                const hit = inRange ? (overviewPattern[step] ?? false) : false;
+                                const isPlayhead = inRange && ((variationOverviewPlayheads[row] ?? 0) % Math.max(1, overviewSteps) === step);
+                                const prob = inRange && !printedVariation ? (seqModel.trigger.probability[step] ?? 1.0) : 1.0;
                                 const probPct = Math.round(prob * 100);
                                 const sequenceModeForRow = (pitchBindingModes[row] ?? 'polyrhythmic') === 'sequence';
                                 const triggerCursorVisibleForRow = showKeyboard
@@ -9912,10 +10659,10 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                       type="button"
                                       className={`seq-step-cell${hit ? ' active' : ''}${isPlayhead ? ' playing' : ''}${!inRange ? ' inactive' : ''}${sequenceSelected ? ' selected' : ''}${stepNoteStatus ? ` harmony-${stepNoteStatus}` : ''}`}
                                       style={{ touchAction: 'pan-y' } as React.CSSProperties}
-                                      aria-label={`Trigger step ${step + 1}`}
+                                      aria-label={`${printedVariation?.label ?? 'Trigger'} step ${step + 1}`}
                                       aria-pressed={inRange ? hit : undefined}
                                       disabled={!inRange}
-                                      onPointerDown={inRange ? (e) => {
+                                      onPointerDown={inRange && !printedVariation ? (e) => {
                                         const pointerType = e.pointerType;
                                         if (pointerType !== 'touch') e.preventDefault();
                                         e.stopPropagation();
@@ -9925,6 +10672,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                         const startY = e.clientY;
 
                                         const finishTap = () => {
+                                          if (printedVariation) {
+                                            seq.setActiveTab(row);
+                                            seq.setViewMode('detail');
+                                            setStepDetailMode(row, 'note');
+                                            selectStepDetail(row, step, overviewSteps);
+                                            return;
+                                          }
                                           if (showKeyboard && keyboardInputMode === 'sequence') {
                                             selectTriggerSequenceStep(row, step);
                                           } else {
@@ -9968,13 +10722,20 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                       onClick={(e) => {
                                         if (e.detail !== 0 || !inRange) return;
                                         e.stopPropagation();
+                                        if (printedVariation) {
+                                          seq.setActiveTab(row);
+                                          seq.setViewMode('detail');
+                                          setStepDetailMode(row, 'note');
+                                          selectStepDetail(row, step, overviewSteps);
+                                          return;
+                                        }
                                         if (showKeyboard && keyboardInputMode === 'sequence') {
                                           selectTriggerSequenceStep(row, step);
                                         } else {
                                           seq.toggleTriggerStep(row, step);
                                         }
                                       }}
-                                      onDoubleClick={inRange ? (e) => {
+                                      onDoubleClick={inRange && !printedVariation ? (e) => {
                                         e.stopPropagation();
                                         seq.resetStepProbability(row, step);
                                       } : undefined}
@@ -10013,9 +10774,14 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
               )}
               <SeqMiniOverview
                 patterns={seq.miniPatterns}
-                playheads={seq.playheads}
+                playheads={variationOverviewPlayheads}
                 colors={LANE_CONFIGS.map(c => c.color)}
                 sequencers={seq.sequencerModels}
+                variationPatterns={variationOverviewPatterns}
+                variationLabels={variationOverviewLabels}
+                variationNoteCounts={variationOverviewNoteCounts}
+                variationHitCounts={variationOverviewHitCounts}
+                variationPhraseBeats={variationOverviewPhraseBeats}
                 onRowClick={(idx) => {
                   seq.setActiveTab(idx);
                   seq.setViewMode('detail');

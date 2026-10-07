@@ -192,6 +192,9 @@ void KesshoProductEngine::commitSceneProgram() {
   scene_program_runtime.previous_position = scene_program_runtime.position;
   scene_program_runtime.position_dirty = true;
   scene_program_runtime.program_changed = true;
+  if (auto_cycle_runtime.enabled && !journey_schedule_runtime.running) {
+    auto_cycle_runtime.revision = scene_program_runtime.buffers[scene_program_runtime.active_buffer].revision;
+  }
   telemetry.last_error_code = KESSHO_PRODUCT_OK;
 }
 

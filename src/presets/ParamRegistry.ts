@@ -950,6 +950,7 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthChordGeneratorVoiceCount: { level: 1, scope: 'synthEuclidean' },
   synthSequencerFaces:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerChain:         { level: 1, scope: 'synthEuclidean' },
+  synthSequenceVariationBanks: { level: 1, scope: 'synthEuclidean' },
   // Lane 1 (11)
   synthEuclid1Enabled:     { level: 1, scope: 'synthEuclidean' },
   synthEuclid1Solo:        { level: 1, scope: 'synthEuclidean' },
@@ -1726,7 +1727,7 @@ export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulat
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1353) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1353`);
+  if (count !== 1354) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1354`);
   }
 }

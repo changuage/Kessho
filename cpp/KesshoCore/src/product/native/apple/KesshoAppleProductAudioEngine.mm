@@ -1,6 +1,7 @@
 #import <AVFoundation/AVFoundation.h>
 
 #include <array>
+#include <cstring>
 #include "KesshoCore/KesshoAppleProductAudioEngine.h"
 
 @implementation KesshoAppleProductAudioEngine {
@@ -98,6 +99,75 @@
     }
   }
   return YES;
+}
+
+- (NSData* _Nullable)copyCaptureClockData {
+  KesshoProductCaptureClock clock{};
+  if (![_renderer copyCaptureClock:&clock]) {
+    return nil;
+  }
+  return [NSData dataWithBytes:&clock length:sizeof(clock)];
+}
+
+- (NSDictionary<NSString*, NSNumber*>*)setSynthSequenceVariationBankData:(NSData*)data
+                                                                  laneIndex:(uint32_t)laneIndex {
+  if (data.length != sizeof(KesshoProductSequencerVariationBank)) {
+    return @{
+      @"result": @(KESSHO_PRODUCT_ERROR_INVALID_PARAM),
+      @"nativeRevision": @0u,
+    };
+  }
+  uint64_t nativeRevision = 0u;
+  const int32_t result = [_renderer setSequencerVariationBank:
+      KESSHO_PRODUCT_SEQUENCER_SYNTH
+                              laneIndex:laneIndex
+                                  bank:static_cast<const KesshoProductSequencerVariationBank*>(data.bytes)
+                        nativeRevision:&nativeRevision];
+  return @{
+    @"result": @(result),
+    @"nativeRevision": @(nativeRevision),
+  };
+}
+
+- (BOOL)selectSynthSequenceVariation:(uint32_t)variationIndex
+                            laneIndex:(uint32_t)laneIndex {
+  return [_renderer selectSequencerVariation:KESSHO_PRODUCT_SEQUENCER_SYNTH
+                                   laneIndex:laneIndex
+                             variationIndex:variationIndex] == KESSHO_PRODUCT_OK;
+}
+
+- (NSData* _Nullable)copySynthSequenceVariationRuntimeDataForLane:(uint32_t)laneIndex {
+  KesshoProductSequencerVariationRuntime runtime{};
+  if (![_renderer copySequencerVariationRuntime:KESSHO_PRODUCT_SEQUENCER_SYNTH
+                                      laneIndex:laneIndex
+                                       runtime:&runtime]) {
+    return nil;
+  }
+  return [NSData dataWithBytes:&runtime length:sizeof(runtime)];
+}
+
+- (BOOL)setRecordedCaptureEnabled:(BOOL)enabled
+                 sourceLaneIndex:(uint32_t)sourceLaneIndex
+                 targetLaneIndex:(uint32_t)targetLaneIndex
+                       sourceMode:(uint32_t)sourceMode
+                    durationBeats:(double)durationBeats {
+  return [_renderer setRecordedCaptureEnabled:enabled
+                              sourceLaneIndex:sourceLaneIndex
+                              targetLaneIndex:targetLaneIndex
+                                    sourceMode:sourceMode
+                                 durationBeats:durationBeats];
+}
+
+- (NSData* _Nullable)copyRecordedCaptureEventsDataWithOverflowCount:(uint32_t*)overflowCount {
+  return [_renderer copyRecordedCaptureEventsDataWithOverflowCount:overflowCount];
+}
+
+- (BOOL)isRecordedCaptureActive {
+  return [_renderer isRecordedCaptureActive];
+}
+
+- (BOOL)copyRecordedCaptureOriginSample:(uint64_t*)sample beat:(double*)beat {
+  return [_renderer copyRecordedCaptureOriginSample:sample beat:beat];
 }
 
 - (BOOL)registerAudioFileAssetWithId:(uint32_t)assetId

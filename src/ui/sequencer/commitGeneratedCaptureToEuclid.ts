@@ -17,7 +17,7 @@ import {
   positiveModulo,
 } from './generatedSequencerCaptureScratch';
 import { createBitmapTriggerClip, type TriggerClip } from './triggerClip';
-import { NUDGE_EPSILON, computeNudgeFromContinuousStep } from './nudgeTiming';
+import { NUDGE_EPSILON, computeGridRelativeNudgeFromContinuousStep } from './nudgeTiming';
 import { clampEuclideanSubLaneSteps } from './sequencerLimits';
 
 export interface CommitGeneratedCaptureArgs {
@@ -143,55 +143,16 @@ function captureSourceLabel(sourceMode: 'anchorWalker' | 'orbit' | undefined): s
   return 'Recorded capture';
 }
 
-function triggerStepPositions(pattern: readonly boolean[]): number[] {
-  const positions: number[] = [];
-  pattern.forEach((enabled, step) => {
-    if (enabled) positions.push(step);
-  });
-  return positions;
-}
-
-function adjacentTriggerSteps(
-  triggerSteps: readonly number[],
-  currentStep: number,
-  stepCount: number,
-): { previous: number; next: number } {
-  if (triggerSteps.length <= 1) {
-    return {
-      previous: currentStep - stepCount,
-      next: currentStep + stepCount,
-    };
-  }
-  let previous = triggerSteps[triggerSteps.length - 1]! - stepCount;
-  let next = triggerSteps[0]! + stepCount;
-  for (const step of triggerSteps) {
-    if (step < currentStep) previous = step;
-    if (step > currentStep) {
-      next = step;
-      break;
-    }
-  }
-  return { previous, next };
-}
-
 function capturedNudgeValues(
   events: readonly CaptureEvent[],
-  triggerPattern: readonly boolean[],
+  stepCount: number,
 ): number[] {
-  const stepCount = Math.max(1, triggerPattern.length);
-  const triggerSteps = triggerStepPositions(triggerPattern);
   return events.map((event) => {
     const currentStep = event.targetStepIndex;
     const targetStepFloat = typeof event.targetStepFloat === 'number' && Number.isFinite(event.targetStepFloat)
       ? event.targetStepFloat
       : event.targetStepIndex + event.nudge;
-    const { previous, next } = adjacentTriggerSteps(triggerSteps, event.targetStepIndex, stepCount);
-    return computeNudgeFromContinuousStep(
-      targetStepFloat,
-      previous,
-      currentStep,
-      next,
-    );
+    return computeGridRelativeNudgeFromContinuousStep(targetStepFloat, currentStep, stepCount);
   });
 }
 
@@ -328,7 +289,7 @@ export function commitGeneratedCaptureToEuclid({
   const capturedVelocities = capturedEvents.map((event) => event.velocity);
   const triggerPattern = capturedTriggerPattern(stepCount, capturedEvents);
   const triggerToggles = triggerPatternMap(triggerPattern);
-  const nudgeValues = capturedNudgeValues(capturedEvents, triggerPattern);
+  const nudgeValues = capturedNudgeValues(capturedEvents, stepCount);
   const hasNudge = nudgeValues.some((value) => Math.abs(value) > NUDGE_EPSILON);
   const pitchCommit = capturedMidisToSemitonePitchValues(capturedMidis, capturePitchReference);
   const triggerClip = createBitmapTriggerClip({

@@ -76,7 +76,9 @@ int64_t sequencerLastRelativeStep(uint64_t block_end, int64_t origin, double sam
 }
 
 uint32_t sequencerCurrentRelativeStep(const LaneState& lane, uint64_t sample_frame, double samples_per_step) {
-  if (lane.step_count == 0u || !std::isfinite(samples_per_step) || samples_per_step <= 0.0) {
+  const uint32_t step_count = lane.sequencer_mode == kSequencerModeEuclid
+      ? variationStepCount(lane.variation_runtime, lane.step_count) : lane.step_count;
+  if (step_count == 0u || !std::isfinite(samples_per_step) || samples_per_step <= 0.0) {
     return 0u;
   }
   if (!lane.sequencer_runtime_initialized ||
@@ -88,7 +90,7 @@ uint32_t sequencerCurrentRelativeStep(const LaneState& lane, uint64_t sample_fra
   if (relative_step < 0) {
     return 0u;
   }
-  return static_cast<uint32_t>(relative_step % static_cast<int64_t>(std::max(1u, lane.step_count)));
+  return static_cast<uint32_t>(relative_step % static_cast<int64_t>(std::max(1u, step_count)));
 }
 
 } // namespace kessho::product::internal

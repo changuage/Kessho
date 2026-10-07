@@ -15,12 +15,13 @@ function finiteClamped(value: number, min: number, max: number, fallback: number
 }
 
 export function createCoreProductAutoCycleEvent(config: ProductAutoCycleConfig): CoreProductEvent {
+  const revision = Math.max(0, Math.round(Math.fround(Number.isFinite(config.revision) ? config.revision : 0))) >>> 0;
   return {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.ConfigureGlobalAutoCycle,
     value: finiteClamped(config.initialPosition, 0, 1, 0),
     value2: finiteClamped(config.playPhrases, 0, 1024, 1),
     value3: finiteClamped(config.transitionPhrases, 0, 1024, 1),
-    value4: Math.max(0, Math.round(Number.isFinite(config.revision) ? config.revision : 0)),
+    value4: revision,
     flags: (config.enabled ? 1 : 0) | (config.preservePhase ? 2 : 0),
   };
 }

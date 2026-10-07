@@ -45,6 +45,11 @@ import {
 } from '../audio/sequencerChain';
 import type { SerializedTriggerClip } from './sequencer/triggerClip';
 import {
+  createDefaultSynthSequenceVariationBanks,
+  normalizeSynthSequenceVariationBanks,
+  type SynthSequenceVariationBanks,
+} from './sequencer/synthSequenceVariations';
+import {
   normalizeRoutingMuteGroupsState,
   type RoutingMuteGroupsState,
 } from './routing/routingMuteGroups';
@@ -345,6 +350,8 @@ export interface SavedPreset {
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
+  /** Persisted four-variation banks; UI playback selection is transient. */
+  synthSequenceVariationBanks?: SynthSequenceVariationBanks;
   drumScatterState?: SerializedSeqScatterState;
   presetPool?: PresetPoolMetadata;
 }
@@ -1104,6 +1111,8 @@ export interface SliderState extends NatureSlotState {
   synthEuclideanTempo: number;           // 0.25..12 - tempo multiplier for all lanes
   synthSequencerFaces: SynthSequencerFaceState; // Per-slot UI face configs; Euclid remains default/back-compatible
   synthSequencerChain: SequencerChainState;
+  /** Per-synth-lane A-D variation banks; selected variation stays UI-only. */
+  synthSequenceVariationBanks: SynthSequenceVariationBanks;
   // Lane 1
   synthEuclid1Enabled: boolean;
   synthEuclid1Solo: boolean;
@@ -2518,6 +2527,7 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclideanTempo',
   'synthSequencerFaces',
   'synthSequencerChain',
+  'synthSequenceVariationBanks',
   'synthEuclid1Enabled',
   'synthEuclid1Solo',
   'synthEuclid1ResumeQuantization',
@@ -3001,6 +3011,7 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'harmonyProgressionB',
   'synthSequencerFaces',
   'synthSequencerChain',
+  'synthSequenceVariationBanks',
   'drumSequencerChain',
 ]);
 
@@ -3736,6 +3747,7 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclideanTempo: 1,
   synthSequencerFaces: createDefaultSynthSequencerFaceState(),
   synthSequencerChain: createDefaultSequencerChainState(),
+  synthSequenceVariationBanks: createDefaultSynthSequenceVariationBanks(),
   // Lane 1 - main pulse (lancaran) - mid register
   synthEuclid1Enabled: true,
   synthEuclid1Solo: false,
@@ -5877,6 +5889,14 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.synthSequencerChain = normalizeSequencerChainState(parsed);
     return true;
   }
+  if (key === 'synthSequenceVariationBanks') {
+    try {
+      state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(parsed, 4);
+    } catch {
+      // Keep the staged state when a URL carries a malformed variation bank.
+    }
+    return true;
+  }
   if (key === 'drumSequencerChain') {
     state.drumSequencerChain = normalizeSequencerChainState(parsed);
     return true;
@@ -6753,6 +6773,12 @@ export function migratePreset(preset: any): SavedPreset {
 
   state.synthSequencerChain = normalizeSequencerChainState(state.synthSequencerChain);
   state.drumSequencerChain = normalizeSequencerChainState(state.drumSequencerChain);
+  const stagedVariationBanks = state.synthSequenceVariationBanks;
+  try {
+    state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stagedVariationBanks, 4);
+  } catch {
+    state.synthSequenceVariationBanks = stagedVariationBanks;
+  }
 
   sanitizeGranularStateCompatibility(state);
 
@@ -6825,6 +6851,7 @@ export function migratePreset(preset: any): SavedPreset {
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,
+    synthSequenceVariationBanks: state.synthSequenceVariationBanks,
     drumScatterState: preset.drumScatterState,
     presetPool: normalizePresetPoolMetadata(preset.presetPool),
   };

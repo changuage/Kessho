@@ -89,18 +89,33 @@ void kessho::product::internal::routeFxGraphNode(
     const StereoBus destination = inputBus(engine, to);
     const RouteSignal route = routeSignal(engine, node, to);
     const StereoBus graph_tap = engine.graph_taps_enabled ? routeTap(engine, node, to) : StereoBus{nullptr, nullptr};
-    for (uint32_t i = 0; i < frames; ++i) {
-      const uint32_t frame = start + i;
-      const float ramp = static_cast<float>(i + 1u) / static_cast<float>(frames);
-      const float smoothed_amount = previous_amount + (amount - previous_amount) * ramp;
-      const uint32_t source_frame = route.block_local ? i : frame;
-      const float routed_l = route.left[source_frame] * smoothed_amount;
-      const float routed_r = route.right[source_frame] * smoothed_amount;
-      destination.left[frame] += routed_l;
-      destination.right[frame] += routed_r;
-      if (graph_tap.left != nullptr) {
-        graph_tap.left[frame] = routed_l;
-        graph_tap.right[frame] = routed_r;
+    if (amount == previous_amount) {
+      for (uint32_t i = 0; i < frames; ++i) {
+        const uint32_t frame = start + i;
+        const uint32_t source_frame = route.block_local ? i : frame;
+        const float routed_l = route.left[source_frame] * amount;
+        const float routed_r = route.right[source_frame] * amount;
+        destination.left[frame] += routed_l;
+        destination.right[frame] += routed_r;
+        if (graph_tap.left != nullptr) {
+          graph_tap.left[frame] = routed_l;
+          graph_tap.right[frame] = routed_r;
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < frames; ++i) {
+        const uint32_t frame = start + i;
+        const float ramp = static_cast<float>(i + 1u) / static_cast<float>(frames);
+        const float smoothed_amount = previous_amount + (amount - previous_amount) * ramp;
+        const uint32_t source_frame = route.block_local ? i : frame;
+        const float routed_l = route.left[source_frame] * smoothed_amount;
+        const float routed_r = route.right[source_frame] * smoothed_amount;
+        destination.left[frame] += routed_l;
+        destination.right[frame] += routed_r;
+        if (graph_tap.left != nullptr) {
+          graph_tap.left[frame] = routed_l;
+          graph_tap.right[frame] = routed_r;
+        }
       }
     }
   }

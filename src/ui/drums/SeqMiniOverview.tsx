@@ -6,6 +6,12 @@ interface SeqMiniOverviewProps {
   playheads: number[];
   colors: string[];
   sequencers?: SequencerState[];
+  /** Printed variation patterns take precedence over legacy trigger dots. */
+  variationPatterns?: readonly (readonly boolean[] | null | undefined)[];
+  variationLabels?: readonly (string | null | undefined)[];
+  variationNoteCounts?: readonly (number | null | undefined)[];
+  variationHitCounts?: readonly (number | null | undefined)[];
+  variationPhraseBeats?: readonly (number | null | undefined)[];
   onRowClick?: (index: number) => void;
 }
 
@@ -20,11 +26,17 @@ function getSourceBrief(seq: SequencerState): string {
   return `${active.length}v`;
 }
 
-const SeqMiniOverview: React.FC<SeqMiniOverviewProps> = ({ patterns, playheads, colors, sequencers, onRowClick }) => {
+const SeqMiniOverview: React.FC<SeqMiniOverviewProps> = ({ patterns, playheads, colors, sequencers, variationPatterns, variationLabels, variationNoteCounts, variationHitCounts, variationPhraseBeats, onRowClick }) => {
   return (
     <div className="seq-mini-overview">
       {patterns.map((pattern, row) => {
         const seq = sequencers?.[row];
+        const variationPattern = variationPatterns?.[row];
+        const hasVariation = Array.isArray(variationPattern) && variationPattern.length > 0;
+        const variationLabel = variationLabels?.[row] ?? 'Printed';
+        const variationNoteCount = variationNoteCounts?.[row];
+        const variationHitCount = variationHitCounts?.[row];
+        const variationPhraseBeat = variationPhraseBeats?.[row];
         return (
         <div
           key={row}
@@ -34,7 +46,7 @@ const SeqMiniOverview: React.FC<SeqMiniOverviewProps> = ({ patterns, playheads, 
         >
           {seq && (
             <div className="seq-mini-label">
-              <span>{seq.name} ({seq.clockDiv}) {getSourceBrief(seq)}</span>
+              <span>{seq.name} {hasVariation ? variationLabel : `(${seq.clockDiv}) ${getSourceBrief(seq)}`}</span>
               <span className="mini-ms">
                 {seq.muted ? <span className="on">M</span> : 'M'}
                 {' '}
@@ -42,17 +54,35 @@ const SeqMiniOverview: React.FC<SeqMiniOverviewProps> = ({ patterns, playheads, 
               </span>
             </div>
           )}
-          <div className="seq-mini-dots">
-            {pattern.map((hit, step) => {
-              const isPlayhead = playheads[row] === step;
-              const cn = isPlayhead ? 'dot-cur' : hit ? 'dot-hit' : 'dot-rest';
-              return (
-                <span key={`${row}-${step}`} className={cn}>
-                  {hit ? '●' : '○'}
-                </span>
-              );
-            })}
-          </div>
+          {hasVariation ? (
+            <>
+              <div className="seq-mini-printed-summary" aria-label="Printed variation summary">
+                <span>{variationLabel}</span>
+                <span>{variationPattern.length} steps</span>
+                {variationNoteCount == null ? null : <span>{variationNoteCount} notes{variationHitCount != null && variationHitCount !== variationNoteCount ? ` / ${variationHitCount} hits` : ''}</span>}
+                {variationPhraseBeat == null ? null : <span>{variationPhraseBeat.toFixed(2)} beats</span>}
+              </div>
+              <div className="seq-mini-dots">
+                {variationPattern.map((hit, step) => {
+                  const isPlayhead = playheads[row] === step;
+                  const cn = isPlayhead ? 'dot-cur' : hit ? 'dot-hit' : 'dot-rest';
+                  return <span key={`${row}-${step}`} className={cn}>{hit ? '●' : '○'}</span>;
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="seq-mini-dots">
+              {pattern.map((hit, step) => {
+                const isPlayhead = playheads[row] === step;
+                const cn = isPlayhead ? 'dot-cur' : hit ? 'dot-hit' : 'dot-rest';
+                return (
+                  <span key={`${row}-${step}`} className={cn}>
+                    {hit ? '●' : '○'}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
         );
       })}

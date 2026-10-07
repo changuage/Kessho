@@ -6,6 +6,7 @@ import type { DualSliderRange } from './DualSlider';
 import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import { applyPreset, type ApplyPresetOptions, USER_PREFERENCE_KEYS } from './presetUtils';
 import { type SavedPreset, type SliderMode, type SliderState } from './state';
+import { collectMorphEndpointStates } from './morphEndpointAssets';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import { VISUALIZER_PRESET_SCOPE } from './visualizer/visualizerPresetStore';
 
@@ -40,8 +41,10 @@ type UseMorphSlotLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   setVisualizerPresetName: Dispatch<SetStateAction<string>>;
   setLinkedVisualizerPresetRequest: Dispatch<SetStateAction<{ name: string; nonce: number } | null>>;
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
-  syncCoreProductAppliedPreset: (nextState: SliderState) => void;
-  scheduleProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => void;
+  syncCoreProductAppliedPreset: (nextState: SliderState) => void | Promise<void>;
+  commitProductRuntimeParamUpdate: (nextState: SliderState, options?: ProductRuntimeParamUpdateOptions) => Promise<void>;
+  prepareMorphSceneAssets?: (states: readonly Record<string, unknown>[]) => Promise<void>;
+  invalidateMorphInputs: () => void;
   lerpPresets: (
     presetA: TPreset,
     presetB: TPreset,
@@ -115,7 +118,9 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   setLinkedVisualizerPresetRequest,
   presetEngineUpdateOptions,
   syncCoreProductAppliedPreset,
-  scheduleProductRuntimeParamUpdate,
+  commitProductRuntimeParamUpdate,
+  prepareMorphSceneAssets,
+  invalidateMorphInputs,
   lerpPresets,
   normalizeState,
   applyDualRangesFromPreset,
@@ -165,7 +170,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
     setDualSliderConfigs(next);
   }, [dualConfigs, setDualSliderConfigs]);
 
-  const applyMidMorphSlotReplacement = useCallback((nextA: TPreset | null, nextB: TPreset | null): boolean => {
+  const applyMidMorphSlotReplacement = useCallback(async (nextA: TPreset | null, nextB: TPreset | null): Promise<boolean> => {
     if (!isInMidMorph(morphPosition, true)) return false;
     if (!nextA || !nextB) return false;
 
@@ -183,12 +188,12 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       (nextState as Record<string, unknown>)[key] = state[key];
     }
 
-    setState(nextState);
-    scheduleProductRuntimeParamUpdate(nextState, {
+    await commitProductRuntimeParamUpdate(nextState, {
       immediate: true,
       reason: 'morph-control-change',
       triggerCritical: true,
     });
+    setState(nextState);
     mergeMorphDualRuntime(morphResult);
     return true;
   }, [
@@ -198,7 +203,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
     morphCapturedStartRootRef,
     morphDirectionRef,
     morphPosition,
-    scheduleProductRuntimeParamUpdate,
+    commitProductRuntimeParamUpdate,
     setState,
     state,
   ]);
@@ -206,15 +211,17 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   const handleLoadMorphA = useCallback(
     async (entry: PresetEntry, data: Record<string, unknown>): Promise<boolean> => {
       if (!(await confirmOverrideArmedJourneyForStatePreset(entry.name))) return false;
-      hasLoadedPresetRef.current = true;
       const preset = presetEntryToSavedPreset(entry, data, normalizeState) as TPreset;
+      await prepareMorphSceneAssets?.(collectMorphEndpointStates(preset, morphPresetB));
+      invalidateMorphInputs();
+      hasLoadedPresetRef.current = true;
       setMorphSlotAName(entry.name);
       if (!morphPresetB) {
         captureCurrentMorphBasis();
       }
       setMorphPresetA(preset);
       const atEndpoint0 = isAtEndpoint0(morphPosition, true);
-      const appliedMidMorph = applyMidMorphSlotReplacement(preset, morphPresetB);
+      const appliedMidMorph = await applyMidMorphSlotReplacement(preset, morphPresetB);
       if (!appliedMidMorph && (atEndpoint0 || !morphPresetB)) {
         const result = applyPreset(preset, {
           currentState: state,
@@ -222,7 +229,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
           ...presetEngineUpdateOptions,
         });
         setMorphPresetA(result.preset as TPreset);
-        syncCoreProductAppliedPreset(result.state);
+        await syncCoreProductAppliedPreset(result.state);
         setState(result.state);
         setStatePresetName(entry.name);
         applyLinkedVisualizerPreset(entry);
@@ -239,10 +246,12 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       captureCurrentMorphBasis,
       confirmOverrideArmedJourneyForStatePreset,
       hasLoadedPresetRef,
+      invalidateMorphInputs,
       morphPosition,
       morphPresetB,
       normalizeState,
       onPresetPoolLoad,
+      prepareMorphSceneAssets,
       presetEngineUpdateOptions,
       restoreEvolveConfigs,
       setMorphPresetA,
@@ -257,15 +266,17 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
   const handleLoadMorphB = useCallback(
     async (entry: PresetEntry, data: Record<string, unknown>): Promise<boolean> => {
       if (!(await confirmOverrideArmedJourneyForStatePreset(entry.name))) return false;
-      hasLoadedPresetRef.current = true;
       const preset = presetEntryToSavedPreset(entry, data, normalizeState) as TPreset;
+      await prepareMorphSceneAssets?.(collectMorphEndpointStates(morphPresetA, preset));
+      invalidateMorphInputs();
+      hasLoadedPresetRef.current = true;
       setMorphSlotBName(entry.name);
       if (!morphPresetA) {
         captureCurrentMorphBasis();
       }
       setMorphPresetB(preset);
       const atEndpoint1 = isAtEndpoint1(morphPosition, true);
-      const appliedMidMorph = applyMidMorphSlotReplacement(morphPresetA, preset);
+      const appliedMidMorph = await applyMidMorphSlotReplacement(morphPresetA, preset);
       if (!appliedMidMorph && (atEndpoint1 || !morphPresetA)) {
         const result = applyPreset(preset, {
           currentState: state,
@@ -273,7 +284,7 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
           ...presetEngineUpdateOptions,
         });
         setMorphPresetB(result.preset as TPreset);
-        syncCoreProductAppliedPreset(result.state);
+        await syncCoreProductAppliedPreset(result.state);
         setState(result.state);
         setStatePresetName(entry.name);
         applyLinkedVisualizerPreset(entry);
@@ -290,10 +301,12 @@ export function useMorphSlotLoadRuntimeSurface<TPreset extends SavedPreset>({
       captureCurrentMorphBasis,
       confirmOverrideArmedJourneyForStatePreset,
       hasLoadedPresetRef,
+      invalidateMorphInputs,
       morphPosition,
       morphPresetA,
       normalizeState,
       onPresetPoolLoad,
+      prepareMorphSceneAssets,
       presetEngineUpdateOptions,
       restoreEvolveConfigs,
       setMorphPresetB,

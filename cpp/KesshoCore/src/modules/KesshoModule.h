@@ -91,6 +91,10 @@ public:
     return nullptr;
   }
   virtual void commitParams() {}
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  uint32_t debug_filter_configurations = 0u;
+  uint32_t debug_tap_configurations = 0u;
+#endif
   virtual int setIndexedParam(int param_index, float value) {
     float* module_params = params();
     if (module_params == nullptr || param_index < 0 || param_index >= paramCount()) {
@@ -246,7 +250,7 @@ public:
   }
 };
 
-std::unique_ptr<IKesshoModule> createDynamicsDriftModule();
+std::unique_ptr<IKesshoModule> createDynamicsDriftModule(bool master_only = false);
 std::unique_ptr<IKesshoModule> createDynamicsErosionModule();
 std::unique_ptr<IKesshoModule> createReverbModule();
 std::unique_ptr<IKesshoModule> createGranularModule();

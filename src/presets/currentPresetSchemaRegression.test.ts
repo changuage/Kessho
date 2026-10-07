@@ -132,6 +132,7 @@ const storedLegacyState = decodeCurrentPresetEntry(canonicalizeStoredPresetEntry
       granularDryWet: 0.42,
       synthChordSequencerEnabled: true,
       synthChordSequencer: { steps: [] },
+      synthRecordedNoteClips: [],
       spectralFreezeEnabled: false,
       spectralFreezeActive: true,
       spectralFreezeCaptureSerial: 41,

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "KesshoCore/KesshoProductAssets.h"
+#include "KesshoCore/KesshoProductCaptureClock.h"
 #include "KesshoCore/KesshoProductEvents.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
 #include "KesshoCore/KesshoProductInteraction.h"
 #include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
+#include "KesshoCore/KesshoProductSequencerVariations.h"
 #include "KesshoCore/KesshoProductSnapshot.h"
 #include "KesshoCore/KesshoProductTelemetry.h"
 #include "KesshoCore/KesshoProductTypes.h"
@@ -115,6 +117,10 @@ uint32_t kessho_product_drain_generated_sequencer_capture_events(
     uint32_t max_event_count,
     uint32_t* out_overflow_count);
 
+int32_t kessho_product_copy_capture_clock(
+    KesshoProductEngine* engine,
+    KesshoProductCaptureClock* out_clock);
+
 int32_t kessho_product_copy_granular_waveform(
     KesshoProductEngine* engine,
     float* out_peaks,
@@ -123,6 +129,24 @@ int32_t kessho_product_copy_granular_waveform(
 int32_t kessho_product_copy_sequencer_ui_state(
     KesshoProductEngine* engine,
     KesshoProductSequencerUiState* out_state);
+
+int32_t kessho_product_set_sequencer_variation_bank(
+    KesshoProductEngine* engine,
+    uint32_t sequencer_id,
+    uint32_t lane_index,
+    const KesshoProductSequencerVariationBank* bank);
+
+int32_t kessho_product_select_sequencer_variation(
+    KesshoProductEngine* engine,
+    uint32_t sequencer_id,
+    uint32_t lane_index,
+    uint32_t variation_index);
+
+int32_t kessho_product_copy_sequencer_variation_runtime(
+    KesshoProductEngine* engine,
+    uint32_t sequencer_id,
+    uint32_t lane_index,
+    KesshoProductSequencerVariationRuntime* out_runtime);
 
 int32_t kessho_product_register_asset_buffer(
     KesshoProductEngine* engine,

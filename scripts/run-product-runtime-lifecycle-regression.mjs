@@ -14,6 +14,7 @@ try {
     bundle: true,
     format: 'esm',
     platform: 'node',
+    define: { 'import.meta.env': '{"DEV":false,"BASE_URL":"/"}' },
     sourcemap: 'inline',
     logLevel: 'silent',
   });

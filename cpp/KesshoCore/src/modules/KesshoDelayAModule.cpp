@@ -197,6 +197,7 @@ class DelayAModule final : public IKesshoModule {
 public:
   bool prepare(double sample_rate, int max_block_size) override {
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
+    filters_configured_ = false;
     delay_time_slew_ = 1.0f - std::exp(-1.0f / (0.02f * sample_rate_));
     max_block_size_ = std::max(1, max_block_size);
     const int feedback_latency_frames = max_block_size_;
@@ -340,8 +341,15 @@ public:
     state_.time_r = final_r;
     state_.feedback = enabled ? clamp(params_[kParamFeedback], 0.0f, 0.95f) : 0.0f;
     state_.mix = enabled ? clamp(params_[kParamMix], 0.0f, 1.0f) : 0.0f;
-    state_.filter_hz = clamp(params_[kParamFilterHz], 200.0f, 12000.0f);
-    state_.filter_type = static_cast<int>(clamp(std::round(params_[kParamFilterType]), 0.0f, 2.0f));
+    const float filter_hz = clamp(params_[kParamFilterHz], 200.0f, 12000.0f);
+    const int filter_type = static_cast<int>(clamp(std::round(params_[kParamFilterType]), 0.0f, 2.0f));
+    const float cross_feed_filter_hz = clamp(params_[kParamCrossFeedFilterHz], 200.0f, 12000.0f);
+    const bool signal_filters_changed = !filters_configured_ ||
+        state_.filter_hz != filter_hz || state_.filter_type != filter_type;
+    const bool cross_filter_changed = !filters_configured_ ||
+        state_.cross_feed_filter_hz != cross_feed_filter_hz;
+    state_.filter_hz = filter_hz;
+    state_.filter_type = filter_type;
     state_.reverb_send = enabled ? clamp(params_[kParamReverbSend], 0.0f, 1.0f) : 0.0f;
     const float mod_depth_ms = enabled ? clamp(params_[kParamModDepthMs], 0.0f, 50.0f) : 0.0f;
     state_.mod_rate_hz = mod_depth_ms > 0.0001f
@@ -359,10 +367,11 @@ public:
     state_.ping_pong = params_[kParamPingPong] > 0.5f;
     state_.duck = enabled ? clamp(params_[kParamDuck], 0.0f, 1.0f) : 0.0f;
     state_.to_delay_b = enabled ? clamp(params_[kParamToDelayB], 0.0f, 1.0f) : 0.0f;
-    state_.cross_feed_filter_hz = clamp(params_[kParamCrossFeedFilterHz], 200.0f, 12000.0f);
+    state_.cross_feed_filter_hz = cross_feed_filter_hz;
     state_.granular_send = enabled ? clamp(params_[kParamGranularSend], 0.0f, 1.0f) : 0.0f;
     state_.degrade_send = enabled ? clamp(params_[kParamDriftSend], 0.0f, 1.0f) : 0.0f;
-    configureFilters();
+    configureFilters(signal_filters_changed, cross_filter_changed);
+    filters_configured_ = true;
   }
 
   int outputTapCount() const override {
@@ -392,7 +401,7 @@ private:
     commitParams();
   }
 
-  void configureFilters() {
+  void configureFilters(bool signal_filters_changed, bool cross_filter_changed) {
     Biquad::Type filter_type = Biquad::Type::Lowpass;
     float filter_q = 0.7f;
     if (state_.filter_type == 1) {
@@ -401,12 +410,22 @@ private:
       filter_type = Biquad::Type::Bandpass;
       filter_q = 2.0f;
     }
-    filter_l_0_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
-    filter_l_1_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
-    filter_r_0_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
-    filter_r_1_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
-    cross_filter_l_.configure(Biquad::Type::Lowpass, state_.cross_feed_filter_hz, 0.7f, sample_rate_);
-    cross_filter_r_.configure(Biquad::Type::Lowpass, state_.cross_feed_filter_hz, 0.7f, sample_rate_);
+    if (signal_filters_changed) {
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++debug_filter_configurations;
+#endif
+      filter_l_0_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
+      filter_l_1_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
+      filter_r_0_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
+      filter_r_1_.configure(filter_type, state_.filter_hz, filter_q, sample_rate_);
+    }
+    if (cross_filter_changed) {
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+      ++debug_filter_configurations;
+#endif
+      cross_filter_l_.configure(Biquad::Type::Lowpass, state_.cross_feed_filter_hz, 0.7f, sample_rate_);
+      cross_filter_r_.configure(Biquad::Type::Lowpass, state_.cross_feed_filter_hz, 0.7f, sample_rate_);
+    }
   }
 
   float updateDuck(float input_l, float input_r) {
@@ -509,6 +528,7 @@ private:
   float current_time_l_ = 0.25f;
   float current_time_r_ = 0.375f;
   float delay_time_slew_ = 1.0f;
+  bool filters_configured_ = false;
 };
 
 } // namespace

@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Kesshō — Granular</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Kessho design tokens (mirrored from src/designSystem/designSystem.css)
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --k-bg-deep:#100f0e; --k-bg-top:#171615; --k-bg-mid:#1c1b19; --k-bg-low:#21201e;
+  --k-glass:rgba(22,21,19,.5); --k-glass-strong:rgba(34,33,30,.82);
+  --k-control:rgba(255,255,255,.055); --k-control-hover:rgba(255,255,255,.09);
+  --k-border:rgba(247,250,252,.12); --k-border-strong:rgba(247,250,252,.24);
+  --k-text:#F7FAFC; --k-text-soft:rgba(247,250,252,.7); --k-text-muted:rgba(247,250,252,.44);
+  --k-text-dim:rgba(247,250,252,.32);
+  --k-cream:#E8DCC4; --k-icy:#B8E0FF; --k-sage:#7B9A6D; --k-clay:#C4724E;
+  --k-gold:#D4A520; --k-violet:#8B5CF6; --k-slate:#5A7B8A;
+  --tab-granular:#E8B44A; --tab-delay:#5EA8A6;
+  --k-fs-1:.6rem; --k-fs-2:.65rem; --k-fs-3:.7rem; --k-fs-4:.75rem; --k-fs-5:.8rem; --k-fs-6:.9rem; --k-fs-7:1.05rem;
+  --k-sp-2:4px; --k-sp-3:6px; --k-sp-4:8px; --k-sp-5:12px; --k-sp-6:16px;
+  --k-radius-card:8px; --k-radius-control:6px;
+  --k-bg-card:rgba(24,23,21,.85); --k-bg-panel:rgba(24,23,21,.75); --k-bg-inset:rgba(0,0,0,.2);
+  --k-dur-fast:.12s; --k-dur-base:.18s; --k-ease-out:cubic-bezier(.22,1,.36,1);
+  --k-hit-touch:44px;
+  /* granular page accents */
+  --page-accent:var(--tab-granular);
+  --gv-a:var(--tab-granular); --gv-b:var(--k-sage); --gv-c:var(--k-cream); --gv-d:var(--tab-delay);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:radial-gradient(140% 90% at 50% -10%, #1b1a17, var(--k-bg-deep) 68%);
+  color:var(--k-text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -webkit-user-select:none; user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button{font:inherit;color:inherit;touch-action:manipulation}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ─── header ─── */
+header{
+  position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:var(--k-sp-5);
+  padding:10px 16px calc(10px);padding-top:calc(10px + env(safe-area-inset-top));
+  background:rgba(16,15,14,.94);border-bottom:1px solid var(--k-border);backdrop-filter:blur(14px);
+  flex-wrap:wrap;
+}
+.brand{display:grid;gap:2px;min-width:0}
+.brand strong{font-size:var(--k-fs-6);font-weight:600;color:var(--page-accent);letter-spacing:.01em}
+.brand span{font-size:var(--k-fs-1);letter-spacing:.13em;text-transform:uppercase;color:var(--k-text-dim)}
+.grow{flex:1}
+
+.chipbar{display:flex;gap:var(--k-sp-2);flex-wrap:wrap}
+.chip{
+  border:1px solid var(--k-border);background:var(--k-control);color:var(--k-text-muted);
+  border-radius:999px;padding:7px 12px;min-height:34px;font-size:var(--k-fs-3);letter-spacing:.04em;cursor:pointer;
+  transition:color var(--k-dur-fast),border-color var(--k-dur-fast),background var(--k-dur-fast);
+  white-space:nowrap;
+}
+.chip:hover{color:var(--k-text-soft);border-color:var(--k-border-strong)}
+.chip.active{color:var(--k-bg-deep);background:var(--page-accent);border-color:var(--page-accent);font-weight:600}
+.chip.tone-ice.active{background:var(--k-icy);border-color:var(--k-icy)}
+.chip[disabled]{opacity:.35;cursor:not-allowed}
+
+/* ─── layout ─── */
+main{max-width:1360px;margin:0 auto;padding:14px 16px 40px;display:grid;gap:12px}
+.stage{display:grid;grid-template-columns:250px minmax(0,1fr) 232px;gap:12px;align-items:start}
+@media(max-width:1180px){ .stage{grid-template-columns:230px minmax(0,1fr)} .sidenote{grid-column:1/-1} }
+@media(max-width:860px){ .stage{grid-template-columns:1fr} .fieldwrap{order:1} .rail{order:2;grid-template-columns:repeat(2,minmax(0,1fr))} .sidenote{order:3} }
+@media(max-width:560px){ .rail{grid-template-columns:1fr} }
+
+.panel{
+  background:var(--k-bg-card);border:1px solid var(--k-border);border-radius:var(--k-radius-card);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 28px rgba(0,0,0,.22);
+}
+.panel-head{
+  display:flex;align-items:center;gap:var(--k-sp-3);padding:8px 11px 7px;
+  border-bottom:1px solid rgba(255,255,255,.055);
+}
+.panel-head strong{font-size:var(--k-fs-4);font-weight:700;letter-spacing:.02em}
+.panel-head span{font-size:var(--k-fs-1);letter-spacing:.09em;text-transform:uppercase;color:var(--k-text-dim);margin-left:auto}
+.panel-body{padding:9px 10px 11px;display:grid;gap:9px}
+
+/* ─── voice rail ─── */
+.rail{display:grid;gap:9px}
+.voice{
+  --vc:var(--gv-a);
+  border:1px solid color-mix(in srgb,var(--vc) 20%,rgba(255,255,255,.08));
+  border-radius:var(--k-radius-card);background:var(--k-bg-panel);
+  padding:8px 9px 9px;display:grid;gap:7px;cursor:pointer;
+  transition:border-color var(--k-dur-base),background var(--k-dur-base),opacity var(--k-dur-base);
+  opacity:.62;
+}
+.voice.sel{opacity:1;border-color:color-mix(in srgb,var(--vc) 55%,transparent);background:color-mix(in srgb,var(--vc) 7%,var(--k-bg-panel))}
+.voice.off{opacity:.3}
+.vhead{display:flex;align-items:center;gap:7px}
+.vbadge{
+  width:22px;height:22px;flex:0 0 22px;border-radius:6px;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--vc) 22%,transparent);border:1px solid color-mix(in srgb,var(--vc) 55%,transparent);
+  color:var(--vc);font-size:var(--k-fs-3);font-weight:700;
+}
+.vname{font-size:var(--k-fs-3);color:var(--k-text-soft);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;margin-left:auto;border:1px solid var(--k-border);border-radius:999px;overflow:hidden;flex:0 0 auto}
+.seg button{border:0;background:transparent;color:var(--k-text-dim);font-size:var(--k-fs-1);letter-spacing:.08em;
+  text-transform:uppercase;padding:5px 8px;min-height:28px;cursor:pointer}
+.seg button.on{background:color-mix(in srgb,var(--vc) 26%,transparent);color:var(--vc);font-weight:700}
+
+/* budget visual: THE architecture invariant, made visible */
+.budget{display:grid;gap:3px}
+.budget-track{display:flex;gap:2px;height:16px}
+.bseg{
+  flex:1;border-radius:3px;position:relative;overflow:hidden;
+  background:color-mix(in srgb,var(--vc) 14%,rgba(0,0,0,.25));
+  border:1px solid color-mix(in srgb,var(--vc) 26%,transparent);
+  display:grid;place-items:center;
+}
+.bseg b{position:relative;font-size:8px;font-weight:600;letter-spacing:.02em;color:color-mix(in srgb,var(--vc) 80%,var(--k-text));
+  font-family:ui-monospace,Menlo,monospace}
+.bseg.clean{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--vc) 20%,rgba(0,0,0,.25)) 0 6px,transparent 6px 12px)}
+.budget-cap{display:flex;gap:6px;font-size:8px;letter-spacing:.07em;text-transform:uppercase;color:var(--k-text-dim)}
+.budget-cap b{color:color-mix(in srgb,var(--vc) 70%,var(--k-text));font-weight:600;font-family:ui-monospace,Menlo,monospace;letter-spacing:0;text-transform:none}
+
+/* pan/level pad — replaces two sliders with one direct 2D surface */
+.padrow{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:stretch}
+.xypad{
+  position:relative;height:46px;border-radius:var(--k-radius-control);
+  background:var(--k-bg-inset);border:1px solid rgba(255,255,255,.07);
+  touch-action:none;cursor:crosshair;overflow:hidden;
+}
+.xypad::before,.xypad::after{content:"";position:absolute;background:rgba(255,255,255,.07)}
+.xypad::before{left:50%;top:4px;bottom:4px;width:1px}
+.xypad::after{left:6px;right:6px;top:50%;height:1px}
+.xydot{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;
+  background:var(--vc);box-shadow:0 0 10px color-mix(in srgb,var(--vc) 60%,transparent);pointer-events:none}
+.xytag{position:absolute;left:5px;bottom:3px;font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--k-text-dim);pointer-events:none}
+.vtoggles{display:grid;gap:3px;align-content:start}
+.tgl{border:1px solid var(--k-border);background:var(--k-control);border-radius:5px;color:var(--k-text-dim);
+  font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;padding:5px 6px;min-width:44px;cursor:pointer}
+.tgl.on{color:var(--vc);border-color:color-mix(in srgb,var(--vc) 55%,transparent);background:color-mix(in srgb,var(--vc) 16%,transparent);font-weight:700}
+
+/* ─── field ─── */
+.fieldwrap{display:grid;gap:8px}
+.field-shell{
+  position:relative;border:1px solid var(--k-border);border-radius:var(--k-radius-card);
+  background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(0,0,0,.16));overflow:hidden;
+}
+canvas#field{display:block;width:100%;height:min(64vh,600px);min-height:430px;touch-action:none;cursor:crosshair}
+@media(max-width:860px){canvas#field{height:min(58vh,500px);min-height:380px}}
+
+.gesture-hint{
+  position:absolute;left:10px;bottom:8px;display:flex;gap:12px;flex-wrap:wrap;pointer-events:none;
+  font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:rgba(247,250,252,.26);
+}
+.gesture-hint b{color:rgba(247,250,252,.5);font-weight:500}
+
+.readbar{
+  display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:7px 11px;
+  background:var(--k-bg-panel);border:1px solid var(--k-border);border-radius:var(--k-radius-card);
+  font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:var(--k-text-dim);
+}
+.readbar b{display:block;font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:400;
+  letter-spacing:0;text-transform:none;color:var(--k-text-soft);font-variant-numeric:tabular-nums}
+.readbar .hot b{color:var(--page-accent)}
+.readbar.hints{background:transparent;border-color:transparent;padding:0 2px;gap:18px}
+.readbar.hints span{display:flex;align-items:baseline;gap:5px}
+.readbar.hints b{display:inline;font-family:inherit;font-size:8px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--k-text-soft)}
+
+/* lane assignment strip */
+.lanes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lane{
+  --lc:var(--k-icy);
+  border:1px solid color-mix(in srgb,var(--lc) 22%,rgba(255,255,255,.07));border-radius:var(--k-radius-control);
+  background:var(--k-bg-panel);padding:6px 8px;display:grid;gap:3px;text-align:left;cursor:pointer;
+}
+.lane strong{font-size:var(--k-fs-2);color:var(--lc);font-weight:600;letter-spacing:.05em;display:flex;align-items:center;gap:5px}
+.lane strong i{width:6px;height:6px;border-radius:50%;background:var(--lc);flex:0 0 6px}
+.lane span{font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--k-text-dim)}
+
+/* ─── macros: one gesture that rewrites the whole picture ─── */
+.macros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.macro{
+  position:relative;border:1px solid var(--k-border);border-radius:var(--k-radius-control);
+  background:var(--k-bg-panel);padding:6px 8px 7px;overflow:hidden;touch-action:none;cursor:ew-resize;
+  display:grid;gap:3px;
+}
+.macro .fill{position:absolute;inset:0;width:0;background:color-mix(in srgb,var(--mc) 22%,transparent);
+  border-right:1px solid color-mix(in srgb,var(--mc) 60%,transparent);pointer-events:none}
+.macro strong{position:relative;font-size:var(--k-fs-2);font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--mc);display:flex;justify-content:space-between}
+.macro strong b{font-family:ui-monospace,Menlo,monospace;font-weight:400;color:var(--k-text-soft)}
+.macro span{position:relative;font-size:7.5px;letter-spacing:.05em;color:var(--k-text-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.macro.hot span{color:color-mix(in srgb,var(--mc) 70%,var(--k-text))}
+
+canvas#grainView{display:block;width:100%;height:132px;touch-action:none;
+  border:1px solid rgba(255,255,255,.07);border-radius:var(--k-radius-control);background:var(--k-bg-inset)}
+canvas#styleView{display:block;width:100%;height:78px;touch-action:none;
+  border:1px solid rgba(255,255,255,.07);border-radius:var(--k-radius-control);background:var(--k-bg-inset)}
+.explain.micro{font-size:7.5px;line-height:1.55;letter-spacing:.01em}
+
+/* Kessho shell and progressive disclosure */
+header{position:static;max-width:1232px;margin:auto;background:transparent;border:0;padding:22px 16px 14px;backdrop-filter:none}
+.brand strong{font-size:24px;color:var(--k-cream);font-weight:400}.brand strong span{font-size:11px;color:var(--k-text-soft);letter-spacing:.22em;margin-left:10px}
+.mock-label{font-size:9px;letter-spacing:.12em;color:var(--k-text-muted)}
+main{max-width:1232px;padding-top:0;gap:12px}.app-tab-bar{display:flex;justify-content:center;gap:4px;padding:8px 16px;background:rgba(18,17,15,.6);border:1px solid var(--k-border);border-radius:12px;overflow:auto}
+.app-tab{display:flex;flex:1;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1px solid transparent;border-radius:8px;color:var(--k-text-muted);font-size:12px;min-width:60px}.app-tab i{font-size:20px;line-height:1;font-style:normal}.app-tab.active{color:var(--page-accent);background:color-mix(in srgb,var(--page-accent) 15%,transparent);border-color:color-mix(in srgb,var(--page-accent) 34%,transparent)}
+.page-toolbar,.field-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.page-toolbar h1{font-size:19px;color:var(--page-accent);font-weight:500;margin:8px 16px 8px 0}.field-toolbar strong{font-size:12px;font-weight:500}.field-toolbar .chip{padding:6px 9px}
+.chip{border-radius:6px;letter-spacing:0;min-height:36px;font-size:11px}.chip.active{background:color-mix(in srgb,var(--page-accent) 18%,transparent);color:var(--page-accent);border-color:color-mix(in srgb,var(--page-accent) 45%,transparent)}
+.macros{gap:8px}.macro{padding:13px 14px 8px;cursor:auto;gap:8px;min-height:110px}.macro strong{font-size:12px;text-transform:none;letter-spacing:0}.macro strong b{font-size:12px}.macro .fill{opacity:.4}.macro svg{width:100%;height:30px;position:relative;stroke:var(--mc);stroke-width:1.2;fill:none}.macro input{position:relative;width:100%;accent-color:var(--mc)}
+.stage{grid-template-columns:minmax(0,1fr) 310px;gap:12px}.fieldwrap{min-width:0;gap:10px}.rail{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.voice{padding:8px;gap:8px}.vname{display:none}.vbadge{width:24px}.seg button{padding:5px;font-size:9px}.budget-track{height:8px}.bseg b,.budget-cap{display:none}.vtoggles{display:none}.padrow{grid-template-columns:1fr}.xypad{height:40px}.xytag{font-size:8px}
+canvas#field{height:440px;min-height:360px}.inspector{overflow:hidden}.inspector .panel-head{padding:12px}.inspector .panel-head .chip{margin-left:auto;min-height:30px}.inspector .panel-body{padding:10px 12px;gap:10px}.inspector details{border-top:1px solid var(--k-border)}
+summary{min-height:44px;padding:13px 12px;font-size:12px;cursor:pointer;color:var(--k-text-soft)}summary::marker{color:var(--page-accent)}summary span{float:right;color:var(--k-text-muted);font-size:10px;margin-top:2px}
+.control{display:grid;grid-template-columns:1fr auto;align-items:center;gap:5px 10px;font-size:11px;color:var(--k-text-soft);margin-bottom:8px}.control:last-child{margin-bottom:0}.control input[type=range]{grid-column:1/-1;width:100%;margin:0;accent-color:var(--page-accent);height:20px}.control output{font:10px ui-monospace,monospace;color:var(--page-accent)}select{font:11px inherit;color:var(--k-text);background:#25231f;border:1px solid var(--k-border);border-radius:5px;padding:7px;max-width:175px;color-scheme:dark}.emitter-actions{display:flex;gap:8px;padding:0 12px 12px}.emitter-actions button{flex:1}
+.global-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;padding:4px 16px 16px}.control-group h2{font-size:11px;color:var(--page-accent);font-weight:500;margin:0 0 16px}.readbar{gap:12px;padding:9px}.readbar b{font-size:10px}.lane span{font-size:9px}.lane{min-height:44px}.lane strong{font-size:11px}.lane.selected{border-color:var(--lc);background:color-mix(in srgb,var(--lc) 10%,transparent)}
+canvas#grainView{height:110px}canvas#styleView{height:110px}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,.voice:focus-visible{outline:2px solid var(--k-icy);outline-offset:3px}
+@media(max-width:900px){.stage{grid-template-columns:minmax(0,1fr) 280px}.rail{grid-template-columns:repeat(2,minmax(0,1fr))}.app-tab{padding:8px}.app-tab-bar{justify-content:start;padding:6px}.field-toolbar strong{width:100%}}
+@media(max-width:680px){header{padding-top:14px}.mock-label{display:none}.stage{grid-template-columns:1fr}.fieldwrap{order:0}.rail{order:0;grid-template-columns:repeat(4,minmax(0,1fr))}.macros{grid-template-columns:repeat(2,minmax(0,1fr))}.macro{min-height:98px;padding:10px}.app-tab{font-size:10px;min-width:56px}.page-toolbar h1{width:100%;margin:4px 0}.global-controls{grid-template-columns:1fr}.seg{display:none}.vhead{justify-content:center}.lanes{gap:4px}.lane{padding:6px}.lane span{font-size:8px}main{padding:0 10px 24px}canvas#field{height:400px}.chip{min-height:40px}.inspector{width:100%}.control input[type=range]{height:28px}}
+
+
+:root{color-scheme:dark;--k-text-muted:rgba(247,250,252,.58);--k-text-dim:rgba(247,250,252,.48)}
+
+.control{font-size:12px;gap:4px 10px;margin-bottom:6px}.control output{font-size:11px}.control input[type=range]{height:18px}.inspector .panel-body{gap:7px}input[type=range]{appearance:none;background:transparent;cursor:pointer;height:22px}input[type=range]::-webkit-slider-runnable-track{height:3px;background:rgba(247,250,252,.18);border-radius:4px}input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;background:var(--mc,var(--page-accent));border-radius:50%;margin-top:-5px}input[type=range]::-moz-range-track{height:3px;background:rgba(247,250,252,.18)}input[type=range]::-moz-range-thumb{width:13px;height:13px;border:0;background:var(--mc,var(--page-accent));border-radius:50%}
+.voice{opacity:.85}.voice.off{opacity:.4}.lane span{color:var(--k-text-muted)}.chip{color:var(--k-text-soft)}.inspector summary{font-size:12px}.rail .seg button{min-height:32px}.macro strong{color:color-mix(in srgb,var(--mc) 75%,white)}
+@media(max-width:680px){.control input[type=range]{height:28px}.rail{gap:5px}.voice{padding:6px}.inspector .panel-body{gap:12px}}
+.control select{grid-column:2;grid-row:1;width:145px}.control:has(select){min-height:34px}
+
+/* Sound on the left; field and voice editing on the right. */
+.stage{grid-template-columns:minmax(300px,1fr) minmax(0,2fr);gap:14px}
+.engine-column,.workspace-column{display:grid;gap:12px;align-content:start;min-width:0}
+.macro-panel .panel-head{padding:8px 12px}.macro-panel .panel-head .chip{margin-left:auto;min-height:30px;font-size:10px}
+.macros{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}
+.macro{min-height:88px;padding:9px 10px 7px;gap:0;touch-action:auto;background:rgba(255,255,255,.018)}
+.macro strong{font-size:12px;line-height:16px;pointer-events:none}.macro strong b{font-size:10px;color:var(--k-text-soft)}
+.macro-surface{position:relative;height:46px;margin:1px -2px;cursor:ew-resize;isolation:isolate}
+.macro-surface svg{position:absolute;inset:0;width:100%;height:100%;stroke:var(--mc);fill:none;overflow:visible}
+.macro-ghost{opacity:.28;stroke-width:1.5}.macro-ink{stroke-width:1.8}.macro-cursor{stroke-width:1;opacity:.9}.macro-surface circle{fill:var(--mc);stroke:none}
+.macro .macro-surface input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;cursor:ew-resize;touch-action:pan-y}
+.macro-ends{display:flex;justify-content:space-between;font-size:8px;color:var(--k-text-muted);letter-spacing:.02em;pointer-events:none}
+.macro:has(input:focus-visible){outline:2px solid var(--k-icy);outline-offset:1px}.macro:has(input:active){border-color:var(--mc);background:color-mix(in srgb,var(--mc) 7%,var(--k-bg-panel))}
+.macro:hover .macro-ghost{opacity:.45}
+.global-controls{grid-template-columns:1fr;padding:4px 12px 14px;gap:18px}
+.field-toolbar strong{width:auto}.field-toolbar .chip{min-height:32px}.rail{grid-template-columns:repeat(4,minmax(0,1fr));order:0}.fieldwrap{order:0}
+canvas#field{height:380px;min-height:340px}
+.inspector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}
+.inspector>.panel-head,.inspector>.emitter-actions,.inspector>#voiceBasics{grid-column:1/-1}
+#voiceBasics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 18px;padding-bottom:12px}
+#voiceBasics .control:has(select){grid-column:1/-1;display:flex;gap:12px;min-height:24px}#voiceBasics .control select{width:120px;padding:5px}
+.inspector>details{min-width:0}.inspector>details:nth-of-type(even){border-left:1px solid var(--k-border)}
+.emitter-actions{justify-content:flex-end}.emitter-actions button{flex:0 1 auto}.inspector>.panel-head{padding:8px 12px}
+@media(max-width:1000px) and (min-width:761px){.stage{grid-template-columns:300px minmax(0,1fr)}.field-toolbar .grow{display:none}.field-toolbar strong{width:100%}.rail .seg{display:none}#voiceBasics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.stage{grid-template-columns:1fr}.macros{grid-template-columns:repeat(2,minmax(0,1fr))}.macro{min-height:82px}.field-toolbar strong{width:100%}.inspector{grid-template-columns:1fr}.inspector>details:nth-of-type(even){border-left:0}#voiceBasics{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.inspector{width:100%}.global-controls{grid-template-columns:1fr}canvas#field{height:380px}}
+
+.macro-panel .panel-head{height:32px;padding:3px 8px}.macro-panel .panel-head .chip{min-height:24px;padding:3px 6px}
+.macros{gap:3px;padding:5px}.macro{height:26px;min-height:26px;padding:0 6px;display:block;position:relative}
+.macro strong{position:absolute;inset:0 6px;align-items:center;font-size:10px;line-height:24px;z-index:2}.macro strong b{font-size:9px}.macro-surface{position:absolute;inset:0 30px 0 63px;height:24px;margin:0;z-index:3}.macro-ends{display:none}.macro-ghost{opacity:.18}.macro-surface svg{height:24px}.macro-surface input{min-height:24px}
+.rail .budget,.rail .padrow,.rail .seg{display:none}.voice{min-height:40px;cursor:pointer}.vhead{justify-content:center}.vname{display:block;font-size:10px}.rail{gap:5px}
+.placement-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.placement-strip .chip{min-height:32px}.placement-strip strong{font-size:11px;margin-right:6px;color:var(--page-accent)}
+#placementControls{display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px;align-items:center;padding:10px 12px}#placementControls .control{margin:0}#placementControls select{width:100%;max-width:100%;grid-column:1/-1;grid-row:auto}
+.field-key{display:flex;gap:14px;font-size:10px;color:var(--k-text-soft);align-items:center;flex-wrap:wrap}.field-key .anchor-key{color:var(--page-accent)}.field-key .read-key{color:var(--k-icy)}.field-key #previewCount{margin-left:auto;font:10px ui-monospace,monospace}
+canvas#field{cursor:default;height:380px}.engine-column .inspector{display:block}#voiceBasics{grid-template-columns:repeat(2,minmax(0,1fr))}.engine-column .inspector>details{border-left:0}.engine-column .control output{font-size:10px}
+@media(pointer:coarse){.macro{height:44px;min-height:44px}.macro strong{line-height:42px}.macro-surface{height:42px}.macro-surface svg{height:42px}.macro-surface input{min-height:42px}}
+@media(max-width:760px){#placementControls{grid-template-columns:110px minmax(0,1fr)}.macro{height:36px;min-height:36px}.macro strong{line-height:34px}.macro-surface,.macro-surface svg{height:34px}}
+
+.editing-caption{padding:10px 12px 0;color:var(--k-text-muted);font-size:10px}.inspector #placementControls{grid-template-columns:1fr;padding:8px 12px 14px;border-bottom:1px solid var(--k-border);gap:12px}.inspector #placementControls .control:has(select){display:flex;justify-content:space-between}.inspector #placementControls select{width:135px}
+.voice-indicators{display:flex;gap:10px;flex-wrap:wrap;padding:0 12px 10px;font-size:9px;color:var(--k-text-soft)}.voice-indicators span{display:flex;align-items:center;gap:4px}.voice-indicators meter{width:38px;height:6px;accent-color:var(--page-accent)}.pan-track{display:inline-block;width:36px;height:3px;background:#444;position:relative}.pan-track b{position:absolute;width:5px;height:5px;background:var(--page-accent);border-radius:50%;top:-1px;transform:translateX(-50%)}.density-split{padding:0 12px 12px;font:10px ui-monospace,monospace;color:var(--page-accent);line-height:1.6}
+
+/* Readable controls and persistent editing context. */
+.workspace-column{position:sticky;top:12px;align-self:start}
+.control,.inspector summary{font-size:13px}.control output,.engine-column .control output{font-size:12px}.editing-caption{font-size:11px;color:var(--k-text-soft)}.density-split{font-size:11px}
+.field-key{font-size:11px;color:var(--k-text-soft)}.readbar{font-size:10px;letter-spacing:0}.readbar b{font-size:11px}.lane strong{font-size:12px}.lane span{font-size:10px;letter-spacing:0}
+.macro{height:28px;min-height:28px}.macro strong{font-size:11px;line-height:26px}.macro strong b{font-size:10px}.macro-surface,.macro-surface svg{height:26px}.macro-surface{left:67px;right:30px}.macro-ghost{opacity:.35}
+.control input[type=range]{height:26px}.control input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to right,var(--page-accent) var(--value,0%),rgba(247,250,252,.2) var(--value,0%))}.control input[type=range]::-moz-range-progress{background:var(--page-accent)}
+@media(max-width:760px){
+ .stage{display:flex;flex-direction:column;align-items:stretch;gap:10px}.engine-column,.workspace-column,.fieldwrap{display:contents}
+ .field-toolbar{order:-12}.rail{order:-11;position:sticky;top:0;z-index:21;background:#171615;padding:6px 0;margin:0;grid-template-columns:repeat(4,minmax(0,1fr))}.voice{min-height:40px}
+ .placement-strip{order:-10;position:sticky;top:52px;z-index:20;background:#171615;padding:6px 0;min-height:46px}.placement-strip .grow{display:none}.placement-strip strong{font-size:11px}.placement-strip .chip{min-height:36px;padding:5px 7px}
+ .field-key{order:-9}.field-shell{order:-8}.lanes{order:-7}.readbar{order:-6}.macro-panel{order:0;scroll-margin-top:120px}.inspector{order:1}#globalDetails{order:2}
+ .macro{height:44px;min-height:44px}.macro strong{line-height:42px}.macro-surface,.macro-surface svg{height:42px}.macro .macro-surface input{min-height:42px}.control input[type=range]{height:32px}
+ .field-key{gap:8px;font-size:10px}.field-key #previewCount{font-size:10px}.lane span{font-size:9px}.inspector{scroll-margin-top:110px}
+}
+
+/* Match the shared Kessho FX card grammar (designSystem.css, Granular/Delay/Reverb). */
+:root{--k-gap-container:10px;--k-gap-cards:10px;--k-on:#7B9A6D;--k-card-border:1px solid color-mix(in srgb,var(--page-accent) 20%,rgba(255,255,255,.08));--k-card-head-rule:1px solid rgba(255,255,255,.055)}
+body{background:var(--k-bg-deep)}header{padding-top:16px;padding-bottom:12px}.brand strong{font-size:22px}.mock-label{letter-spacing:.08em}
+.stage{gap:var(--k-gap-container)}.engine-column,.workspace-column{gap:var(--k-gap-cards)}
+.panel{border:var(--k-card-border);border-radius:var(--k-radius-card);background:var(--k-bg-card);box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.panel-head,.inspector>.panel-head{padding:9px 12px 8px;border-bottom:var(--k-card-head-rule);background:rgba(255,255,255,.025)}.panel-head strong{font-size:var(--k-fs-5);font-weight:700;letter-spacing:.02em}
+.macro-panel .panel-head{padding:5px 10px;height:34px}.macro-panel .panel-head strong{font-size:var(--k-fs-5)}
+.engine-header{padding:8px 12px;min-height:48px;justify-content:space-between;gap:8px}.engine-header h1{font-size:var(--k-fs-6);font-weight:700;letter-spacing:.02em;margin:0;color:var(--page-accent)}.engine-header .chip{font-size:11px;padding:5px 8px;min-height:32px}
+.preset-card .panel-body{padding:10px 12px 12px}.preset-card .chipbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.preset-card .chip{font-size:11px;padding:6px 4px;min-height:32px}
+.fieldwrap{padding:10px 12px 12px;border:var(--k-card-border);border-radius:var(--k-radius-card);background:var(--k-bg-card);gap:10px}.field-toolbar{margin:-10px -12px 0;padding:9px 12px 8px;border-bottom:var(--k-card-head-rule);background:rgba(255,255,255,.025)}.field-toolbar strong{font-size:var(--k-fs-5);font-weight:700;letter-spacing:.02em}
+.field-toolbar .chip{padding:5px 8px}.field-shell{border-color:rgba(255,255,255,.08);background:var(--k-bg-inset)}.readbar{background:var(--k-bg-inset);border-color:rgba(255,255,255,.06)}
+#voiceEnabled.active{color:color-mix(in srgb,var(--k-on) 78%,white);background:color-mix(in srgb,var(--k-on) 20%,transparent);border-color:color-mix(in srgb,var(--k-on) 46%,transparent)}
+.inspector details[open]>summary{background:rgba(255,255,255,.025);border-bottom:var(--k-card-head-rule)}summary:hover{background:rgba(255,255,255,.03)}.control{font-size:var(--k-fs-5)}select{background:rgba(0,0,0,.24);border-color:rgba(247,250,252,.18);border-radius:var(--k-radius-control);font-family:inherit;font-size:var(--k-fs-4)}
+@media(max-width:1000px) and (min-width:761px){.preset-card .chipbar{grid-template-columns:1fr}.field-toolbar strong{width:100%}.engine-header h1{font-size:13px}}
+@media(max-width:760px){.engine-header{order:-14;min-height:44px}.engine-header h1{width:auto;margin:0}.preset-card{order:-13}.preset-card .panel-head{display:none}.preset-card .panel-body{padding:6px}.fieldwrap{padding:0;border:0;background:none}.field-toolbar{margin:0;padding:9px 10px;border:var(--k-card-border);border-radius:var(--k-radius-card)}.field-toolbar strong{width:auto}.field-toolbar .grow{display:none}.field-toolbar{gap:6px}.field-toolbar .chip{padding:5px 6px;min-height:36px}.macro-panel{order:0}.inspector{order:1}header{padding-top:12px}}
+
+.preset-loader{display:grid;grid-template-columns:32px minmax(0,1fr) 32px;gap:5px}.preset-loader select{width:100%;max-width:none}.preset-loader .chip{min-height:32px;font-size:18px}.preset-actions,.source-capture{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.preset-actions span,.scene-description{font-size:11px;color:var(--k-text-muted);line-height:1.5}.preset-actions span{margin-left:auto}#sceneStatus,#captureStatus{font-size:11px;color:var(--k-icy)}#sceneStatus:empty,#captureStatus:empty{display:none}#presetModified{color:var(--page-accent);text-transform:none;letter-spacing:0}.source-capture select{flex:1}#sourceAssignments{display:grid;gap:10px}#sourceAssignments select{max-width:185px;width:100%}dialog{background:#1c1b19;color:var(--k-text);border:1px solid var(--k-border-strong);border-radius:8px;max-width:420px;width:calc(100% - 32px);padding:20px}dialog::backdrop{background:rgba(0,0,0,.65)}dialog h2{font-size:16px;margin-top:0}dialog label{display:grid;gap:6px;margin-bottom:14px;font-size:12px}dialog input{padding:9px;border:1px solid var(--k-border);background:#100f0e;color:var(--k-text);border-radius:5px;font:inherit}dialog p{font-size:12px;color:var(--k-text-soft)}#sourceDetails .panel-body{padding:12px}#sourceDetails summary span{font-size:10px}
+@media(max-width:760px){#sourceDetails{order:2}#globalDetails{order:3}.placement-strip{row-gap:4px}.placement-strip .chip{font-size:10px;padding:4px 5px}#emitterEnabled{margin-left:auto}.preset-card .panel-head{display:flex}.preset-card .panel-body{padding:8px}.preset-actions span{font-size:10px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><strong>結晶 <span>KESSHŌ</span></strong></div>
+  <div class="grow"></div><span class="mock-label">GRANULAR · VISUAL PROTOTYPE</span>
+
+</header>
+<main>
+  <nav class="app-tab-bar" aria-label="Kessho pages">
+    <span class="app-tab"><i>▦</i>Patch</span><span class="app-tab"><i>◎</i>Global</span>
+    <span class="app-tab"><i>∿</i>Synth</span><span class="app-tab"><i>⋮⋮</i>Drums</span>
+    <span class="app-tab"><i>≈</i>Earth</span><span class="app-tab active" aria-current="page"><i>⊞</i>Granular</span>
+    <span class="app-tab"><i>↭</i>Delay</span><span class="app-tab"><i>◈</i>Reverb</span><span class="app-tab"><i>≋</i>Texture</span>
+  </nav>
+  <section class="stage">
+    <aside class="engine-column">
+      <div class="page-toolbar panel engine-header"><h1>⊞ Granular FX</h1><button class="chip tone-ice" id="freezeBtn">Freeze → new hold</button></div>
+      <section class="panel preset-card"><div class="panel-head"><strong>Preset</strong><span id="presetModified"></span></div><div class="panel-body"><div class="preset-loader"><button class="chip" id="previousPreset" aria-label="Previous preset">‹</button><select id="sceneSelect" aria-label="Granular scene"></select><button class="chip" id="nextPreset" aria-label="Next preset">›</button></div><div id="sceneDescription" class="scene-description"></div><div class="preset-actions"><button class="chip" id="saveScene">Save as…</button><button class="chip" id="exportScene">Export</button><button class="chip" id="importScene">Import</button><input type="file" id="sceneFile" accept=".json,application/json" hidden/><span>Local preview scenes</span></div><div id="sceneStatus" role="status"></div></div></section>
+      <section class="panel macro-panel"><div class="panel-head"><strong>Macros</strong><button class="chip" id="resetMacros">Reset macros</button></div><div class="macros" id="macros" aria-label="Sound macros"></div></section>
+    <aside class="panel inspector">
+      <div class="panel-head"><strong id="inspectorTitle">Voice A</strong><button class="chip" id="voiceEnabled" aria-pressed="true">On</button></div>
+      <div class="editing-caption" id="selectedLocation"></div><div id="placementControls"></div><div class="editing-caption">Shared voice recipe</div><div class="panel-body" id="voiceBasics"></div><div id="densitySplit" class="density-split"></div>
+
+      <details><summary>Grain shape <span id="grainTag">A</span></summary><div class="panel-body"><canvas id="grainView" aria-label="Envelope preview"></canvas><div id="shapeControls"></div></div></details>
+      <details><summary>Scatter <span id="styleTag">mosaic</span></summary><div class="panel-body"><canvas id="styleView" aria-label="Scatter pattern preview"></canvas><div id="scatterControls"></div></div></details>
+      <details><summary>Pitch & timing</summary><div class="panel-body" id="pitchControls"></div></details>
+      <details><summary>Motion & stereo</summary><div class="panel-body" id="motionControls"></div></details>
+    </aside>
+      <details class="panel" id="sourceDetails"><summary>Sources & capture <span id="sourceCount">4 stored · 4 lanes</span></summary><div class="panel-body"><div class="source-capture"><select id="captureOrigin" aria-label="Capture origin"><option>LIVE</option><option>FM</option><option>Analog</option><option>Nature</option><option>Master</option></select><button class="chip" id="captureSource">Capture preview</button></div><div id="sourceAssignments"></div><div class="scene-description">Captures are simulated 16-second waveform previews.</div><div id="captureStatus" role="status"></div></div></details>
+      <details class="panel" id="globalDetails"><summary>Engine & routing <span>Modes · inputs · output</span></summary><div id="globalControls" class="global-controls"></div></details>
+    </aside>
+    <div class="workspace-column">
+    <div class="fieldwrap">
+      <div class="field-toolbar"><strong>Buffer & voices</strong><div class="grow"></div><button class="chip active" id="motionBtn" aria-pressed="true">Ⅱ Preview</button><button class="chip" id="detailBtn" aria-pressed="false">Geometry</button><button class="chip" id="ghostBtn" aria-pressed="false">Slices</button></div>
+      <div class="rail" id="rail"></div>
+      <div class="placement-strip"><strong id="placementTitle">Voice A</strong><div class="chipbar" id="emitterPicker"></div><div class="grow"></div><button class="chip active" id="emitterEnabled" aria-pressed="true">Emitter on</button><button class="chip" id="addEmitter">+ Emitter</button><button class="chip" id="removeEmitter">− Emitter</button></div>
+
+      <div class="field-key"><span class="anchor-key">↕ Anchor</span><span class="read-key">┄ Current read</span><span title="Simulated events, not engine telemetry">• Grain preview</span><span id="previewCount"></span></div>
+      <div class="field-shell"><canvas id="field" aria-label="Source field. Select a voice above to edit its source and position with controls."></canvas></div>
+      <div class="lanes" id="lanes" aria-label="Assign source to selected emitter"></div>
+      <div class="readbar" id="readbar"></div>
+    </div>
+
+    </div>
+  </section>
+</main><dialog id="saveDialog"><form id="saveForm"><h2>Save granular scene</h2><label>Name<input id="sceneName" required maxlength="80" autocomplete="off"/></label><label>Description<input id="sceneNote" maxlength="180"/></label><p>Four voices, macros, placements, source assignments and captured previews.</p><div class="preset-actions"><button type="button" class="chip" id="cancelSave">Cancel</button><button class="chip active" type="submit">Save</button></div></form></dialog>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════
+   Constants & helpers
+   ═══════════════════════════════════════════════════════════════ */
+const clamp=(v,a=0,b=1)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const TAU=Math.PI*2;
+const WAVE_N=320;
+const BUFFER_SECONDS=16;
+const MAX_PARTICLES=460;
+const MAX_PLACEMENTS=4;
+const HIT_PAD=14;         // grows every handle rect to a 44px touch target
+const sgn=n=>(n>0?'+':'')+n;
+
+/* Scatter patterns are functions, not names — the picker draws the actual
+   distribution so the choice is made by picture. Returns -1..1 in both axes. */
+const CLOUD_STYLES=['classic','mosaic','bloom','tide','orbit','stars'];
+function styleOffset(style,t,rnd){
+  const r=rnd();
+  switch(style){
+    case 'mosaic':{const n=5;return {dx:(Math.floor(rnd()*n)/(n-1))*2-1,dy:(Math.floor(r*n)/(n-1))*2-1};}
+    case 'bloom':{const k=Math.pow(r,0.3),a=rnd()*TAU;return {dx:Math.cos(a)*k,dy:Math.sin(a)*k};}
+    case 'tide':{const s=Math.sin(t*0.6);return {dx:(rnd()*2-1)*0.45,dy:clamp(s+(r-0.5)*0.45,-1,1)};}
+    case 'orbit':{const a=t*1.5+(r-0.5)*0.7;return {dx:Math.cos(a)*0.9,dy:Math.sin(a)*0.9};}
+    case 'stars':{const k=Math.pow(r,3.2),a=rnd()*TAU;return {dx:clamp(Math.cos(a)*k*2,-1,1),dy:clamp(Math.sin(a)*k*2,-1,1)};}
+    default:return {dx:rnd()*2-1,dy:r*2-1};
+  }
+}
+
+/* Macros are remaps of the authored base, recomputed whole — never accumulated. */
+const MACROS=[
+  {key:'texture',   name:'Texture',   color:'#E8B44A', moves:'grain · blur · decay · spread'},
+  {key:'complexity',name:'Activity',color:'#7B9A6D', moves:'rate · drift · jitter'},
+  {key:'darkness',  name:'Tone',  color:'#C4724E', moves:'pitch · blur · grain'},
+  {key:'motion',name:'Motion',color:'#5EA8A6'},
+  {key:'chaos',name:'Chaos',color:'#8B5CF6'},
+  {key:'smear',name:'Smear',color:'#B8E0FF'},
+  {key:'spray',name:'Spray',color:'#E8B44A'},
+  {key:'cloud',name:'Cloud',color:'#7B9A6D'},
+  {key:'pitch',name:'Pitch',color:'#E8DCC4'},
+  {key:'chordBias',name:'Chord bias',color:'#5EA8A6'},
+];
+
+const VOICE_META=[
+  {id:'A',color:'#E8B44A',cssVar:'--gv-a'},
+  {id:'B',color:'#7B9A6D',cssVar:'--gv-b'},
+  {id:'C',color:'#E8DCC4',cssVar:'--gv-c'},
+  {id:'D',color:'#5EA8A6',cssVar:'--gv-d'},
+];
+
+const LANES=[
+  {name:'LIVE',    sub:'rolling ring',  kind:'live',   color:'#B8E0FF'},
+  {name:'HOLD 1',  sub:'frozen capture',kind:'static', color:'#7B9A6D'},
+  {name:'FM CAP',  sub:'kesshō fm',     kind:'static', color:'#D4A520'},
+  {name:'NATURE',  sub:'field capture', kind:'static', color:'#C4724E'},
+];
+
+function hexRgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+const RGB_CACHE={};
+function rgba(hex,a){const c=RGB_CACHE[hex]||(RGB_CACHE[hex]=hexRgb(hex));return `rgba(${c[0]},${c[1]},${c[2]},${a})`;}
+/** Pitch reads as colour temperature so octave layers are legible without a label. */
+function pitchTint(hex,semis){
+  const c=RGB_CACHE[hex]||(RGB_CACHE[hex]=hexRgb(hex));
+  const t=clamp(semis/24,-1,1);
+  const target=t>=0?[184,224,255]:[196,114,78];
+  const k=Math.abs(t)*0.55;
+  return [lerp(c[0],target[0],k),lerp(c[1],target[1],k),lerp(c[2],target[2],k)];
+}
+
+/* A grain reads a real span of the buffer; at 16 s that span is only a few
+   pixels tall, so it is floored rather than exaggerated. */
+const grainHeightPx=ms=>Math.max(3,(ms/1000)/BUFFER_SECONDS*F.h);
+
+/* ═══════════════════════════════════════════════════════════════
+   Source buffers
+   ═══════════════════════════════════════════════════════════════ */
+function makeWave(seed,character){
+  const a=new Float32Array(WAVE_N),env=new Float32Array(WAVE_N);
+  let s=seed;
+  const rnd=()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};
+  // sparse onsets with exponential tails read as audio; smooth noise reads as a blob
+  const onsets=character==='nat'?26:character==='fm'?9:14;
+  for(let k=0;k<onsets;k++){
+    const at=(rnd()*0.99*WAVE_N)|0;
+    const peak=0.3+rnd()*0.7;
+    const decay=(character==='fm'?30:16)*(0.5+rnd()*3.2);
+    for(let i=at;i<WAVE_N;i++){
+      const e=peak*Math.exp(-(i-at)/decay);
+      if(e<0.004)break;
+      if(e>env[i])env[i]=e;
+    }
+  }
+  for(let i=0;i<WAVE_N;i++){
+    const texture=character==='fm'?0.45+0.55*Math.abs(Math.sin(i*0.83)):0.5+0.5*rnd();
+    a[i]=clamp(env[i]*texture+0.012,0.008,1);
+  }
+  return a;
+}
+
+const sources=[
+  {wave:new Float32Array(WAVE_N),head:0,live:true,frozen:false,populated:true},
+  {wave:makeWave(9137,'hold'),head:0,live:false,populated:true},
+  {wave:makeWave(4421,'fm'),  head:0,live:false,populated:true},
+  {wave:makeWave(7789,'nat'), head:0,live:false,populated:true},
+];
+// prime the LIVE ring
+(function(){const w=makeWave(2024,'hold');sources[0].wave.set(w);})();
+
+let liveAccum=0,livePhase=0,liveEnv=0;
+function advanceLive(dt){
+  if(sources[0].frozen)return;
+  liveAccum+=dt;
+  const step=BUFFER_SECONDS/WAVE_N;          // one ring cell of real time
+  while(liveAccum>=step){
+    liveAccum-=step;livePhase+=step;
+    if(Math.random()<0.05)liveEnv=Math.max(liveEnv,0.35+Math.random()*0.65);
+    liveEnv*=0.955;
+    const v=clamp(liveEnv*(0.5+0.5*Math.random())+0.015,0.008,1);
+    const s=sources[0];
+    s.wave[s.head]=v;
+    s.head=(s.head+1)%WAVE_N;                // head points at the OLDEST cell
+  }
+}
+/** normalized time (0 = oldest, 1 = NOW) → wave sample */
+function readSource(li,ty){
+  const s=sources[li];if(!s.populated)return 0;
+  const idx=clamp(ty,0,0.9999)*WAVE_N;
+  const base=s.live?s.head:0;
+  return s.wave[(base+Math.floor(idx))%WAVE_N];
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Presets — real values carried over from granularPresets.ts
+   ═══════════════════════════════════════════════════════════════ */
+let pid=0;
+const place=(sx,ty)=>({id:'p'+(pid++),sourceX:Math.round(sx),timeY:ty,enabled:true,phase:Math.random()*TAU});
+
+/** legacy slice → continuous time, per spec §15.1 */
+const sliceToTimeY=(slice,n=16)=>(slice+0.5)/n;
+
+const PRESETS={
+  mosaic_a:{
+    label:'Mosaic A (Octave Up)',
+    ghosts:true,
+    voices:[
+      {mode:'granular',density:3,grainSizeMs:220,timeSpray:0.52,sourceSpread:0,pitch:0,pan:-0.35,gain:0.34,speed:1,attack:0.05,decay:0.95,blur:0.26,posLFORate:0.05,posLFODepth:0.42,writeFollow:0.10,cloudStyle:'mosaic',placements:[[0,sliceToTimeY(0)]]},
+      {mode:'granular',density:3,grainSizeMs:180,timeSpray:0.58,sourceSpread:0,pitch:0,pan:0.32,gain:0.25,speed:2,attack:0.045,decay:0.82,blur:0.30,posLFORate:0.061,posLFODepth:0.50,writeFollow:0.10,cloudStyle:'mosaic',placements:[[0,sliceToTimeY(4)]]},
+      {mode:'granular',density:2,grainSizeMs:280,timeSpray:0.64,sourceSpread:0,pitch:0,pan:-0.12,gain:0.20,speed:1,attack:0.07,decay:1.20,blur:0.34,posLFORate:0.037,posLFODepth:0.62,writeFollow:0.08,cloudStyle:'mosaic',placements:[[0,sliceToTimeY(8)]]},
+      {mode:'granular',density:3,grainSizeMs:170,timeSpray:0.70,sourceSpread:0,pitch:0,pan:0.14,gain:0.16,speed:2,attack:0.042,decay:0.74,blur:0.32,posLFORate:0.083,posLFODepth:0.54,writeFollow:0.08,cloudStyle:'mosaic',placements:[[0,sliceToTimeY(12)]]},
+    ],
+  },
+  classic_cloud:{
+    label:'Classic Cloud',
+    ghosts:false,
+    voices:[
+      {mode:'granular',density:8,grainSizeMs:134,timeSpray:0.40,sourceSpread:0,pitch:0,pan:-0.10,gain:0.33,speed:1,attack:0.010,decay:0.46,blur:0.07,writeFollow:0.98,cloudStyle:'classic',placements:[[0,0.965]]},
+      {mode:'granular',density:5,grainSizeMs:157,timeSpray:0.78,sourceSpread:0,pitch:0,pan:0.12,gain:0.20,speed:1,attack:0.018,decay:0.68,blur:0.10,writeFollow:0.82,cloudStyle:'classic',placements:[[0,0.905]]},
+      {mode:'granular',density:4,grainSizeMs:109,timeSpray:0.34,sourceSpread:0,pitch:12,pan:0.02,gain:0.10,speed:1,attack:0.014,decay:0.40,blur:0.08,writeFollow:0.90,cloudStyle:'classic',placements:[[0,0.942]]},
+      {mode:'granular',density:4,grainSizeMs:110,timeSpray:0.28,sourceSpread:0,pitch:12,pan:-0.04,gain:0.10,speed:2,attack:0.012,decay:0.34,blur:0.09,writeFollow:0.88,cloudStyle:'classic',placements:[[0,0.930]]},
+    ],
+  },
+  loop_forest:{
+    label:'Loop Forest (ZOIA)',
+    ghosts:false,
+    voices:[
+      {mode:'clean',density:20,grainSizeMs:80,timeSpray:0,sourceSpread:0,pitch:0,pan:-0.30,gain:0.35,speed:0,attack:0.5,decay:2.0,blur:0.30,scanRate:0.36,scanDepth:0.96,placements:[[0,0.50]]},
+      {mode:'clean',density:20,grainSizeMs:80,timeSpray:0,sourceSpread:0,pitch:0,pan:0.30,gain:0.35,speed:0,attack:0.8,decay:2.5,blur:0.35,scanRate:0.36,scanDepth:0.96,placements:[[0,0.32]]},
+      {mode:'clean',density:20,grainSizeMs:80,timeSpray:0,sourceSpread:0,pitch:0,pan:-0.50,gain:0.20,speed:0,attack:1.0,decay:3.0,blur:0.40,scanRate:0.107,scanDepth:0.96,placements:[[0,0.68]]},
+      {mode:'clean',density:20,grainSizeMs:80,timeSpray:0,sourceSpread:0,pitch:0,pan:0.31,gain:0.20,speed:0,attack:0.6,decay:2.0,blur:0.25,scanRate:0.193,scanDepth:0.96,placements:[[0,0.14]]},
+    ],
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   Canonical state — one authority, exactly as spec §27
+   ═══════════════════════════════════════════════════════════════ */
+let visualDirty=true,sceneCheckNeeded=true;
+for(const event of ['input','click','pointermove','keydown','toggle'])document.addEventListener(event,()=>{visualDirty=true;sceneCheckNeeded=true;},true);
+
+const state={
+  presetId:'mosaic_a',
+  voices:[],
+  selVoice:0,
+  selPlacement:0,
+  ghosts:true,
+  motion:!matchMedia('(prefers-reduced-motion: reduce)').matches,
+  detail:false,
+  macros:Object.fromEntries(MACROS.map(m=>[m.key,0])),
+};
+
+const RECIPE_DEFAULTS={
+  density:6,grainSizeMs:150,timeSpray:0.3,sourceSpread:0,pitch:0,pitchJitter:0,
+  pan:0,gain:0.3,speed:1,reverse:false,reverseChance:0,
+  attack:0.02,decay:0.4,blur:0,shimmer:0,
+  posLFORate:0,posLFODepth:0,writeFollow:0,guard:0.02,
+  scanRate:0,scanDepth:0,cloudStyle:'classic',
+};
+
+function loadPreset(id){
+  const p=PRESETS[id];
+  state.presetId=id;
+  Object.assign(globalState,GLOBAL_DEFAULTS);
+  for(let i=0;i<4;i++)bindLane(i,'source-'+i);
+  syncSourceUI();
+  state.ghosts=false;
+  state.macros=Object.fromEntries(MACROS.map(m=>[m.key,0]));
+  state.voices=p.voices.map((v,i)=>{
+    const base={...RECIPE_DEFAULTS};
+    for(const k in base) if(v[k]!==undefined) base[k]=v[k];
+    return {
+      id:VOICE_META[i].id,color:VOICE_META[i].color,enabled:true,
+      mode:v.mode,
+      base,                    // authored values; macros never accumulate into these
+      recipe:{...base},
+      // Placement history is kept per mode so switching never destroys it (spec §13)
+      granularPlacements:v.placements.map(a=>place(a[0],a[1])),
+      cleanHead:place(v.placements[0][0],v.placements[0][1]),
+      phase:i*0.37,
+    };
+  });
+  state.selVoice=0;state.selPlacement=0;
+  particles.length=0;schedAccum.fill(0);
+  applyMacros();
+  document.getElementById('ghostBtn').classList.toggle('active',state.ghosts);
+  document.getElementById('ghostBtn').setAttribute('aria-pressed',state.ghosts);
+
+  buildRail();
+  syncMacroUI();
+  loadedName=p.label;loadedNote=sceneNotes[id];syncSceneMenu(id);markSceneLoaded();
+}
+
+/** One pass over the authored base. Re-running it is always idempotent. */
+function applyMacros(){
+  sceneCheckNeeded=true;
+  const {texture:T,complexity:C,darkness:D,chaos:X}=state.macros;
+  for(const v of state.voices){
+    const b=v.base,r=v.recipe;
+    for(const k in b) r[k]=b[k];
+    r.grainSizeMs   =clamp(b.grainSizeMs*(1+T*1.5)*(1+D*0.4),20,600);
+    r.blur          =clamp(b.blur+T*0.5+D*0.3,0,1);
+    r.decay         =b.decay*(1+T*1.1);
+    r.timeSpray     =clamp(b.timeSpray+T*0.2+X*0.28,0,1);
+    r.density       =clamp(b.density*(1+C*2.2),0.5,32);
+    r.posLFORate    =b.posLFORate+C*0.22;
+    r.posLFODepth   =clamp(b.posLFODepth+C*0.3,0,1);
+    r.pitchJitter   =clamp(b.pitchJitter+C*2.5+X*4,0,12);
+    r.pitch         =Math.round(clamp(b.pitch-D*7,-24,24));
+    r.reverseChance =clamp(b.reverseChance+X*0.55,0,1);
+    r.shimmer       =clamp(b.shimmer+X*0.35,0,1);
+    r.sourceSpread=0;
+    r.posLFORate+=state.macros.motion*.35;
+    r.posLFODepth=clamp(r.posLFODepth+state.macros.motion*.6,0,1);
+    r.blur=clamp(r.blur+state.macros.smear*.6,0,1);
+    r.timeSpray=clamp(r.timeSpray+state.macros.spray*.3,0,1);
+    r.shimmer=clamp(r.shimmer+state.macros.cloud*.6,0,1);
+    r.pitch=clamp(r.pitch+Math.round(state.macros.pitch*24),-24,24);
+    r.pitchJitter*=1-state.macros.chordBias;
+  }
+}
+
+const activePlacements=v=>v.mode==='clean'?[v.cleanHead]:v.granularPlacements.filter(p=>p.enabled);
+/** Invariant 7: the budget is divided, never multiplied. */
+const perEmitterDensity=v=>v.recipe.density/Math.max(1,activePlacements(v).length);
+
+/* ═══════════════════════════════════════════════════════════════
+   Voice rail (DOM)
+   ═══════════════════════════════════════════════════════════════ */
+const railEl=document.getElementById('rail');
+let railRefs=[];
+
+function buildRail(){
+  railEl.innerHTML='';railRefs=[];
+  state.voices.forEach((v,i)=>{
+    const el=document.createElement('div');
+    el.className='voice';el.style.setProperty('--vc',v.color);
+    el.innerHTML=`
+      <div class="vhead">
+        <div class="vbadge">${v.id}</div>
+        <div class="vname" data-role="name"></div>
+        <div class="seg">
+          <button data-mode="granular">Grain</button>
+          <button data-mode="clean">Clean</button>
+        </div>
+      </div>
+      <div class="budget">
+        <div class="budget-track" data-role="track"></div>
+        <div class="budget-cap"><span data-role="cap"></span></div>
+      </div>
+      <div class="padrow">
+        <div class="xypad" data-role="pad"><div class="xydot" data-role="dot"></div><span class="xytag">pan · level</span></div>
+        <div class="vtoggles">
+          <button class="tgl" data-role="rev">rev</button>
+          <button class="tgl" data-role="add">+ emit</button>
+        </div>
+      </div>`;
+    railEl.appendChild(el);
+
+    const refs={
+      el,
+      name:el.querySelector('[data-role=name]'),
+      track:el.querySelector('[data-role=track]'),
+      cap:el.querySelector('[data-role=cap]'),
+      pad:el.querySelector('[data-role=pad]'),
+      dot:el.querySelector('[data-role=dot]'),
+      rev:el.querySelector('[data-role=rev]'),
+      add:el.querySelector('[data-role=add]'),
+      segs:[],segCount:-1,
+    };
+    railRefs.push(refs);
+
+    el.tabIndex=0;el.setAttribute('aria-label',`Select voice ${v.id}`);
+    const select=()=>{state.selVoice=i;state.selPlacement=0;};
+    el.addEventListener('pointerdown',select);
+    el.addEventListener('keydown',e=>{if(e.target===el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select();}});
+    el.querySelectorAll('.seg button').forEach(b=>{
+      b.addEventListener('click',e=>{e.stopPropagation();setMode(i,b.dataset.mode);});
+    });
+    refs.rev.addEventListener('click',e=>{e.stopPropagation();v.base.reverseChance=v.recipe.reverseChance>0.5?0:1;applyMacros();});
+    refs.add.addEventListener('click',e=>{e.stopPropagation();addPlacement(i);});
+
+    // pan × level pad — one surface instead of two sliders
+    let padId=null;
+    const padMove=ev=>{
+      const r=refs.pad.getBoundingClientRect();
+      v.base.pan=clamp((ev.clientX-r.left)/r.width*2-1,-1,1);
+      v.base.gain=clamp(1-(ev.clientY-r.top)/r.height,0,1);
+      applyMacros();
+    };
+    refs.pad.addEventListener('pointerdown',ev=>{
+      ev.stopPropagation();padId=ev.pointerId;refs.pad.setPointerCapture(padId);
+      state.selVoice=i;state.selPlacement=0;padMove(ev);
+    });
+    refs.pad.addEventListener('pointermove',ev=>{if(padId===ev.pointerId)padMove(ev);});
+    refs.pad.addEventListener('pointerup',ev=>{if(padId===ev.pointerId)padId=null;});
+    refs.pad.addEventListener('pointercancel',()=>{padId=null;});
+  });
+}
+
+function setMode(i,mode){
+  const v=state.voices[i];if(v.mode===mode)return;
+  if(mode==='clean'){
+    if(!v.base.scanRate){v.base.scanRate=0.2;v.base.scanDepth=0.7;applyMacros();}
+  }else if(!v.granularPlacements.length){
+    v.granularPlacements=[place(v.cleanHead.sourceX,v.cleanHead.timeY)];
+  }
+  v.mode=mode;state.selVoice=i;state.selPlacement=0;
+}
+
+function addPlacement(i){
+  const v=state.voices[i];
+  if(v.mode==='clean'||v.granularPlacements.length>=MAX_PLACEMENTS)return;
+  const last=v.granularPlacements[v.granularPlacements.length-1];
+  v.granularPlacements.push(place(clamp(last.sourceX+1,0,3),clamp(last.timeY-0.18,0.02,0.98)));
+  state.selVoice=i;state.selPlacement=v.granularPlacements.length-1;
+}
+
+function removePlacement(vi,pi){
+  const v=state.voices[vi];
+  if(v.mode==='clean'||v.granularPlacements.length<=1)return;
+  v.granularPlacements.splice(pi,1);
+  state.selPlacement=Math.min(state.selPlacement,v.granularPlacements.length-1);
+}
+
+function updateRail(now){
+  state.voices.forEach((v,i)=>{
+    const r=railRefs[i];if(!r)return;
+    const sel=state.selVoice===i;
+    r.el.classList.toggle('sel',sel);
+    r.el.classList.toggle('off',!v.enabled);
+    const n=activePlacements(v).length;
+    const per=perEmitterDensity(v);
+
+    r.name.textContent=v.mode==='clean'
+      ? 'Clean' : 'Grain';
+
+    r.el.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===v.mode));
+    r.rev.classList.toggle('on',v.recipe.reverseChance>0.5);
+    r.add.disabled=v.mode==='clean'||v.granularPlacements.length>=MAX_PLACEMENTS;
+    r.add.style.opacity=r.add.disabled?0.3:1;
+
+    // rebuild segments only when the count changes
+    if(r.segCount!==n||r.cleanFlag!==(v.mode==='clean')){
+      r.track.innerHTML='';r.segs=[];r.segCount=n;r.cleanFlag=v.mode==='clean';
+      for(let k=0;k<n;k++){
+        const s=document.createElement('div');
+        s.className='bseg'+(v.mode==='clean'?' clean':'');
+        s.innerHTML='<b></b>';
+        r.track.appendChild(s);r.segs.push({el:s,label:s.querySelector('b')});
+      }
+    }
+    r.segs.forEach(s=>{
+      s.label.textContent=v.mode==='clean'?'HEAD':per.toFixed(per<10?1:0);
+    });
+    r.cap.innerHTML=v.mode==='clean'
+      ? `1 continuous head <b>· ${(v.recipe.gain*100)|0}%</b>`
+      : `${v.recipe.density.toFixed(1)} gr/s ÷ ${n} <b>= ${per.toFixed(per<10?1:0)} each</b>`;
+
+    r.dot.style.left=((v.recipe.pan+1)/2*100)+'%';
+    r.dot.style.top=((1-v.recipe.gain)*100)+'%';
+  });
+
+
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Lane strip (DOM)
+   ═══════════════════════════════════════════════════════════════ */
+const lanesEl=document.getElementById('lanes');
+LANES.forEach((L,i)=>{
+  const b=document.createElement('button');
+  b.className='lane'+(L.kind==='live'?' live':'');
+  b.style.setProperty('--lc',L.color);
+  b.innerHTML=`<strong><i></i>${L.name}</strong><span data-role="sub">${L.sub}</span>`;
+  lanesEl.appendChild(b);
+  b.addEventListener('click',()=>{const v=state.voices[state.selVoice];const p=v.mode==='clean'?v.cleanHead:v.granularPlacements[state.selPlacement];if(p)p.sourceX=i;});
+});
+const laneSubs=[...lanesEl.querySelectorAll('[data-role=sub]')];
+
+/* ═══════════════════════════════════════════════════════════════
+   Grain scheduling — ONE scheduler per Voice (spec §24)
+   ═══════════════════════════════════════════════════════════════ */
+const particles=[];
+const schedAccum=[0,0,0,0];
+
+function scheduleVoice(v,vi,dt,now){
+  if(v.mode!=='granular'||!v.enabled)return;
+  const places=activePlacements(v);if(!places.length)return;
+  const R=v.recipe;
+  const interval=(R.timing==='Tempo'?({'1/4':.5,'1/8':.25,'1/16':.125,'1/32':.0625,'1/64':.03125,'1/8T':1/6}[R.division]):1/Math.max(0.25,R.density))*(1+(Math.random()-.5)*R.timingSpray);
+  schedAccum[vi]+=dt;
+  let guard=0;
+  while(schedAccum[vi]>=interval&&guard++<8){
+    schedAccum[vi]-=interval;
+    const k=(Math.random()*places.length)|0;      // equal weight, spec §10.2
+    const p=places[k];
+    const o=styleOffset(R.cloudStyle,now+p.phase,Math.random);
+    const sx=p.sourceX;
+    const bounds=windowBounds(v,p,now);
+    const ty=clamp(bounds.center+o.dy*bounds.half,bounds.low,bounds.high);
+    const shimmer=Math.random()<R.shimmer;
+    if(particles.length<Math.min(MAX_PARTICLES,globalState.maxGrains)){
+      particles.push({
+        vi,sx,ty,startTy:ty,placementId:p.id,spawnLow:bounds.low,spawnHigh:bounds.high,
+        life:0,dur:Math.max(.35,R.grainSizeMs/1000),visualX:(Math.random()-.5)*.7,
+        atk:R.attack/Math.max(0.001,R.attack+R.decay),
+        size:R.grainSizeMs,
+        pitch:R.pitch+(shimmer?12:0)+(Math.random()*2-1)*R.pitchJitter,
+        drift:(Math.random()<R.reverseChance?-1:1)*(R.speed||1)*0.006,
+        blur:R.blur,
+      });
+    }
+  }
+}
+
+function stepParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life+=dt/p.dur;
+    p.ty=clamp(p.ty+p.drift*dt*10,0,1);
+    if(p.life>=1)particles.splice(i,1);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Field canvas
+   ═══════════════════════════════════════════════════════════════ */
+const cv=document.getElementById('field');
+const ctx=cv.getContext('2d');
+let CW=0,CH=0;
+const F={x:0,y:0,w:0,h:0,laneW:0};
+
+function resize(){
+  visualDirty=true;
+  const dpr=Math.min(devicePixelRatio||1,2);
+  const r=cv.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width*dpr)),h=Math.max(1,Math.round(r.height*dpr));
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  CW=r.width;CH=r.height;
+  F.x=96;F.y=34;F.w=CW-F.x-14;F.h=CH-F.y-34;F.laneW=F.w/4;
+}
+new ResizeObserver(resize).observe(cv);
+
+const xOf=sx=>F.x+F.laneW*(sx+0.5);
+const yOf=ty=>F.y+ty*F.h;
+const sxOf=x=>clamp((x-F.x)/F.laneW-0.5,0,3);
+const tyOf=y=>clamp((y-F.y)/F.h,0,1);
+
+/** Clean heads move; granular anchors don't. Resolved live, never stored (spec §23). */
+const scanOmega=v=>v.recipe.scanRate*0.9;
+const scanCycle=v=>v.recipe.scanRate>0.001?TAU/scanOmega(v):Infinity;
+const driftOmega=v=>v.recipe.posLFORate*1.6;
+const driftCycle=v=>v.recipe.posLFORate>0.004?TAU/driftOmega(v):Infinity;
+
+let NOW_T=0;   // render clock, so drawn geometry and hit-testing always agree
+
+/** Authored timeY, pulled toward NOW by write-follow, then swung by the drift LFO. */
+function resolvedAnchorY(v,p,t){
+  const R=v.recipe;
+  let ty=p.timeY;
+  if(p.sourceX===0&&R.writeFollow>0.001)ty=lerp(ty,1-R.guard,R.writeFollow);
+  if(state.motion&&R.posLFORate>0.004&&R.posLFODepth>0.001)
+    ty+=Math.sin(t*driftOmega(v)+p.phase)*R.posLFODepth*0.5;
+  return clamp(ty-(p.sourceX===0?R.lookback*.5*R.writeFollow:0),0,1);
+}
+
+function resolvedHead(v,t){
+  const h=v.cleanHead;
+  if(!state.motion||!v.recipe.scanRate)return {sourceX:h.sourceX,timeY:h.timeY,dir:1,vel:0};
+  const w=t*scanOmega(v)+v.phase*TAU;
+  const off=Math.sin(w)*v.recipe.scanDepth*0.5;
+  return {sourceX:h.sourceX,timeY:clamp(h.timeY+off,0,1),dir:Math.cos(w)>=0?1:-1,vel:Math.cos(w)*v.recipe.scanDepth};
+}
+
+/* ── waveform painting ──────────────────────────────────────────
+   Every read in this UI is drawn as the actual slice of waveform it
+   touches, so "where is this pulling from" is never a symbol. */
+const laneHalf=()=>(F.laneW-14)*0.42;
+
+function waveShape(i,ty0,ty1){
+  const cx=xOf(i),half=laneHalf();
+  const a=clamp(Math.min(ty0,ty1),0,1),b=clamp(Math.max(ty0,ty1),0,1);
+  const rows=Math.max(2,Math.min(240,Math.round((b-a)*F.h/2.5)));
+  ctx.beginPath();
+  for(let r=0;r<=rows;r++){
+    const ty=a+(b-a)*r/rows;
+    if(r===0)ctx.moveTo(cx+readSource(i,ty)*half,F.y+ty*F.h);
+    else ctx.lineTo(cx+readSource(i,ty)*half,F.y+ty*F.h);
+  }
+  for(let r=rows;r>=0;r--){
+    const ty=a+(b-a)*r/rows;
+    ctx.lineTo(cx-readSource(i,ty)*half,F.y+ty*F.h);
+  }
+  ctx.closePath();
+}
+
+// One normalized region is used for both new grain starts and the visible window.
+function windowBounds(v,p,t=NOW_T){
+  const center=v.mode==='clean'?p.timeY:resolvedAnchorY(v,p,t);
+  const half=v.mode==='clean'?v.recipe.scanDepth*.5:v.recipe.timeSpray*.22;
+  const limit=p.sourceX===0&&v.mode!=='clean'?1-v.recipe.guard:1;
+  return {center:clamp(center,0,limit),low:clamp(center-half,0,limit),high:clamp(center+half,0,limit),half};
+}
+function reachOf(v,p){
+  const B=windowBounds(v,p),cx=xOf(p.sourceX),cy=yOf(B.center),halfW=laneHalf()+7;
+  return {cx,cy,halfW,halfH:B.half*F.h,x0:cx-halfW,x1:cx+halfW,y0:yOf(B.low),y1:yOf(B.high)};
+}
+
+function laneOverlap(i,cx,halfW){
+  const l0=F.x+F.laneW*i,l1=l0+F.laneW;
+  const o=Math.min(l1,cx+halfW)-Math.max(l0,cx-halfW);
+  return clamp(o/F.laneW,0,1);
+}
+
+function drawLanes(){
+  const {x,y,w,h,laneW}=F;
+  for(let i=0;i<4;i++){
+    const cx=xOf(i),lc=LANES[i].color,src=sources[i];
+    const isLive=LANES[i].kind==='live';
+    ctx.fillStyle=rgba(lc,0.022);
+    ctx.fillRect(x+laneW*i+2,y,laneW-4,h);
+    ctx.strokeStyle=rgba(lc,src.frozen?0.3:0.1);
+    ctx.lineWidth=1;
+    ctx.strokeRect(x+laneW*i+2.5,y+.5,laneW-5,h-1);
+
+    waveShape(i,0,1);
+    ctx.fillStyle=rgba(lc,0.16);ctx.fill();
+
+    ctx.fillStyle=rgba(lc,0.8);
+    ctx.font='600 11px ui-monospace,Menlo,monospace';
+    ctx.textAlign='center';ctx.textBaseline='alphabetic';
+    ctx.fillText(LANES[i].name,cx,y-16);
+    ctx.fillStyle=rgba(lc,0.32);
+    ctx.font='10px -apple-system,sans-serif';
+    
+
+    if(isLive){
+      ctx.strokeStyle=src.frozen?rgba('#B8E0FF',0.85):'rgba(255,255,255,.7)';
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x+laneW*i+3,y+h-1);ctx.lineTo(x+laneW*i+laneW-3,y+h-1);ctx.stroke();
+    }
+  }
+
+  ctx.textAlign='right';ctx.font='10px -apple-system,sans-serif';
+  ctx.fillStyle='rgba(247,250,252,.32)';
+  ctx.fillText('START',x-8,y+7);
+  ctx.fillText('END',x-8,y+h);
+  drawCoverageRuler();
+
+  if(state.ghosts){
+    ctx.strokeStyle='rgba(247,250,252,.06)';ctx.lineWidth=1;ctx.setLineDash([2,5]);
+    ctx.beginPath();
+    for(let s=0;s<=16;s++){const yy=Math.round(y+(s/16)*h)+.5;ctx.moveTo(x,yy);ctx.lineTo(x+w,yy);}
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(247,250,252,.16)';ctx.font='6px ui-monospace,Menlo,monospace';ctx.textAlign='left';
+    for(let s=0;s<16;s+=4)ctx.fillText('old slice '+s,x+4,y+(s/16)*h+8);
+  }
+}
+
+/** Four columns in the margin: which stretch of time each Voice covers, side by side. */
+function drawCoverageRuler(){
+  const x0=8,colW=6,gap=2;
+  ctx.textAlign='center';ctx.textBaseline='alphabetic';
+  state.voices.forEach((v,vi)=>{
+    const cx=x0+vi*(colW+gap);
+    const sel=state.selVoice===vi;
+    ctx.fillStyle='rgba(255,255,255,.045)';
+    ctx.fillRect(cx,F.y,colW,F.h);
+    if(v.enabled)for(const p of activePlacements(v)){
+      const R=reachOf(v,p);
+      ctx.fillStyle=rgba(v.color,sel?0.95:0.5);
+      ctx.fillRect(cx,clamp(R.y0,F.y,F.y+F.h),colW,clamp(R.y1-R.y0,3,F.h));
+    }
+    ctx.font=sel?'700 8px ui-monospace,Menlo,monospace':'8px ui-monospace,Menlo,monospace';
+    ctx.fillStyle=rgba(v.color,sel?1:0.5);
+    ctx.fillText(v.id,cx+colW/2,F.y-7);
+  });
+}
+
+/** The strip next to NOW that the selected voice is told to stay out of. */
+function drawGuard(){
+  const v=state.voices[state.selVoice];
+  if(!v||v.mode==='clean'||selectedPlacement().sourceX!==0||v.recipe.guard<0.005)return;
+  const gh=v.recipe.guard*F.h,y0=F.y+F.h-gh;
+  ctx.save();
+  ctx.beginPath();ctx.rect(F.x,y0,F.laneW,gh);ctx.clip();
+  ctx.strokeStyle='rgba(255,255,255,.09)';ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let x=F.x-gh;x<F.x+F.laneW;x+=7){ctx.moveTo(x,y0+gh);ctx.lineTo(x+gh,y0);}
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle='rgba(255,255,255,.16)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(F.x,y0+.5);ctx.lineTo(F.x+F.laneW,y0+.5);ctx.stroke();
+  ctx.fillStyle='rgba(247,250,252,.3)';ctx.font='10px -apple-system,sans-serif';ctx.textAlign='right';
+  ctx.fillText('WRITE GUARD',F.x+F.laneW-4,y0-3);
+}
+
+/** Lights the material the selected voice reaches; others keep their anchor line. */
+function drawReach(){
+  for(const v of state.voices){
+  if(!v.enabled)continue;
+  for(const p of activePlacements(v)){
+  const focus=v===state.voices[state.selVoice]&&p===selectedPlacement();
+    const R=reachOf(v,p);
+    ctx.save();
+    ctx.beginPath();ctx.rect(R.x0,R.y0,R.x1-R.x0,R.y1-R.y0);ctx.clip();
+    for(let i=0;i<4;i++){
+      const o=laneOverlap(i,R.cx,R.halfW);
+      if(o<0.02)continue;
+      waveShape(i,(R.y0-F.y)/F.h,(R.y1-F.y)/F.h);
+      ctx.fillStyle=rgba(v.color,(focus?.3:.035)*Math.min(1,o*2.5));
+      ctx.fill();
+    }
+    ctx.restore();
+    const ty0=clamp(R.y0,F.y,F.y+F.h),ty1=clamp(R.y1,F.y,F.y+F.h);
+    ctx.strokeStyle=rgba(v.color,focus?.8:.1);ctx.lineWidth=focus?1.5:1;
+    ctx.strokeRect(R.x0+.5,ty0+.5,R.x1-R.x0-1,Math.max(1,ty1-ty0-1));
+    if(p===selectedPlacement()&&v.mode!=='clean'&&(state.detail||document.getElementById('motionControls').closest('details').open))drawTravel(v,p,R);
+  }
+  }
+}
+
+/** Detail layer: how far the window will wander, and where it was authored. */
+function drawTravel(v,p,R){
+  const r=v.recipe,c=v.color;
+  if(p.sourceX===0&&r.writeFollow>.005){
+    const x=R.x1-8;
+    ctx.strokeStyle=rgba('#B8E0FF',.45);ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(x,R.cy);ctx.lineTo(x,yOf(1-r.guard));ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=rgba('#B8E0FF',.7);ctx.font='9px sans-serif';ctx.textAlign='right';
+    ctx.fillText('lookback '+((1-r.guard-windowBounds(v,p).center)*BUFFER_SECONDS).toFixed(1)+'s',x-4,clamp(R.cy+12,F.y+12,F.y+F.h-12));
+  }
+  if(r.posLFORate>.004&&r.posLFODepth>.001){
+    const mid=p.sourceX===0?lerp(p.timeY,1-r.guard,r.writeFollow)-r.lookback*.5*r.writeFollow:p.timeY;
+    const lo=clamp(mid-r.posLFODepth*.5-r.timeSpray*.22),hi=clamp(mid+r.posLFODepth*.5+r.timeSpray*.22);
+    ctx.strokeStyle=rgba(c,.2);ctx.setLineDash([2,5]);ctx.strokeRect(R.x0-2,yOf(lo),R.x1-R.x0+4,(hi-lo)*F.h);ctx.setLineDash([]);
+  }
+}
+
+/** Each live grain is drawn as the chunk of waveform it is actually reading. */
+// Express sound through existing grain marks; lane/window colors retain voice identity.
+function grainAppearance(v,g){
+  const r=v.recipe,attack=clamp(r.attack/Math.max(.001,r.attack+r.decay),.02,.98);
+  const envelope=g.life<attack?g.life/attack:(1-g.life)/(1-attack);
+  const stereo=clamp(r.pan*.75+g.visualX*(.25+r.stereoSpread*.65),-.85,.85);
+  return {x:xOf(g.sx)+stereo*laneHalf(),alpha:clamp(envelope)*Math.sqrt(r.gain),halo:4+r.blur*9,tint:pitchTint(v.color,g.pitch).map(Math.round)};
+}
+function drawGrains(){
+  ctx.save();ctx.beginPath();ctx.rect(F.x,F.y,F.w,F.h);ctx.clip();
+  for(const g of particles){
+    const v=state.voices[g.vi];if(!v?.enabled)continue;
+    const p=activePlacements(v).find(p=>p.id===g.placementId);
+    if(!p)continue;
+    const B=windowBounds(v,p),outside=g.ty<B.low||g.ty>B.high||p.sourceX!==g.sx;
+    const style=grainAppearance(v,g);
+    const alpha=style.alpha*(outside?.12:1)*(state.selVoice===g.vi?1:.4);
+    const x=style.x,y=yOf(g.ty),h=Math.max(6,grainHeightPx(g.size));
+    const tint=`rgba(${style.tint.join(',')},`;
+    ctx.fillStyle=tint+(alpha*.2)+')';ctx.fillRect(x-style.halo,y-h,style.halo*2,h*2);
+    ctx.fillStyle=tint+alpha+')';ctx.fillRect(x-3,y-h/2,6,h);
+    ctx.strokeStyle=rgba(v.color,alpha*.35);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,yOf(g.startTy));ctx.lineTo(x,y);ctx.stroke();
+    ctx.fillStyle=`rgba(255,255,255,${alpha*.85})`;ctx.fillRect(x-4,y-h/2,8,2);
+  }
+  ctx.restore();
+}
+
+function drawEmitter(v,vi,p,pi){
+  const selected=state.selVoice===vi&&state.selPlacement===pi;
+  const R=reachOf(v,p),y=yOf(p.timeY),c=v.color;
+  // The authored anchor never moves with follow/drift. Playback is a separate dashed line.
+  ctx.strokeStyle=rgba(c,selected?.95:.25);ctx.lineWidth=selected?2:1;
+  ctx.beginPath();ctx.moveTo(R.x0,y);ctx.lineTo(R.x1,y);ctx.stroke();
+  if(selected){
+    const read=yOf(windowBounds(v,p).center);
+    ctx.setLineDash([4,4]);ctx.strokeStyle='#B8E0FF';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(R.x0,read);ctx.lineTo(R.x1,read);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle=rgba(c,.35);ctx.beginPath();ctx.moveTo(R.x1-5,y);ctx.lineTo(R.x1-5,read);ctx.stroke();
+    ctx.fillStyle=c;ctx.font='10px ui-monospace,monospace';ctx.textAlign='left';
+    ctx.fillText(v.id+(pi+1),R.x0+4,clamp(y-6,F.y+12,F.y+F.h-6));
+  }
+}
+function selectedPlacement(){const v=state.voices[state.selVoice];return v.mode==='clean'?v.cleanHead:v.granularPlacements[state.selPlacement];}
+function drawPositionHandle(){
+  const v=state.voices[state.selVoice],p=selectedPlacement();if(!p)return;
+  const y=yOf(p.timeY),x=48;
+  ctx.strokeStyle=rgba(v.color,.22);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,F.y);ctx.lineTo(x,F.y+F.h);ctx.stroke();
+  ctx.fillStyle=v.color;ctx.beginPath();ctx.roundRect(x-13,y-10,26,20,5);ctx.fill();
+  ctx.fillStyle='#100f0e';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('↕',x,y);ctx.textBaseline='alphabetic';
+}
+
+function windowHandles(){
+  const v=state.voices[state.selVoice],p=selectedPlacement(),R=reachOf(v,p);
+  return [{kind:'top',x:R.x1-12,y:R.y0},{kind:'bottom',x:R.x1-12,y:R.y1}];
+}
+function drawWindowHandles(){
+  const v=state.voices[state.selVoice];if(!v.enabled)return;
+  ctx.fillStyle=v.color;
+  for(const h of windowHandles()){
+    ctx.beginPath();ctx.roundRect(h.x-10,h.y-5,20,10,3);ctx.fill();
+    ctx.strokeStyle='#100f0e';ctx.beginPath();ctx.moveTo(h.x-5,h.y);ctx.lineTo(h.x+5,h.y);ctx.stroke();
+  }
+  if(positionDrag&&positionDrag.kind!=='anchor'){
+    const R=reachOf(v,selectedPlacement());ctx.fillStyle=v.color;ctx.font='11px monospace';ctx.textAlign='right';ctx.fillText(((R.y1-R.y0)/F.h*BUFFER_SECONDS).toFixed(2)+' s',R.x1-28,clamp(R.cy,F.y+14,F.y+F.h-4));
+  }
+}
+
+function drawCleanHead(v,vi,t){
+  const focus=state.selVoice===vi;
+  const c=v.color,a=focus?1:0.42;
+  const R=reachOf(v,v.cleanHead);
+  const r=resolvedHead(v,t);
+  const li=Math.round(v.cleanHead.sourceX);
+  const hyy=yOf(r.timeY);
+
+  // the audio actually under the head right now
+  const slab=10/F.h;
+  waveShape(li,r.timeY-slab/2,r.timeY+slab/2);
+  ctx.fillStyle=rgba(c,0.95*a);ctx.fill();
+
+  ctx.setLineDash([4,4]);ctx.strokeStyle=rgba('#B8E0FF',a);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(R.x0,hyy);ctx.lineTo(R.x1,hyy);ctx.stroke();ctx.setLineDash([]);
+
+  // anchor: the centre the sweep swings around
+  ctx.strokeStyle=rgba(c,.9*a);ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(R.x0,R.cy);ctx.lineTo(R.x1,R.cy);ctx.stroke();ctx.setLineDash([]);
+
+  const px=lerp(R.x0,R.x1,(v.recipe.pan+1)/2);
+  ctx.fillStyle=rgba(c,a);
+  ctx.beginPath();ctx.arc(px,hyy,4.2,0,TAU);ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=1.2;
+  ctx.beginPath();
+  ctx.moveTo(px,hyy+r.dir*10);ctx.lineTo(px-3.6,hyy+r.dir*5);
+  ctx.moveTo(px,hyy+r.dir*10);ctx.lineTo(px+3.6,hyy+r.dir*5);
+  ctx.stroke();
+
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  ctx.font='600 11px ui-monospace,Menlo,monospace';
+  ctx.fillStyle=rgba(c,0.95*a);
+  const ly=clamp(R.y0-5,F.y+9,F.y+F.h-4);
+  ctx.fillText(v.id,R.x0+4,ly);
+  ctx.font='8px -apple-system,sans-serif';
+  ctx.fillStyle=rgba(c,0.5*a);
+  ctx.fillText(`1 head sweeping ${LANES[li].name}`,R.x0+18,ly);
+
+
+}
+
+function render(t){
+  NOW_T=t;
+  ctx.clearRect(0,0,CW,CH);
+  drawLanes();
+  drawGuard();
+  drawReach();
+  drawGrains();
+  const order=state.voices.map((_,i)=>i).sort((a,b)=>(a===state.selVoice?1:0)-(b===state.selVoice?1:0));
+  for(const vi of order){
+    const v=state.voices[vi];if(!v.enabled)continue;
+    if(v.mode==='clean')drawCleanHead(v,vi,t);
+    else v.granularPlacements.forEach((p,pi)=>{if(p.enabled)drawEmitter(v,vi,p,pi);});
+  }
+  drawPositionHandle();drawWindowHandles();
+}
+
+// Only the isolated position handle is draggable. Waveform clicks never select or edit.
+function localPt(ev){const r=cv.getBoundingClientRect();return {x:ev.clientX-r.left,y:ev.clientY-r.top};}
+let positionDrag=null;
+cv.addEventListener('pointerdown',ev=>{
+  const {x,y}=localPt(ev),p=selectedPlacement(),v=state.voices[state.selVoice];if(!p||!v.enabled)return;
+  const anchor=Math.abs(x-48)<=20&&Math.abs(y-yOf(p.timeY))<=20;
+  const handle=windowHandles().filter(h=>Math.abs(x-h.x)<=20&&Math.abs(y-h.y)<=14).sort((a,b)=>Math.abs(a.y-y)-Math.abs(b.y-y))[0];
+  if(!anchor&&!handle)return;
+  ev.preventDefault();cv.setPointerCapture(ev.pointerId);
+  positionDrag={id:ev.pointerId,p,kind:anchor?'anchor':handle.kind,offset:y-yOf(p.timeY),x,source:p.sourceX,center:windowBounds(v,p).center};
+});
+cv.addEventListener('pointermove',ev=>{
+  if(!positionDrag||positionDrag.id!==ev.pointerId)return;
+  const {x,y}=localPt(ev),d=positionDrag,v=state.voices[state.selVoice];
+  if(d.kind==='anchor'){
+    d.p.timeY=tyOf(y-d.offset);
+  }else{
+    const half=Math.max(0,d.kind==='top'?d.center-tyOf(y):tyOf(y)-d.center);
+    if(v.mode==='clean')v.base.scanDepth=clamp(half*2);
+    else v.base.timeSpray=clamp(half/.22-state.macros.texture*.2-state.macros.chaos*.28-state.macros.spray*.3);
+    applyMacros();
+  }
+  visualDirty=true;syncInspector();
+});
+function endDrag(ev){if(positionDrag?.id===ev.pointerId)positionDrag=null;}
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);cv.addEventListener('lostpointercapture',endDrag);
+
+/** LIVE is addressed backwards from NOW; a static source is addressed forwards from its start. */
+function timeLabel(p){
+  const li=Math.round(p.sourceX);
+  return LANES[li].kind==='live'
+    ? `${((1-p.timeY)*BUFFER_SECONDS).toFixed(2)}s ago`
+    : `${(p.timeY*BUFFER_SECONDS).toFixed(2)}s in`;
+}
+
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Grain inspector — the character params that have no position
+   ═══════════════════════════════════════════════════════════════ */
+const gv=document.getElementById('grainView');
+const gctx=gv.getContext('2d');
+let GW=0,GH=0;
+function resizeGrain(){
+  const dpr=Math.min(devicePixelRatio||1,2),r=gv.getBoundingClientRect();
+  gv.width=Math.max(1,Math.round(r.width*dpr));gv.height=Math.max(1,Math.round(r.height*dpr));
+  gctx.setTransform(dpr,0,0,dpr,0,0);GW=r.width;GH=r.height;
+}
+new ResizeObserver(resizeGrain).observe(gv);
+
+/** Layout is shared by the renderer and the hit test so the handles are where they look.
+    Three zones left to right: the grain body, the blur tail, the octave gutter. */
+const GRAIN_TAIL=30,GRAIN_GUTTER=28,GRAIN_PAD=12;
+function grainLayout(){
+  const v=state.voices[state.selVoice];
+  const r=v.recipe;
+  const x0=GRAIN_PAD,x1=GW-GRAIN_PAD-GRAIN_TAIL-GRAIN_GUTTER;
+  const base=GH-22,top=16;
+  const total=Math.max(0.05,r.attack+r.decay);
+  const ax=x0+(x1-x0)*clamp(r.attack/total,0.02,0.98);
+  const tail=r.blur*GRAIN_TAIL;
+  const gx=GW-GRAIN_PAD-GRAIN_GUTTER/2;
+  return {v,r,x0,x1,base,top,ax,tail,gx,total,
+    atkH:{x:ax-9,y:top-9,w:18,h:18},
+    tailH:{x:x1+tail-8,y:base-8,w:16,h:16},
+    shimH:{x:gx-8,y:base-r.shimmer*(base-top)-8,w:16,h:16}};
+}
+
+function drawGrainView(){
+  if(!GW||!state.voices.length)return;
+  const L=grainLayout(),{v,r}=L;
+  const c=v.color;
+  gctx.clearRect(0,0,GW,GH);
+
+  // the source material this grain sits on, magnified
+  const p=v.mode==='clean'?v.cleanHead:v.granularPlacements[Math.min(state.selPlacement,v.granularPlacements.length-1)];
+  if(p){
+    const li=Math.round(p.sourceX),ty=resolvedAnchorY(v,p,NOW_T);
+    const span=(r.grainSizeMs/1000)/BUFFER_SECONDS;
+    gctx.beginPath();
+    const n=48;
+    for(let i=0;i<=n;i++){
+      const s=readSource(li,clamp(ty-span/2+span*(i/n),0,1));
+      const x=L.x0+(L.x1-L.x0)*(i/n);
+      if(i===0)gctx.moveTo(x,L.base-s*(L.base-L.top));else gctx.lineTo(x,L.base-s*(L.base-L.top));
+    }
+    gctx.lineTo(L.x1,L.base);gctx.lineTo(L.x0,L.base);gctx.closePath();
+    gctx.fillStyle='rgba(255,255,255,.08)';gctx.fill();
+  }
+
+  // blur tail: the smear that outlives the grain body
+  if(L.tail>1){
+    const g=gctx.createLinearGradient(L.x1,0,L.x1+L.tail,0);
+    g.addColorStop(0,rgba(c,0.4));g.addColorStop(1,rgba(c,0));
+    gctx.fillStyle=g;gctx.fillRect(L.x1,L.top+6,L.tail,L.base-L.top-6);
+  }
+
+  // the envelope itself
+  gctx.beginPath();
+  gctx.moveTo(L.x0,L.base);gctx.lineTo(L.ax,L.top);gctx.lineTo(L.x1,L.base);
+  gctx.closePath();
+  gctx.fillStyle=rgba(c,0.22);gctx.fill();
+  gctx.strokeStyle=rgba(c,0.9);gctx.lineWidth=1.6;
+  gctx.beginPath();gctx.moveTo(L.x0,L.base);gctx.lineTo(L.ax,L.top);gctx.lineTo(L.x1,L.base);gctx.stroke();
+
+  // octave gutter: a second, quieter grain twelve semitones up
+  gctx.strokeStyle='rgba(255,255,255,.09)';gctx.lineWidth=1;
+  gctx.beginPath();gctx.moveTo(L.gx,L.top);gctx.lineTo(L.gx,L.base);gctx.stroke();
+  if(r.shimmer>0.01){
+    const gy=L.base-r.shimmer*(L.base-L.top);
+    gctx.strokeStyle=rgba(c,0.2+r.shimmer*0.5);gctx.lineWidth=1;gctx.setLineDash([2,3]);
+    gctx.beginPath();
+    gctx.moveTo(L.x0,L.base);gctx.quadraticCurveTo(L.ax,gy,L.x1,L.base);
+    gctx.stroke();gctx.setLineDash([]);
+  }
+
+  gctx.strokeStyle='rgba(255,255,255,.12)';gctx.lineWidth=1;
+  gctx.beginPath();gctx.moveTo(L.x0,L.base+.5);gctx.lineTo(L.x1+GRAIN_TAIL,L.base+.5);gctx.stroke();
+
+  for(const h of [L.atkH,L.tailH,L.shimH]){
+    gctx.fillStyle='rgba(16,15,14,.94)';gctx.strokeStyle=rgba(c,0.8);gctx.lineWidth=1.2;
+    gctx.beginPath();gctx.arc(h.x+h.w/2,h.y+h.h/2,h.w/2,0,TAU);gctx.fill();gctx.stroke();
+  }
+
+  gctx.font='8px ui-monospace,Menlo,monospace';gctx.textBaseline='alphabetic';
+  gctx.fillStyle='rgba(247,250,252,.45)';
+  gctx.textAlign='left';
+  gctx.fillText(`rise ${((r.attack/L.total)*100)|0}%`,L.x0,GH-7);
+  gctx.textAlign='center';
+  gctx.fillText(`${r.grainSizeMs|0} ms`,(L.x0+L.x1)/2,GH-7);
+  gctx.fillText(`blur ${(r.blur*100)|0}%`,L.x1+GRAIN_TAIL/2,GH-7);
+  gctx.fillStyle='rgba(247,250,252,.32)';
+  gctx.fillText('8ve',L.gx,GH-7);
+}
+
+const GRAIN_PAD_HIT=12;
+let gDrag=null;
+gv.addEventListener('pointerdown',ev=>{
+  ev.preventDefault();gv.setPointerCapture(ev.pointerId);
+  const r=gv.getBoundingClientRect(),x=ev.clientX-r.left,y=ev.clientY-r.top;
+  const L=grainLayout();
+  // right to left: the specific gutters win before the wide envelope peak
+  for(const k of ['shimH','tailH','atkH']){
+    const h=L[k];
+    if(x>=h.x-GRAIN_PAD_HIT&&x<=h.x+h.w+GRAIN_PAD_HIT&&y>=h.y-GRAIN_PAD_HIT&&y<=h.y+h.h+GRAIN_PAD_HIT){
+      gDrag={k};break;
+    }
+  }
+});
+gv.addEventListener('pointermove',ev=>{
+  if(!gDrag)return;
+  const r=gv.getBoundingClientRect(),x=ev.clientX-r.left,y=ev.clientY-r.top;
+  const L=grainLayout(),b=state.voices[state.selVoice].base;
+  switch(gDrag.k){
+    case 'atkH':{
+      const f=clamp((x-L.x0)/Math.max(1,L.x1-L.x0),0.02,0.98);
+      b.attack=L.total*f;b.decay=L.total*(1-f);break;
+    }
+    case 'tailH':b.blur=clamp((x-L.x1)/GRAIN_TAIL,0,1);break;
+    case 'shimH':b.shimmer=clamp((L.base-y)/Math.max(1,L.base-L.top),0,1);break;
+  }
+  applyMacros();
+});
+const endGrain=()=>{gDrag=null;};
+gv.addEventListener('pointerup',endGrain);
+gv.addEventListener('pointercancel',endGrain);
+
+/* ═══════════════════════════════════════════════════════════════
+   Scatter pattern — pick the distribution by looking at it
+   ═══════════════════════════════════════════════════════════════ */
+const sv=document.getElementById('styleView');
+const sctx=sv.getContext('2d');
+let SW=0,SH=0;
+function resizeStyle(){
+  const dpr=Math.min(devicePixelRatio||1,2),r=sv.getBoundingClientRect();
+  sv.width=Math.max(1,Math.round(r.width*dpr));sv.height=Math.max(1,Math.round(r.height*dpr));
+  sctx.setTransform(dpr,0,0,dpr,0,0);SW=r.width;SH=r.height;
+}
+new ResizeObserver(resizeStyle).observe(sv);
+
+function styleCells(){
+  const cols=3,rows=2,pad=6,gap=6;
+  const w=(SW-pad*2-gap*(cols-1))/cols,h=(SH-pad*2-gap*(rows-1))/rows;
+  return CLOUD_STYLES.map((s,i)=>({
+    style:s,x:pad+(i%cols)*(w+gap),y:pad+Math.floor(i/cols)*(h+gap),w,h,
+  }));
+}
+
+function drawStyleView(){
+  if(!SW||!state.voices.length)return;
+  const v=state.voices[state.selVoice];
+  const c=v.color;
+  sctx.clearRect(0,0,SW,SH);
+  for(const cell of styleCells()){
+    const on=v.recipe.cloudStyle===cell.style;
+    sctx.fillStyle=on?rgba(c,0.1):'rgba(255,255,255,.03)';
+    sctx.strokeStyle=on?rgba(c,0.7):'rgba(255,255,255,.09)';
+    sctx.lineWidth=1;
+    sctx.beginPath();
+    if(sctx.roundRect)sctx.roundRect(cell.x+.5,cell.y+.5,cell.w-1,cell.h-1,4);
+    else sctx.rect(cell.x+.5,cell.y+.5,cell.w-1,cell.h-1);
+    sctx.fill();sctx.stroke();
+    // sampled from the same function the scheduler uses
+    let seed=1337;
+    const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+    sctx.fillStyle=on?rgba(c,0.95):'rgba(247,250,252,.32)';
+    for(let i=0;i<44;i++){
+      const o=styleOffset(cell.style,NOW_T+i*0.09,rnd);
+      const px=cell.x+cell.w/2+o.dx*(cell.w/2-5);
+      const py=cell.y+cell.h/2+o.dy*(cell.h/2-8);
+      sctx.fillRect(px-0.9,py-0.9,1.8,1.8);
+    }
+    sctx.font='10px -apple-system,sans-serif';sctx.textAlign='center';sctx.textBaseline='alphabetic';
+    sctx.fillStyle=on?rgba(c,0.9):'rgba(247,250,252,.3)';
+    sctx.fillText(cell.style,cell.x+cell.w/2,cell.y+cell.h-3);
+  }
+}
+
+sv.addEventListener('pointerdown',ev=>{
+  const r=sv.getBoundingClientRect(),x=ev.clientX-r.left,y=ev.clientY-r.top;
+  for(const cell of styleCells()){
+    if(x>=cell.x&&x<=cell.x+cell.w&&y>=cell.y&&y<=cell.y+cell.h){
+      state.voices[state.selVoice].base.cloudStyle=cell.style;applyMacros();
+      document.getElementById('styleTag').textContent=cell.style;
+      break;
+    }
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Macros — one gesture that rewrites every voice at once
+   ═══════════════════════════════════════════════════════════════ */
+const macroEl=document.getElementById('macros');
+const macroRefs=[];
+// Fixed silhouettes read left-to-right: the lit portion and playhead ARE the value.
+const macroEnds=[['Fine','Soft'],['Sparse','Dense'],['Open','Dark'],['Still','Moving'],['Ordered','Unruly'],['Dry','Diffuse'],['Focused','Wide'],['Grounded','Airy'],['Unison','+24 st'],['Loose','Locked']];
+function macroSilhouette(key){
+  switch(key){
+    case 'texture':return Array.from({length:10},(_,i)=>{const x=8+i*15,w=3+i*.9;return `M${x},36 Q${x+w/2},${7+i} ${x+w},36`;}).join(' ');
+    case 'complexity':return Array.from({length:18},(_,i)=>{const x=8+144*Math.sqrt(i/18);return `M${x},36 v-${8+i*1.2}`;}).join(' ');
+    case 'darkness':return Array.from({length:24},(_,i)=>`M${8+i*6},36 v-${29-i}`).join(' ');
+    case 'motion':return Array.from({length:73},(_,i)=>`${i?'L':'M'}${8+i*2},${23+Math.sin(i*.32)*i*.18}`).join(' ');
+    case 'chaos':return Array.from({length:25},(_,i)=>`${i?'L':'M'}${8+i*6},${23+Math.sin(i*9.3)*i*.55}`).join(' ');
+    case 'smear':return Array.from({length:8},(_,i)=>`M${8+i*17},36 q5,-${27-i*2} 16,-${4+i} l0,${4+i}`).join(' ');
+    case 'spray':return Array.from({length:40},(_,i)=>{const x=8+i*3.6,y=23+Math.sin(i*13)*i*.35;return `M${x},${y}h1`;}).join(' ');
+    case 'cloud':return Array.from({length:28},(_,i)=>{const x=8+i*5.2;return `M${x},${35-Math.abs(Math.sin(i*7))*i}h2`;}).join(' ');
+    case 'pitch':return Array.from({length:13},(_,i)=>`M${8+i*11},${36-i*2.2}h9`).join(' ');
+    case 'chordBias':return Array.from({length:25},(_,i)=>{const x=8+i*6;return `M${x},${12+Math.round(i%3)*11+Math.sin(i*7)*(1-i/24)*8}h3`;}).join(' ');
+  }
+}
+MACROS.forEach((m,i)=>{
+  const el=document.createElement('div');el.className='macro';el.style.setProperty('--mc',m.color);
+  const [low,high]=macroEnds[i],path=macroSilhouette(m.key);
+  el.title=`${m.name}: ${low} → ${high}`;
+  el.innerHTML=`<strong>${m.name}<b>0%</b></strong><div class="macro-surface"><svg viewBox="0 0 160 46" preserveAspectRatio="none" aria-hidden="true"><defs><clipPath id="macro-clip-${i}"><rect x="0" y="0" width="8" height="46"/></clipPath></defs><path class="macro-ghost" d="${path}"/><path class="macro-ink" clip-path="url(#macro-clip-${i})" d="${path}"/><path class="macro-cursor" d="M8,5 V41"/><circle cx="8" cy="41" r="2.5"/></svg><input type="range" min="0" max="100" value="0" aria-label="${m.name==='Pitch'?'Pitch macro':m.name}"/></div><div class="macro-ends"><span>${low}</span><span>${high}</span></div>`;
+  macroEl.appendChild(el);
+  const refs={el,input:el.querySelector('input'),val:el.querySelector('b'),clip:el.querySelector('rect'),cursor:el.querySelector('.macro-cursor'),dot:el.querySelector('circle')};macroRefs.push(refs);
+  refs.input.addEventListener('input',()=>{state.macros[m.key]=Number(refs.input.value)/100;applyMacros();syncMacroUI();});
+});
+function syncMacroUI(){
+  MACROS.forEach((m,i)=>{
+    const val=state.macros[m.key],r=macroRefs[i],x=8+val*144;
+    r.val.textContent=Math.round(val*100)+'%';r.input.value=val*100;
+    r.input.setAttribute('aria-valuetext',Math.round(val*100)+' percent');
+    r.clip.setAttribute('width',x);r.cursor.setAttribute('d',`M${x},5 V41`);r.dot.setAttribute('cx',x);
+    r.el.style.setProperty('--amount',val*100+'%');
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Chrome
+   ═══════════════════════════════════════════════════════════════ */
+
+
+const freezeBtn=document.getElementById('freezeBtn');
+freezeBtn.addEventListener('click',()=>capturePreview('LIVE',1));
+
+const ghostBtn=document.getElementById('ghostBtn');
+ghostBtn.addEventListener('click',()=>{state.ghosts=!state.ghosts;ghostBtn.classList.toggle('active',state.ghosts);});
+
+const motionBtn=document.getElementById('motionBtn');
+motionBtn.addEventListener('click',()=>{state.motion=!state.motion;motionBtn.classList.toggle('active',state.motion);motionBtn.textContent=state.motion?'Ⅱ Preview':'▷ Preview';});
+
+const detailBtn=document.getElementById('detailBtn');
+detailBtn.addEventListener('click',()=>{state.detail=!state.detail;detailBtn.classList.toggle('active',state.detail);});
+
+/* ═══════════════════════════════════════════════════════════════
+   Readout — numbers are secondary, never the control
+   ═══════════════════════════════════════════════════════════════ */
+const readbar=document.getElementById('readbar');
+function updateReadbar(t){
+  const v=state.voices[state.selVoice];if(!v)return;
+  const p=v.mode==='clean'?v.cleanHead:v.granularPlacements[state.selPlacement];
+  if(!p){readbar.textContent='';return;}
+  const src=LANES[p.sourceX].name;
+  const cells=v.mode==='clean'
+    ? [['reading from',src],['anchor',timeLabel(p)],['read now',timeLabel({...p,timeY:v.mode==='clean'?resolvedHead(v,t).timeY:resolvedAnchorY(v,p,t)})],
+       ['sweeps',`${(v.recipe.scanDepth*BUFFER_SECONDS).toFixed(1)}s of tape`],
+       ['one pass takes',`${scanCycle(v).toFixed(0)}s`],
+       ['heads on this voice','1']]
+    : [['reading from',src],['anchor',timeLabel(p)],['read now',timeLabel({...p,timeY:v.mode==='clean'?resolvedHead(v,t).timeY:resolvedAnchorY(v,p,t)})],
+       ['window',`${(v.recipe.timeSpray*0.22*BUFFER_SECONDS*2).toFixed(1)}s tall`],
+       ['each grain',`${v.recipe.grainSizeMs|0} ms long`],
+       ['this emitter',`${perEmitterDensity(v).toFixed(1)} grains/s`],
+       ['voice total',`${v.recipe.density.toFixed(1)} grains/s over ${activePlacements(v).length}`]];
+  let html=`<span class="hot">${v.mode==='clean'?'voice':'emitter'}<b>${v.id}${v.mode==='clean'?'':state.selPlacement+1}</b></span>`;
+  cells.forEach(([k,val])=>{html+=`<span>${k}<b>${val}</b></span>`;});
+  if(readbar.innerHTML!==html)readbar.innerHTML=html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Loop
+   ═══════════════════════════════════════════════════════════════ */
+let last=performance.now(),clock=0,uiAccum=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if(document.hidden || now-last<1000/30)return;
+  const dt=Math.min(0.05,(now-last)/1000);last=now;
+  if(!state.motion&&!visualDirty)return;
+  visualDirty=false;
+  if(!state.motion)uiAccum=.2;
+  if(state.motion&&(!positionDrag||positionDrag.kind==='anchor'))clock+=dt;
+  if(state.motion){
+    advanceLive(dt);
+    state.voices.forEach((v,i)=>scheduleVoice(v,i,dt,clock));
+    stepParticles(dt);
+  }
+  render(clock);
+  uiAccum+=dt;
+  if(uiAccum>0.1){
+    uiAccum=0;
+    updateRail(clock);updateReadbar(clock);
+    if(gv.closest('details').open)drawGrainView();
+    if(sv.closest('details').open)drawStyleView();
+    syncInspector();
+    const v=state.voices[state.selVoice];
+    if(v){
+      document.getElementById('grainTag').textContent=v.mode==='clean'?`${v.id} · head shape`:`voice ${v.id}`;
+      document.getElementById('styleTag').textContent=v.recipe.cloudStyle;
+    }
+  }
+}
+
+
+// All direct controls edit the authored voice; effective macro values appear beside them.
+const extraDefaults={timingSpray:0,lookback:0,pitchSpread:0,pitchLock:0,bloom:0,glide:0,loopCrossfade:20,panLFORate:0,stereoSpread:0,reverseLFORate:0,recordLFORate:0,pitchMode:'Fixed',timing:'Free',division:'1/8'};
+Object.assign(RECIPE_DEFAULTS,extraDefaults);
+const controlRefs=[];
+function addControl(parent,key,label,min=0,max=1,step=.01,unit='',options=null,scope='voice'){
+  const row=document.createElement('label');row.className='control';
+  row.innerHTML=`<span>${label}</span><output></output>`;
+  const input=document.createElement(options?'select':'input');
+  if(options)options.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=value;input.append(o);});
+  else{input.type='range';input.min=min;input.max=max;input.step=step;}
+  input.setAttribute('aria-label',label);row.append(input);parent.append(row);
+  if(options)row.querySelector('output').hidden=true;
+  const ref={row,input,out:row.querySelector('output'),key,label,unit,scope,options};controlRefs.push(ref);
+  input.addEventListener('input',()=>{
+    const v=state.voices[state.selVoice],value=options?input.value:Number(input.value);
+    if(scope==='source'){selectedPlacement().sourceX=Number(value);}
+    else if(scope==='mode'){setMode(state.selVoice,value);}
+    else if(scope==='placement'){
+      const p=v.mode==='clean'?v.cleanHead:v.granularPlacements[state.selPlacement];p[key]=value;
+    }else if(scope==='global')globalState[key]=value;
+    else v.base[key]=value;
+    applyMacros();syncInspector();
+  });
+}
+const globalState={space:'Diffuse',behavior:'Pure',shape:'Triangle',quality:'Balanced',maxGrains:64,level:.7,feedback:.2,feedbackLPF:8000,outputLPF:16000,reverb:.3,reverbLPF:12000,delay:.2,delayDivision:'1/8',repeats:.3,vibrato:0,pad1:1,pad2:0,lead1:0,lead2:0,drums:0,waves:0,water:0,insects:0};
+const basics=document.getElementById('voiceBasics');
+addControl(basics,'mode','Mode',0,1,.01,'',['granular','clean'],'mode');
+const placementControls=document.getElementById('placementControls');
+addControl(placementControls,'sourceX','Source',0,3,1,'',LANES.map(l=>l.name),'source');
+addControl(placementControls,'timeY','Anchor position',0,1,.001,'',null,'placement');
+addControl(basics,'grainSizeMs','Grain size',20,600,1,' ms');
+addControl(basics,'density','Density',.5,32,.1,' /s');
+addControl(basics,'pitch','Pitch',-24,24,1,' st');
+addControl(basics,'gain','Level',0,1,.01);
+addControl(basics,'timeSpray','Time window',0,1,.001);
+addControl(basics,'pan','Pan',-1,1,.01);
+const groups={
+shapeControls:[['attack','Fade in',.005,2,.005,' s'],['decay','Fade out',.01,3,.01,' s'],['blur','Blur'],['shimmer','Shimmer'],['loopCrossfade','Loop crossfade',4,80,1,' ms']],
+scatterControls:[['cloudStyle','Pattern',0,1,.01,'',CLOUD_STYLES],['lookback','Lookback'],['guard','Write guard',0,.15,.001],['bloom','Bloom']],
+pitchControls:[['speed','Speed',0,4,.05,'×'],['pitchMode','Pitch mode',0,1,.01,'',['Fixed','Octaves','Fifths','Chord','Scale','Free']],['pitchSpread','Pitch spread',0,24,.1,' st'],['pitchJitter','Pitch jitter',0,12,.1,' st'],['pitchLock','Pitch lock'],['reverseChance','Reverse chance'],['glide','Glide'],['timing','Clock',0,1,.01,'',['Free','Tempo']],['division','Division',0,1,.01,'',['1/4','1/8','1/16','1/32','1/64','1/8T']],['timingSpray','Timing spray']],
+motionControls:[['posLFORate','Position rate',0,1,.001,' Hz'],['posLFODepth','Position depth'],['writeFollow','Follow live'],['scanRate','Scan rate',0,1,.001,' Hz'],['scanDepth','Scan depth'],['panLFORate','Pan rate',0,2,.01,' Hz'],['stereoSpread','Stereo spread'],['reverseLFORate','Reverse rate',0,2,.01,' Hz'],['recordLFORate','Record rate',0,2,.01,' Hz']]
+};
+for(const [id,defs] of Object.entries(groups))for(const def of defs)addControl(document.getElementById(id),...def);
+const globalGroups={
+'Modes':[['space','Space',0,1,.01,'',['Diffuse','Clocked']],['behavior','Behavior',0,1,.01,'',['Pure','Expressive']],['shape','Shape',0,1,.01,'',['Triangle','Rise','Fall','Square']],['quality','Quality',0,1,.01,'',['Eco','Balanced','HQ']],['maxGrains','Max grains',8,128,1]],
+'Input sources':[['pad1','Pad 1'],['pad2','Pad 2'],['lead1','Lead 1'],['lead2','Lead 2'],['drums','Drums'],['waves','Waves'],['water','Water'],['insects','Insects']],
+'Output & space':[['level','Granular level'],['feedback','Feedback'],['feedbackLPF','Feedback LPF',100,20000,100,' Hz'],['outputLPF','Output LPF',100,20000,100,' Hz'],['reverb','Reverb send'],['reverbLPF','Reverb LPF',100,20000,100,' Hz'],['delay','Delay B send'],['delayDivision','Time division',0,1,.01,'',['1/4','1/8','1/16','1/8T']],['repeats','Repeats'],['vibrato','Vibrato']]
+};
+for(const [name,defs] of Object.entries(globalGroups)){
+  const parent=document.createElement('section');parent.className='control-group';parent.innerHTML=`<h2>${name}</h2>`;document.getElementById('globalControls').append(parent);
+  for(const def of defs){const [key,label,min=0,max=1,step=.01,unit='',options=null]=def;addControl(parent,key,label,min,max,step,unit,options,'global');}
+}
+let pickerKey='';
+function syncEmitterPicker(){
+  const v=state.voices[state.selVoice],list=v.mode==='clean'?[v.cleanHead]:v.granularPlacements;
+  document.getElementById('placementTitle').textContent=`Voice ${v.id} · ${v.mode==='clean'?'head':'emitters'}`;
+  const key=v.id+v.mode+list.map(p=>p.id).join(',');
+  const picker=document.getElementById('emitterPicker');
+  if(key!==pickerKey){
+    pickerKey=key;picker.replaceChildren();
+    list.forEach((p,i)=>{const b=document.createElement('button');b.className='chip';b.textContent=v.id+(v.mode==='clean'?'':i+1);b.setAttribute('aria-label','Select '+b.textContent);b.addEventListener('click',()=>{state.selPlacement=i;syncInspector();});picker.append(b);});
+  }
+  [...picker.children].forEach((b,i)=>{b.classList.toggle('active',i===state.selPlacement);b.setAttribute('aria-pressed',i===state.selPlacement);b.style.opacity=list[i].enabled?'1':'.45';});
+}
+
+function syncInspector(){
+  const v=state.voices[state.selVoice];if(!v)return;
+  const p=v.mode==='clean'?v.cleanHead:v.granularPlacements[state.selPlacement];if(!p)return;
+  document.getElementById('inspectorTitle').textContent=`Voice ${v.id}`;
+  document.querySelector('.inspector').style.setProperty('--page-accent',v.color);
+  document.getElementById('selectedLocation').textContent=v.mode==='clean'?'Head location':`Emitter ${v.id}${state.selPlacement+1} · location`;
+  document.getElementById('densitySplit').textContent=v.mode==='clean'?'1 continuous head':`${v.id}: ${v.recipe.density.toFixed(1)}/s → `+v.granularPlacements.map((p,i)=>p.enabled?`${v.id}${i+1}: ${perEmitterDensity(v).toFixed(1)}/s`:null).filter(Boolean).join(' · ');
+  syncEmitterPicker();
+  const emitterToggle=document.getElementById('emitterEnabled');emitterToggle.hidden=v.mode==='clean';emitterToggle.textContent=p.enabled?'Emitter on':'Emitter off';emitterToggle.setAttribute('aria-pressed',p.enabled);emitterToggle.classList.toggle('active',p.enabled);
+  syncModified();
+  document.getElementById('previewCount').textContent=state.motion?particles.filter(g=>state.voices[g.vi].enabled).length+' visible':'Paused';
+  const enabled=document.getElementById('voiceEnabled');enabled.textContent=v.enabled?'On':'Off';enabled.classList.toggle('active',v.enabled);enabled.setAttribute('aria-pressed',v.enabled);
+  document.getElementById('addEmitter').disabled=v.mode==='clean'||v.granularPlacements.length>=MAX_PLACEMENTS;
+  document.getElementById('removeEmitter').disabled=v.mode==='clean'||v.granularPlacements.length<=1;
+  for(const r of controlRefs){
+    const cleanOnly=['scanRate','scanDepth','loopCrossfade'];
+    const grainOnly=['grainSizeMs','density','shimmer','cloudStyle','timeSpray','sourceSpread','bloom','pitchMode','pitchSpread','pitchJitter','pitchLock','timing','division','timingSpray'];
+    r.row.hidden=r.scope==='voice'&&((v.mode==='clean'&&grainOnly.includes(r.key))||(v.mode!=='clean'&&cleanOnly.includes(r.key)));
+    r.row.style.display=r.row.hidden?'none':'';
+    const obj=r.scope==='source'?{sourceX:String(p.sourceX)}:r.scope==='mode'?v:r.scope==='global'?globalState:r.scope==='placement'?p:v.base;
+    const value=obj[r.key];if(document.activeElement!==r.input)r.input.value=value;
+    const fmt=n=>r.key==='pan'?(n===0?'Center':(n<0?'L ':'R ')+Math.round(Math.abs(n)*100)+'%'):r.key==='timeSpray'?(n*.44*BUFFER_SECONDS).toFixed(2)+' s':r.options?n:r.unit?Number(n).toFixed(r.input.step<1?2:0)+r.unit:Math.round(n*100)+'%';
+    let text=fmt(value);
+    
+    if(r.key==='timeY')text=timeLabel(p);
+    if(r.scope==='voice'&&!r.options&&Math.abs(v.recipe[r.key]-value)>.005)text+=' → '+fmt(v.recipe[r.key]);
+    if(r.out.textContent!==text)r.out.textContent=text;
+    if(!r.options)r.input.style.setProperty('--value',((value-Number(r.input.min))/(Number(r.input.max)-Number(r.input.min))*100)+'%');
+  }
+  lanesEl.querySelectorAll('.lane').forEach((el,i)=>el.classList.toggle('selected',i===Math.round(p.sourceX)));
+}
+document.getElementById('voiceEnabled').addEventListener('click',()=>{const v=state.voices[state.selVoice];v.enabled=!v.enabled;syncInspector();});
+document.getElementById('addEmitter').addEventListener('click',()=>{addPlacement(state.selVoice);syncInspector();});
+document.getElementById('removeEmitter').addEventListener('click',()=>{removePlacement(state.selVoice,state.selPlacement);syncInspector();});
+document.getElementById('resetMacros').addEventListener('click',()=>{for(const k in state.macros)state.macros[k]=0;applyMacros();syncMacroUI();syncInspector();});
+for(const id of ['motionBtn','detailBtn','ghostBtn'])document.getElementById(id).addEventListener('click',e=>{e.currentTarget.setAttribute('aria-pressed',e.currentTarget.classList.contains('active'));});
+
+// Prototype scenes use their own versioned format; never write these as production presets.
+const GLOBAL_DEFAULTS={...globalState};
+const sceneNotes={mosaic_a:'Sparse micro-loops · four octave layers',classic_cloud:'Overlapping grains · follows LIVE',loop_forest:'Four clean heads · slow scans'};
+let loadedName='',loadedNote='',loadedScene='',sceneBaseline='';
+const sourceStore=LANES.map((l,i)=>({id:'source-'+i,name:l.name,sub:l.sub,kind:l.kind,color:l.color,durationSeconds:16,data:sources[i]}));
+let laneIds=sourceStore.map(s=>s.id);
+let savedScenes=[];
+try{const stored=JSON.parse(localStorage.getItem('granular-field-scenes-v1')||'[]');if(Array.isArray(stored))savedScenes=stored.filter(s=>s?.format==='granular-field-preview'&&s.version===1&&s.voices?.length===4&&s.sources?.length>=4);}catch{document.getElementById('sceneStatus').textContent='Saved previews unavailable.';}
+function sceneSnapshot(){
+  return {format:'granular-field-preview',version:1,name:loadedName,note:loadedNote,voices:state.voices.map(({recipe,...v})=>structuredClone(v)),macros:{...state.macros},globals:{...globalState},laneIds:[...laneIds],sources:sourceStore.map(s=>({id:s.id,name:s.name,sub:s.sub,kind:s.kind,color:s.color,durationSeconds:16,wave:s.kind==='live'?null:Array.from(s.data.wave)}))};
+}
+function authoredSignature(){return JSON.stringify({voices:state.voices.map(({recipe,...v})=>v),macros:state.macros,globals:globalState,lanes:laneIds,sources:sourceStore.map(s=>s.id)});}
+function markSceneLoaded(){sceneBaseline=authoredSignature();sceneCheckNeeded=true;document.getElementById('sceneDescription').textContent=loadedNote||'Four voices · complete granular scene';syncModified();}
+function syncModified(){if(!sceneBaseline||!sceneCheckNeeded)return;sceneCheckNeeded=false;document.getElementById('presetModified').textContent=authoredSignature()===sceneBaseline?'':'Modified';}
+function syncSceneMenu(selected=loadedScene){
+  loadedScene=selected;const select=document.getElementById('sceneSelect');select.replaceChildren();
+  for(const [label,items] of [['Factory',Object.entries(PRESETS).map(([id,p])=>({id,name:p.label}))],['Saved locally',savedScenes]]){
+    const group=document.createElement('optgroup');group.label=label;
+    for(const item of items){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;group.append(option);}select.append(group);
+  }select.value=selected;
+}
+function bindLane(index,id){
+  const item=sourceStore.find(s=>s.id===id);if(!item)return;
+  laneIds[index]=id;sources[index]=item.data;Object.assign(LANES[index],{name:item.name,sub:item.sub,kind:item.kind,color:item.color});
+}
+function syncSourceUI(){
+  const host=document.getElementById('sourceAssignments');host.replaceChildren();
+  laneIds.forEach((id,i)=>{const label=document.createElement('label');label.className='control';label.append(document.createTextNode(i===0?'Lane 1 · LIVE':`Lane ${i+1}`));
+    const select=document.createElement('select');select.setAttribute('aria-label',`Lane ${i+1} source`);select.disabled=i===0;
+    sourceStore.filter(s=>i===0?s.kind==='live':s.kind!=='live').forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name+' · 16s';select.append(o);});select.value=id;
+    select.addEventListener('change',()=>{bindLane(i,select.value);particles.length=0;syncSourceUI();syncInspector();});label.append(select);host.append(label);
+    const lane=lanesEl.children[i];lane.querySelector('strong').lastChild.textContent=LANES[i].name;laneSubs[i].textContent=LANES[i].sub;lane.style.setProperty('--lc',LANES[i].color);
+  });
+  const ref=controlRefs.find(r=>r.scope==='source');ref.input.replaceChildren();ref.options=LANES.map(l=>l.name);
+  LANES.forEach((l,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=l.name;ref.input.append(o);});
+  document.getElementById('sourceCount').textContent=sourceStore.length+' stored · 4 lanes';visualDirty=true;
+}
+function capturePreview(origin,assign=null){
+  if(sourceStore.length>=128){document.getElementById('sceneStatus').textContent='This preview supports 128 stored sources.';return;}
+  const wave=new Float32Array(WAVE_N);
+  if(origin==='LIVE'){const live=sourceStore[0].data;for(let i=0;i<WAVE_N;i++)wave[i]=live.wave[(live.head+i)%WAVE_N];}
+  else wave.set(makeWave(Date.now()>>>0,origin==='Nature'?'nat':'fm'));
+  const n=sourceStore.filter(s=>s.name.startsWith(origin==='LIVE'?'HOLD':origin)).length+1;
+  const name=origin==='LIVE'?'HOLD '+n:origin+' CAP '+n;
+  const item={id:crypto.randomUUID(),name,sub:'Captured '+new Date().toLocaleTimeString(),kind:'static',color:'#7B9A6D',durationSeconds:16,data:{wave,head:0,live:false,populated:true}};
+  sourceStore.push(item);if(assign!==null)bindLane(assign,item.id);syncSourceUI();syncInspector();
+  document.getElementById('captureStatus').textContent=name+' stored'+(assign!==null?' · assigned to lane '+(assign+1):'');
+  document.getElementById('sceneStatus').textContent=name+' captured'+(assign!==null?' → lane '+(assign+1):'');
+}
+function loadScene(id){
+  if(PRESETS[id]){loadPreset(id);syncInspector();return;}
+  const scene=savedScenes.find(s=>s.id===id);if(!scene)return;
+  const live=sourceStore[0].data;
+  sourceStore.splice(0,sourceStore.length,...scene.sources.map(s=>({...s,data:s.kind==='live'?live:{wave:Float32Array.from(s.wave),head:0,live:false,populated:true}})));
+  scene.laneIds.forEach((id,i)=>bindLane(i,id));
+  state.voices=structuredClone(scene.voices).map(v=>({...v,recipe:{}}));state.macros={...scene.macros};Object.assign(globalState,scene.globals);state.selVoice=0;state.selPlacement=0;
+  // Fresh placement IDs remain unique after loading an older scene.
+  for(const v of state.voices)for(const p of [...v.granularPlacements,v.cleanHead])p.id=crypto.randomUUID();
+  loadedName=scene.name;loadedNote=scene.note;particles.length=0;schedAccum.fill(0);applyMacros();buildRail();syncMacroUI();syncSourceUI();syncSceneMenu(id);markSceneLoaded();syncInspector();
+}
+document.getElementById('sceneSelect').addEventListener('change',e=>loadScene(e.target.value));
+for(const [id,step] of [['previousPreset',-1],['nextPreset',1]])document.getElementById(id).addEventListener('click',()=>{const select=document.getElementById('sceneSelect'),opts=[...select.options];loadScene(opts[(select.selectedIndex+step+opts.length)%opts.length].value);});
+document.getElementById('saveScene').addEventListener('click',()=>{document.getElementById('sceneName').value=loadedName.slice(0,75)+' copy';document.getElementById('sceneNote').value=loadedNote;document.getElementById('saveDialog').showModal();});
+document.getElementById('cancelSave').addEventListener('click',()=>document.getElementById('saveDialog').close());
+document.getElementById('saveForm').addEventListener('submit',e=>{
+  e.preventDefault();const name=document.getElementById('sceneName').value.trim();if(!name)return;
+  const scene={...sceneSnapshot(),id:crypto.randomUUID(),name,note:document.getElementById('sceneNote').value.trim()};
+  try{localStorage.setItem('granular-field-scenes-v1',JSON.stringify([...savedScenes,scene]));}catch{document.getElementById('sceneStatus').textContent='Storage full or unavailable. Export the scene instead.';document.getElementById('saveDialog').close();return;}
+  savedScenes.push(scene);loadedName=scene.name;loadedNote=scene.note;syncSceneMenu(scene.id);markSceneLoaded();document.getElementById('saveDialog').close();document.getElementById('sceneStatus').textContent='Saved locally';
+});
+document.getElementById('exportScene').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(sceneSnapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='granular-preview.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+function validPreview(s){
+  if(s?.format!=='granular-field-preview'||s.version!==1||typeof s.name!=='string'||s.name.length>80||typeof s.note!=='string'||s.note.length>180||!Array.isArray(s.voices)||s.voices.length!==4||!Array.isArray(s.sources)||s.sources.length<4||s.sources.length>128||!Array.isArray(s.laneIds)||s.laneIds.length!==4)return false;
+  const ids=new Set();
+  for(const [i,x] of s.sources.entries()){
+    if(!x||typeof x.id!=='string'||(i<4&&x.id!=='source-'+i)||ids.has(x.id)||typeof x.name!=='string'||x.name.length>80||typeof x.sub!=='string'||x.sub.length>180||!/^#[0-9a-f]{6}$/i.test(x.color)||x.durationSeconds!==16||x.kind!==(i===0?'live':'static'))return false;
+    if(i>0&&(!Array.isArray(x.wave)||x.wave.length!==WAVE_N||x.wave.some(n=>!Number.isFinite(n)||n<0||n>1)))return false;ids.add(x.id);
+  }
+  if(s.laneIds[0]!==s.sources[0].id||s.laneIds.some(id=>!ids.has(id))||s.laneIds.slice(1).includes(s.sources[0].id))return false;
+  if(MACROS.some(m=>!Number.isFinite(s.macros?.[m.key])||s.macros[m.key]<0||s.macros[m.key]>1))return false;
+  for(const [i,v] of s.voices.entries()){
+    if(!v||v.id!==VOICE_META[i].id||v.color!==VOICE_META[i].color||!['clean','granular'].includes(v.mode)||typeof v.enabled!=='boolean'||!Number.isFinite(v.phase)||!Array.isArray(v.granularPlacements)||v.granularPlacements.length<1||v.granularPlacements.length>4)return false;
+    for(const p of [...v.granularPlacements,v.cleanHead])if(!p||!Number.isInteger(p.sourceX)||p.sourceX<0||p.sourceX>3||!Number.isFinite(p.timeY)||p.timeY<0||p.timeY>1||!Number.isFinite(p.phase)||typeof p.enabled!=='boolean')return false;
+    for(const [k,d] of Object.entries(RECIPE_DEFAULTS))if(typeof v.base?.[k]!==typeof d||(typeof d==='number'&&!Number.isFinite(v.base[k])))return false;
+    for(const r of controlRefs.filter(r=>r.scope==='voice')){const n=v.base[r.key];if(r.options?!r.options.includes(n):n<Number(r.input.min)||n>Number(r.input.max))return false;}
+  }
+  for(const r of controlRefs.filter(r=>r.scope==='global')){const n=s.globals?.[r.key];if(r.options?!r.options.includes(n):!Number.isFinite(n)||n<Number(r.input.min)||n>Number(r.input.max))return false;}
+  return true;
+}
+document.getElementById('importScene').addEventListener('click',()=>document.getElementById('sceneFile').click());
+document.getElementById('sceneFile').addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{
+    if(file.size>2000000)throw Error('Preview file is too large.');
+    const scene=JSON.parse(await file.text());if(!validPreview(scene))throw Error('Choose a version 1 granular preview export.');
+    scene.id=crypto.randomUUID();localStorage.setItem('granular-field-scenes-v1',JSON.stringify([...savedScenes,scene]));savedScenes.push(scene);loadScene(scene.id);document.getElementById('sceneStatus').textContent='Imported and saved locally';
+  }catch(error){document.getElementById('sceneStatus').textContent=error.message;}
+  e.target.value='';
+});
+document.getElementById('captureSource').addEventListener('click',()=>capturePreview(document.getElementById('captureOrigin').value));
+document.getElementById('emitterEnabled').addEventListener('click',()=>{const p=selectedPlacement();p.enabled=!p.enabled;syncInspector();});
+savedScenes=savedScenes.filter(validPreview);
+syncSourceUI();
+
+resize();resizeGrain();resizeStyle();
+loadPreset('mosaic_a');
+motionBtn.classList.toggle('active',state.motion);motionBtn.setAttribute('aria-pressed',state.motion);motionBtn.textContent=state.motion?'Ⅱ Preview':'▷ Preview';
+syncInspector();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

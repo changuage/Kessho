@@ -306,7 +306,7 @@ async function runReverbRenderMetrics() {
       [reverbParam.reverseAmount]: 0,
       [reverbParam.bloom]: 0,
     }),
-    await renderCpuCase('cathedral-ultra-shimmer', {
+    await renderCpuCase('dattorro-plate-shimmer', {
       [reverbParam.type]: 4,
       [reverbParam.quality]: 0,
       [reverbParam.decay]: 0.96,

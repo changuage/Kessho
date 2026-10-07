@@ -4,9 +4,10 @@ import type { DawOutputRoutingConfig } from '../../dawOutputRouting';
 import type { ProductRuntimeCapabilityReport } from '../ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from '../ProductRuntimeDiagnostics';
 import type { ProductLiveNoteEvent } from '../liveNoteEvents';
-import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductStateRecord, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
+import type { ProductAssetHandle, ProductAssetRegistration, ProductDrumTriggerCallback, ProductDrumVoice, ProductDynamicsVisualTelemetry, ProductEngineStartOptions, ProductEngineState, ProductEvent, ProductEvolveOverridesCallback, ProductExternalState, ProductManualSynthNote, ProductMidiMessage, ProductPerfSnapshot, ProductRange, ProductRangeMap, ProductRecordedNoteCaptureBatch, ProductRecordedNoteCaptureRequest, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductRuntimeWalkPositionsCallback, ProductSequencerEvolveTriggerCallback, ProductSequencerStepPositionCallback, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatch, ProductSnapshotPatchReason, ProductStateRecord, ProductSynthAnchorWalkerVisualStateCallback, ProductSynthNoteRangeEvolvedCallback, ProductSynthOrbitVisualStateCallback, ProductTelemetrySnapshot } from '../ProductEngineTypes';
 import type { BackgroundJourneyPlan } from '../journey/compileBackgroundJourneyPlan';
 import type { ProductBackgroundJourneyReadiness } from '../ports/ProductJourneyPort';
+import type { SynthSequenceVariationBank } from '../../../ui/sequencer/synthSequenceVariations';
 
 // TODO(product-core-burn-down): replace this bound WebProductEngine host port with product-owned
 // generated runtime APIs once the web adapter no longer binds Product host method names itself.
@@ -93,6 +94,34 @@ export const coreProductRuntimeHostPort = {
   postEvents(events: readonly ProductEvent[]): void {
     if (events.length === 0) return;
     callCoreProductHost<void>('postProductEvents', events);
+  },
+
+  subscribeRecordedNoteCapture(
+    listener: (batch: ProductRecordedNoteCaptureBatch) => void,
+  ): () => void {
+    return callCoreProductHost<() => void>('subscribeRecordedNoteCapture', listener);
+  },
+
+  setRecordedNoteCapture(request: ProductRecordedNoteCaptureRequest): void {
+    callCoreProductHost<void>('setRecordedNoteCapture', request);
+  },
+
+  getRecordedNoteCaptureClockBeat(): number | null {
+    return callCoreProductHost<number | null>('getRecordedNoteCaptureClockBeat');
+  },
+
+  commitSynthSequenceVariationBank(laneIndex: number, bank: SynthSequenceVariationBank | null): Promise<boolean> {
+    return callCoreProductHost<Promise<boolean>>('commitSynthSequenceVariationBank', laneIndex, bank);
+  },
+
+  getActiveSynthSequenceVariationIndices(): readonly (number | null)[] {
+    return callCoreProductHost<readonly (number | null)[]>('getActiveSynthSequenceVariationIndices');
+  },
+
+  subscribeSynthSequenceVariationRuntime(
+    listener: (indices: readonly (number | null)[]) => void,
+  ): () => void {
+    return callCoreProductHost<() => void>('subscribeSynthSequenceVariationRuntime', listener);
   },
 
   pushMidiMessage(message: ProductMidiMessage): void {

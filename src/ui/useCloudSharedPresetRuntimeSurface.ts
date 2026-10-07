@@ -76,7 +76,9 @@ export function useCloudSharedPresetRuntimeSurface({
         normalize: (current) => current,
         ...presetEngineUpdateOptions,
       });
-      syncCoreProductAppliedPreset(result.state);
+      void Promise.resolve(syncCoreProductAppliedPreset(result.state)).catch((error) => {
+        console.warn('Cloud preset Product runtime sync failed:', error);
+      });
       setState(result.state);
       onRoutingMuteGroupsLoad?.(result.preset.routingMuteGroups);
       applyDualRangesFromPreset(result.preset.dualRanges, result.preset.sliderModes, result.preset.dualSliderConfigs);

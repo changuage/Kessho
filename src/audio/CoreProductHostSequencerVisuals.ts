@@ -1,13 +1,11 @@
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import type { CoreProductAnchorWalkerVisualLaneState, CoreProductOrbitVisualLaneState, CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import type { SequencerStepToggleOverride } from './CoreProductHostSequencerAdapter';
-import { defaultDrumEuclidPattern, defaultSynthEuclidPattern, resolveEuclidPatternParams } from './euclideanPatterns';
 
 type SequencerVisualKind = 'synth' | 'drum';
 
 type SequencerVisualLane = {
   enabled: boolean;
-  stepCount: number;
 };
 
 type PublishSequencerVisualsInput = {
@@ -42,8 +40,6 @@ function zeroLaneValues(laneCount: number): number[] {
   return values;
 }
 
-function numberFromState(state: Record<string, unknown> | null, key: string, fallback: number): number { const value = state?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
-
 function booleanFromState(state: Record<string, unknown> | null, key: string, fallback: boolean): boolean { const value = state?.[key]; return typeof value === 'boolean' ? value : fallback; }
 
 function visualLaneFromState(
@@ -54,22 +50,11 @@ function visualLaneFromState(
 ): SequencerVisualLane {
   const laneNumber = laneIndex + 1;
   const prefix = kind === 'synth' ? `synthEuclid${laneNumber}` : `drumEuclid${laneNumber}`;
-  const defaults = kind === 'synth'
-    ? defaultSynthEuclidPattern(laneIndex)
-    : defaultDrumEuclidPattern(laneIndex);
-  const resolved = resolveEuclidPatternParams(
-    String(state?.[`${prefix}Preset`] ?? 'custom'),
-    numberFromState(state, `${prefix}Steps`, defaults.steps),
-    numberFromState(state, `${prefix}Hits`, defaults.hits),
-    numberFromState(state, `${prefix}Rotation`, defaults.rotation),
-  );
-  const stepCount = Math.max(1, Math.min(64, Math.round(resolved.steps)));
   const enabled = kind === 'synth'
     ? booleanFromState(state, 'synthEuclideanMasterEnabled', false) && booleanFromState(state, `${prefix}Enabled`, laneNumber === 1)
     : booleanFromState(state, 'drumEnabled', false) && booleanFromState(state, 'drumEuclidMasterEnabled', false) && booleanFromState(state, `${prefix}Enabled`, false);
   return {
     enabled,
-    stepCount,
   };
 }
 
@@ -97,7 +82,7 @@ function visualPositionsFor(
       ? input.telemetry?.synthSequencerCurrentSteps?.[laneIndex]
       : input.telemetry?.drumSequencerCurrentSteps?.[laneIndex];
     if (typeof nativeStep === 'number' && Number.isFinite(nativeStep)) {
-      steps[laneIndex] = Math.max(0, Math.floor(nativeStep)) % lane.stepCount;
+      steps[laneIndex] = Math.max(0, Math.floor(nativeStep));
     } else {
       input.diagnostics && (input.diagnostics.derivedVisualFallbackCount += 1);
       steps[laneIndex] = 0;

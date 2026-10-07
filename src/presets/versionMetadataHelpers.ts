@@ -11,6 +11,7 @@ import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { PitchSettings } from '../ui/sequencer/useEuclideanSequencer';
 import { getParamInfo, quantize, type SliderMode, type SliderState } from '../ui/state';
 import { getSliderCapability, type SliderCapability } from '../ui/sliderSystem/sliderCapabilities';
+import { serializeSynthSequenceVariationBanks, type SynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
 import {
   normalizeDualConfigMap,
   toLegacyDualState,
@@ -332,6 +333,14 @@ export function buildPresetVersionMetadata(
 
   if (source.synthPitchBindingModes && source.synthPitchBindingModes.length > 0) {
     metadata.synthPitchBindingModes = cloneJson(source.synthPitchBindingModes);
+    hasMetadata = true;
+  }
+
+  if (source.synthSequenceVariationBanks !== undefined) {
+    metadata.synthSequenceVariationBanks = serializeSynthSequenceVariationBanks(
+      source.synthSequenceVariationBanks as SynthSequenceVariationBanks,
+      4,
+    );
     hasMetadata = true;
   }
 

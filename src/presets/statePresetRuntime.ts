@@ -9,6 +9,7 @@ import { savedPresetSourceFor } from './savedPresetSource';
 import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import type { PresetEntry, PresetSummary } from './types';
 import { completeCanonicalPresetState } from './presetStateCompatibility';
+import { normalizeSynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
 
 export type SavedPreset = BundledSavedPreset;
 
@@ -90,6 +91,20 @@ export function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelecti
   if (!versionData) return null;
   const state = enforceProductCorePresetBoundaryState(completeCanonicalPresetState(versionData));
   const metadata = extractPresetVersionMetadata(version) ?? {};
+  const stateRecord = state as unknown as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
+    try {
+      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+    } catch {
+      // Preserve the canonical state when optional authored variation content is malformed.
+    }
+  } else if (Object.prototype.hasOwnProperty.call(stateRecord, 'synthSequenceVariationBanks')) {
+    try {
+      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stateRecord.synthSequenceVariationBanks, 4);
+    } catch {
+      stateRecord.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
+    }
+  }
   const behavior = sanitizePresetParameterBehaviorMetadata(metadata);
   if (behavior.sliderModes) metadata.sliderModes = behavior.sliderModes;
   else delete metadata.sliderModes;

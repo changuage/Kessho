@@ -564,7 +564,7 @@ function testCommitGeneratedCaptureWritesNudge(): void {
     },
   });
 
-  assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.25]);
+  assert.deepEqual(stepOverrides.nudge[targetLaneIndex], [0, -0.5]);
   assert.equal(stepOverrides.nudgeDirection[targetLaneIndex], 'forward');
   assert.equal(subLaneStates[targetLaneIndex]?.nudge.enabled, true);
   assert.equal(subLaneStates[targetLaneIndex]?.nudge.steps, 2);
@@ -669,7 +669,7 @@ function testCommitGeneratedCaptureWritesNudge(): void {
   );
   assert.deepEqual(stepOverridePatch.pitch[targetLaneIndex], [0, 2]);
   assert.deepEqual(stepOverridePatch.expression[targetLaneIndex], [0.5, 0.8]);
-  assert.deepEqual(stepOverridePatch.nudge[targetLaneIndex], [0, -0.25]);
+  assert.deepEqual(stepOverridePatch.nudge[targetLaneIndex], [0, -0.5]);
   assert.deepEqual(stepOverridePatch.ratchet[targetLaneIndex], null);
   assert.deepEqual(stepOverridePatch.morph[targetLaneIndex], null);
   assert.deepEqual(stepOverridePatch.distance[targetLaneIndex], null);

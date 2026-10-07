@@ -6,6 +6,7 @@ import { kesshoCoreWasmExportedFunctions } from './kessho-core-build-manifest.mj
 const root = process.cwd();
 const wasmPath = resolve(root, 'public/worklets/kessho_core.wasm');
 const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.js');
+const captureHeaderPath = resolve(root, 'cpp/KesshoCore/include/KesshoCore/KesshoProductGeneratedSequencerCapture.h');
 const schemaPath = resolve(root, 'src/audio/generated/kesshoProductSchema.ts');
 const capabilityPath = resolve(root, 'src/audio/product/ProductRuntimeCapabilityReport.ts');
 
@@ -50,6 +51,18 @@ const expectedSchemaHashHex = `0x${expectedSchemaHash.toString(16).padStart(8, '
 const expectedAbiVersion = parseProductAbiVersion();
 const wasmBinary = readFileSync(wasmPath);
 const workletSource = readFileSync(workletPath, 'utf8');
+const captureHeader = readFileSync(captureHeaderPath, 'utf8');
+const captureSizeMatch = captureHeader.match(/sizeof\(KesshoProductGeneratedSequencerCaptureEvent\) == (\d+)u/);
+assert(captureSizeMatch, 'Generated sequencer capture header is missing its ABI size assertion');
+const captureEventBytes = Number(captureSizeMatch[1]);
+assert(
+  workletSource.includes(`const GENERATED_CAPTURE_EVENT_BYTES = ${captureEventBytes};`),
+  `Product worklet capture event stride must match the ${captureEventBytes}-byte C ABI`,
+);
+assert(
+  kesshoCoreWasmExportedFunctions.includes('kessho_product_drain_generated_sequencer_capture_events'),
+  'Product WASM export manifest is missing generated sequencer capture draining',
+);
 assert(
   workletSource.includes(`EXPECTED_PRODUCT_SCHEMA_HASH = ${expectedSchemaHashHex}`),
   'Product worklet expected schema hash is stale relative to generated TypeScript schema',
@@ -381,17 +394,29 @@ function instantiateWorklet({ wasmBinaryOverride = toArrayBuffer(wasmBinary), we
 }
 
 function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
-  const memory = new WebAssembly.Memory({ initial: 4 });
+  const memory = new WebAssembly.Memory({ initial: 16 });
   let nextPtr = 1024;
   const align = (value) => (value + 7) & ~7;
   const malloc = (bytes) => {
+    hooks.onMalloc?.(bytes);
     const ptr = nextPtr;
     nextPtr = align(nextPtr + Math.max(0, bytes | 0));
+    if (nextPtr > memory.buffer.byteLength) memory.grow(Math.ceil((nextPtr - memory.buffer.byteLength) / 65536));
     return ptr;
   };
   const copyTelemetry = (_engine, ptr) => {
     new DataView(memory.buffer).setUint32(ptr, schemaHash >>> 0, true);
     return 1;
+  };
+  const copyCaptureClock = (_engine, ptr) => {
+    const view = new DataView(memory.buffer);
+    view.setUint32(ptr, hooks.captureClockSchema ?? 2, true);
+    view.setUint32(ptr + 4, hooks.captureClockReserved ?? 0, true);
+    view.setBigUint64(ptr + 8, BigInt(hooks.captureClockSample ?? 0), true);
+    view.setFloat64(ptr + 16, hooks.captureClockBeat ?? 0, true);
+    view.setFloat64(ptr + 24, hooks.captureClockBpm ?? 120, true);
+    hooks.onCaptureClockCopy?.();
+    return hooks.captureClockResult ?? 1;
   };
   const exports = {
     memory,
@@ -410,6 +435,10 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
     kessho_product_enqueue_event: () => 1,
     kessho_product_copy_telemetry: copyTelemetry,
     kessho_product_refresh_telemetry: () => 1,
+    kessho_product_copy_capture_clock: copyCaptureClock,
+    kessho_product_set_sequencer_variation_bank: () => 1,
+    kessho_product_select_sequencer_variation: () => 1,
+    kessho_product_copy_sequencer_variation_runtime: () => 1,
     kessho_product_set_meter_demand: () => 1,
     kessho_product_set_simple_sequencer_visual_demand: () => 1,
     kessho_product_drain_generated_sequencer_capture_events: () => 0,
@@ -424,10 +453,14 @@ function fakeWebAssemblyWithTelemetryHash(schemaHash, hooks = {}) {
   };
 }
 
+let staleAbiAllocations = 0;
+let staleAbiClockCopies = 0;
 const staleAbi = instantiateWorklet({
   wasmBinaryOverride: new ArrayBuffer(8),
   webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash, {
     abiVersion: expectedAbiVersion - 1,
+    onMalloc: () => { staleAbiAllocations += 1; },
+    onCaptureClockCopy: () => { staleAbiClockCopies += 1; },
   }),
 });
 const staleAbiError = await waitForMessage(staleAbi.messages, (message) => message.type === 'error');
@@ -436,6 +469,34 @@ assert(
   'Product worklet did not reject a stale WASM ABI version',
 );
 assert(staleAbi.processor.ready === false, 'Product worklet must not become ready after a stale WASM ABI version');
+assert(staleAbiAllocations === 0 && staleAbiClockCopies === 0, 'Product worklet allocated or copied clock state before rejecting its ABI');
+
+const malformedClock = instantiateWorklet({
+  wasmBinaryOverride: new ArrayBuffer(8),
+  webAssemblyOverride: fakeWebAssemblyWithTelemetryHash(expectedSchemaHash, {
+    captureClockSchema: 1,
+  }),
+});
+await waitForMessage(malformedClock.messages, (message) => message.type === 'ready' || message.type === 'error');
+assert(malformedClock.processor.ready, 'Malformed clock worklet fixture did not initialize');
+malformedClock.processor.handleMessage({
+  type: 'recorded-capture-control',
+  request: {
+    action: 'start',
+    enabled: true,
+    sessionToken: 'malformed-clock',
+    sourceLaneIndex: 0,
+    targetLaneIndex: 0,
+    source: 'keyboard',
+    durationBeats: 1,
+  },
+});
+malformedClock.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+const malformedClockError = malformedClock.messages.find(
+  (message) => message.type === 'recorded-capture-batch' && message.batch.phase === 'error',
+);
+assert(malformedClockError?.batch.error?.includes('capture clock schema mismatch'), 'Worklet did not reject a malformed capture clock');
+assert(malformedClock.processor.recordedCapture === null, 'Malformed capture clock left the capture session active');
 
 const staleWasm = instantiateWorklet({
   wasmBinaryOverride: new ArrayBuffer(8),
@@ -527,6 +588,54 @@ const liveWorklet = instantiateWorklet();
 await waitForMessage(liveWorklet.messages, (message) => message.type === 'ready' || message.type === 'error');
 const liveInitError = liveWorklet.messages.find((message) => message.type === 'error');
 assert(!liveInitError, `Product worklet failed to initialize with committed WASM: ${liveInitError?.message}`);
+liveWorklet.processor.handleMessage({ type: 'event', event: { eventKind: 3 } });
+liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+const refreshesBeforeCapture = liveWorklet.processor.exports.kessho_product_get_telemetry_refresh_count(
+  liveWorklet.processor.engine,
+);
+liveWorklet.processor.handleMessage({
+  type: 'recorded-capture-control',
+  request: {
+    action: 'start',
+    enabled: true,
+    sessionToken: 'live-clock-tempo-finish',
+    sourceLaneIndex: 0,
+    targetLaneIndex: 0,
+    source: 'keyboard',
+    durationBeats: 0.01,
+    gridSteps: 16,
+  },
+});
+liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+liveWorklet.processor.handleMessage({
+  type: 'event',
+  event: { eventKind: 2, value: 60, value2: 4, value3: 4, value4: 0 },
+});
+liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+assert(liveWorklet.processor.captureClock?.bpm === 60, 'Recorded capture did not publish the live transport BPM');
+liveWorklet.processor.handleMessage({
+  type: 'recorded-capture-control',
+  request: {
+    action: 'finish',
+    sessionToken: 'live-clock-tempo-finish',
+  },
+});
+for (let block = 0; block < 16; block += 1) {
+  liveWorklet.processor.process([], [[new Float32Array(128), new Float32Array(128)]]);
+  if (liveWorklet.messages.some(
+    (message) => message.type === 'recorded-capture-batch' && message.batch.phase === 'ready',
+  )) break;
+}
+assert(
+  liveWorklet.messages.some(
+    (message) => message.type === 'recorded-capture-batch' && message.batch.phase === 'ready',
+  ),
+  'Recorded capture did not finish at an audio clock boundary',
+);
+const refreshesAfterCapture = liveWorklet.processor.exports.kessho_product_get_telemetry_refresh_count(
+  liveWorklet.processor.engine,
+);
+assert(refreshesAfterCapture === refreshesBeforeCapture, 'Capture clock polling performed a full telemetry refresh');
 let warmedHeapBytes = 0;
 for (let cycle = 0; cycle < 1000; cycle += 1) {
   liveWorklet.processor.handleMessage({
@@ -574,5 +683,202 @@ assert(
   liveWorklet.messages.filter((message) => message.type === 'error').length === workletErrorCountBeforeArpCommit,
   'Product worklet did not accept the ARP pattern commit event',
 );
+
+// Registration failures must clean up every earlier allocation before publishing.
+{
+  const processor = deferredWorklet.processor;
+  const malloc = processor.api.malloc;
+  const register = processor.api.registerAsset;
+  const attempt = (assetId, channels) => processor.handleMessage({
+    type: 'register-asset', assetId, sampleRate: 48000, flags: 8, channels,
+  });
+  let allocations = 0;
+  processor.api.malloc = (bytes) => { allocations += 1; return malloc(bytes); };
+  for (const channels of [[], [new Float32Array(0)], [new Float32Array(2), new Float32Array(3)],
+    [new Float32Array(2), new Float32Array(2), new Float32Array(2)], [[1, 2]]]) {
+    attempt(8100, channels);
+  }
+  assert(allocations === 0, 'Invalid channel shape allocated WASM memory');
+  for (const failAt of [2, 3, 4]) {
+    allocations = 0;
+    const freedBefore = deferredFreedPointers.length;
+    processor.api.malloc = (bytes) => ++allocations === failAt ? 0 : malloc(bytes);
+    processor.api.registerAsset = failAt === 4 ? () => { throw new Error('registration trap'); } : register;
+    const assetId = 8100 + failAt;
+    attempt(assetId, [new Float32Array(2), new Float32Array(2)]);
+    assert(deferredFreedPointers.length - freedBefore === failAt - 1, 'Partial admission leaked an allocation');
+    assert(!processor.assetAllocations.has(assetId), 'Failed admission was published');
+    assert(deferredWorklet.messages.filter((message) => message.assetId === assetId
+      && message.type === 'asset-registration-failed').length === 1, 'Admission failure did not acknowledge exactly once');
+  }
+  processor.api.malloc = malloc;
+  processor.api.registerAsset = register;
+  assert(processor.assetAllocationBytes === 0 && processor.assetDecodedBytes === 0, 'Failed admission changed accounting');
+  processor.handleMessage({ type: 'asset-render-state', active: true });
+  // Saturation retains neither rejected PCM nor extra reservations; cancellation
+  // before allocation drains the same queue without touching the heap.
+  const freedBeforeQueue = deferredFreedPointers.length;
+  for (let i = 0; i < 65; i += 1) attempt(8300 + i, [new Float32Array(1)]);
+  assert(processor.pendingAssetCopies.size === 64 && processor.pendingAssetCopyBytes === 256,
+    'Transfer count cap retained an excess admission');
+  assert(deferredWorklet.messages.filter((message) => message.assetId === 8364
+    && message.type === 'asset-registration-failed').length === 1, 'Count rejection did not acknowledge exactly once');
+  processor.handleMessage({ type: 'cancel-asset-copies' });
+  assert(deferredFreedPointers.length === freedBeforeQueue && processor.pendingAssetCopyBytes === 0,
+    'Unallocated cancellation changed the heap or retained reservations');
+  // Shared test view avoids allocating another full 192 MiB test payload.
+  const largeChannel = new Float32Array(96 * 1024 * 1024 / 4);
+  attempt(8400, [largeChannel, largeChannel]);
+  attempt(8401, [new Float32Array(1)]);
+  assert(processor.pendingAssetCopies.size === 1 && processor.pendingAssetCopyBytes === 192 * 1024 * 1024,
+    'Transfer byte cap retained an excess admission');
+  assert(deferredWorklet.messages.filter((message) => message.assetId === 8401
+    && message.type === 'asset-registration-failed').length === 1, 'Byte rejection did not acknowledge exactly once');
+  processor.handleMessage({ type: 'cancel-asset-copies' });
+  assert(processor.pendingAssetCopyBytes === 0, 'Byte-cap cancellation retained reservations');
+  assert(deferredFreedPointers.length === freedBeforeQueue, 'Rejected or unallocated byte-cap admission freed heap memory');
+  const channels = [new Float32Array(65536), new Float32Array(65536)];
+  const output = [[new Float32Array(128), new Float32Array(128)]];
+  // One scenario: active partial copy -> release/reset/dispose cancellation ->
+  // suspended startup/transition completion without needing a render callback.
+  for (const action of ['unregister-asset', 'reset', 'cancel-asset-copies']) {
+    const assetId = 8200;
+    attempt(assetId, channels);
+    assert(!processor.assetAllocations.has(assetId), 'Active admission published in its handler');
+    processor.process([], output);
+    assert(processor.pendingAssetCopies.get(assetId).offset === 32768, 'Active copy exceeded 128 KiB');
+    const before = deferredWorklet.messages.length;
+    const freedBefore = deferredFreedPointers.length;
+    processor.handleMessage({ type: action, assetId });
+    assert(deferredFreedPointers.length - freedBefore === 3, 'Cancelled partial copy leaked memory');
+    for (let i = 0; i < 6; i += 1) processor.process([], output);
+    assert(!processor.assetAllocations.has(assetId), 'Cancelled copy resurrected');
+    assert(processor.pendingAssetCopyBytes === 0, 'Cancellation retained transfer reservation');
+    assert(deferredWorklet.messages.slice(before).filter((message) => message.type === 'asset-registration-failed').length === 1,
+      'Cancellation did not acknowledge exactly once');
+  }
+  attempt(8201, channels);
+  processor.process([], output);
+  processor.handleMessage({ type: 'asset-render-state', active: false });
+  assert(processor.assetAllocations.has(8201), 'Suspending mid-copy left readiness waiting for process');
+  attempt(8202, [new Float32Array(16)]);
+  assert(processor.assetAllocations.has(8202), 'Suspended startup waited for process');
+  assert(processor.pendingAssetCopyBytes === 0, 'Completed admission retained transfer reservation');
+  for (const assetId of [8201, 8202]) processor.freeAssetAllocation(assetId);
+}
+
+// Opt-in desktop message-handler evidence; this is not an AudioWorklet deadline/device test.
+if (process.argv.includes('--measure-admission')) {
+  const fixture = instantiateWorklet();
+  const reference = instantiateWorklet();
+  await waitForMessage(reference.messages, (message) => message.type === 'ready' || message.type === 'error');
+  const referenceOutput = [[new Float32Array(128), new Float32Array(128)]];
+  let maxOutputDifference = 0;
+  await waitForMessage(fixture.messages, (message) => message.type === 'ready' || message.type === 'error');
+  const processor = fixture.processor;
+  assert(processor.ready, 'Admission measurement did not initialize');
+  const output = [[new Float32Array(128), new Float32Array(128)]];
+  const renderTimes = [];
+  let activeRenderTimes = [];
+  let measuringActive = false;
+  let maxCopyBytes = 0;
+  let peak = 0;
+  let boundaryJump = 0;
+  let previousSample = 0;
+  const renderBlock = () => {
+    const start = performance.now();
+    processor.process([], output);
+    const elapsed = performance.now() - start;
+    renderTimes.push(elapsed);
+    if (measuringActive) activeRenderTimes.push(elapsed);
+    reference.processor.process([], referenceOutput);
+    for (let channel = 0; channel < 2; channel += 1) {
+      for (let i = 0; i < 128; i += 1) maxOutputDifference = Math.max(maxOutputDifference,
+        Math.abs(output[0][channel][i] - referenceOutput[0][channel][i]));
+    }
+    boundaryJump = Math.max(boundaryJump, Math.abs(output[0][0][0] - previousSample));
+    for (const sample of output[0][0]) {
+      assert(Number.isFinite(sample), 'Admission rendered nonfinite output');
+      peak = Math.max(peak, Math.abs(sample));
+    }
+    previousSample = output[0][0][127];
+  };
+  let allocationMs = 0;
+  let copyMs = 0;
+  let registrationMs = 0;
+  let growthMs = 0;
+  let allocations = [];
+  const malloc = processor.api.malloc;
+  processor.api.malloc = (bytes) => {
+    const before = processor.exports.memory.buffer.byteLength;
+    const start = performance.now();
+    const ptr = malloc(bytes);
+    const elapsed = performance.now() - start;
+    const after = processor.exports.memory.buffer.byteLength;
+    allocationMs += elapsed;
+    if (after > before) growthMs += elapsed;
+    allocations.push({ bytes, ms: elapsed, before, after });
+    return ptr;
+  };
+  const instrumentCopy = () => {
+    const heap = processor.heapF32;
+    heap.set = function (data, offset) {
+      const start = performance.now();
+      Float32Array.prototype.set.call(this, data, offset);
+      copyMs += performance.now() - start;
+      maxCopyBytes = Math.max(maxCopyBytes, data.byteLength);
+    };
+  };
+  const refresh = processor.refreshViews.bind(processor);
+  processor.refreshViews = () => { refresh(); instrumentCopy(); };
+  instrumentCopy();
+  const register = processor.api.registerAsset;
+  processor.api.registerAsset = (...args) => {
+    const start = performance.now();
+    const result = register(...args);
+    registrationMs += performance.now() - start;
+    return result;
+  };
+  processor.handleMessage({ type: 'asset-render-state', active: true });
+  // 4 MiB sample reservation, 128 MiB soundscape reservation, 192 MiB hard admission ceiling.
+  for (const mib of [4, 128, 192, 192]) {
+    for (const target of [processor, reference.processor]) {
+      target.handleMessage({ type: 'event', event: { eventKind: 12, targetId: 1, value: 1009 } });
+      target.handleMessage({ type: 'event', event: { eventKind: 14, targetId: 1, value: 60, value2: 0.85, value3: 8 } });
+    }
+    for (let i = 0; i < 64; i += 1) renderBlock();
+    allocationMs = copyMs = registrationMs = growthMs = maxCopyBytes = 0;
+    activeRenderTimes = [];
+    allocations = [];
+    const bytes = mib * 1024 * 1024;
+    const channels = [new Float32Array(bytes / 8).fill(0.125), new Float32Array(bytes / 8).fill(-0.125)];
+    const heapBefore = processor.exports.memory.buffer.byteLength;
+    const start = performance.now();
+    processor.handleMessage({ type: 'register-asset', assetId: 9001, sampleRate: 48000, flags: 8, channels });
+    const handlerMs = performance.now() - start;
+    assert(!processor.assetAllocations.has(9001), 'Active handler published an incomplete asset');
+    measuringActive = true;
+    while (processor.pendingAssetCopies.size) renderBlock();
+    measuringActive = false;
+    assert(processor.assetAllocations.has(9001), 'Measured registration failed');
+    assert(maxCopyBytes <= 128 * 1024, 'Copy exceeded per-block budget');
+    assert(activeRenderTimes.length === bytes / (128 * 1024), 'Copy block count did not match fixed budget');
+    const heapAfter = processor.exports.memory.buffer.byteLength;
+    for (let i = 0; i < 64; i += 1) renderBlock();
+    processor.handleMessage({ type: 'unregister-asset', assetId: 9001 });
+    renderBlock();
+    assert(processor.assetAllocationBytes === 0, 'Measured admission leaked allocation accounting');
+    const sorted = [...renderTimes].sort((a, b) => a - b);
+    const p99 = sorted[Math.floor(sorted.length * 0.99)];
+    console.log('ADMISSION', JSON.stringify({ bytes, handlerMs, allocationMs, growthMs, copyMs, registrationMs,
+      heapBefore, heapAfter, allocations, maxCopyBytes, copyBlocks: activeRenderTimes.length,
+      activeProcessMaxMs: Math.max(...activeRenderTimes),
+      activeProcessP99Ms: [...activeRenderTimes].sort((a, b) => a - b)[Math.floor(activeRenderTimes.length * 0.99)],
+      renderP99Ms: p99, quantumMs: 128 / 48,
+      estimatedHeadroomMs: 128 / 48 - p99, peak, boundaryJump, maxOutputDifference, rss: process.memoryUsage().rss }));
+  }
+  assert(peak > 0.001, 'Admission measurement remained silent');
+  assert(maxOutputDifference === 0, 'Live admission changed audible output relative to uninterrupted reference');
+}
 
 console.log('Kessho Product WASM smoke passed');

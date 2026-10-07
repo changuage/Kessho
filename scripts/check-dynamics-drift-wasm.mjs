@@ -215,6 +215,19 @@ const bypass = processBlocks(
 );
 assert(diffRms(bypass, dryInput) < 1e-8, 'Bypass path is not effectively pass-through');
 
+// Additive noise belongs after the master chain and must not receive its gain.
+const noiseOnlyParams = baseParams({ dry: 0, wet: 0, envToWetGain: 0, shallowFlavor: 0, noiseGain: 0.1 });
+const noiseOnly = processBlocks(noiseOnlyParams, () => [0, 0], 8);
+const noiseWithMaster = processBlocks({
+  ...noiseOnlyParams,
+  endCompActive: 1,
+  endCompRatio: 1,
+  endCompMakeup: 2,
+  endCompMix: 1,
+}, () => [0, 0], 8);
+assert(stats(noiseOnly).rms > 0.0001, 'Noise ordering check did not generate noise');
+assert(diffRms(noiseOnly, noiseWithMaster) < 1e-8, 'Additive noise was processed by the master chain');
+
 const impulse = processBlocks(
   baseParams(),
   (block, i) => (block === 0 && i === 0 ? [0.8, 0.8] : [0, 0]),

@@ -585,6 +585,7 @@ function extractEuclideanSourceSequenceState(
           ?? ((metadata as Record<string, unknown>).synthArpConfigs as typeof metadata.synthPlayConfigs),
         pitchSettings: metadata.synthPitchSettings,
         pitchBindingModes: metadata.synthPitchBindingModes,
+        variationBanks: metadata.synthSequenceVariationBanks,
       }
     : {
         clockDivs: metadata.drumClockDivs,

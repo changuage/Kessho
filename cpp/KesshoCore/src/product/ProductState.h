@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include "ProductBuffers.h"
 #include "ProductGraphState.h"
 #include "ProductFxState.h"
@@ -21,6 +22,24 @@
 #include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "kessho_drum.h"
 using namespace kessho::product::internal;
+
+enum FxConfigurationGroup : uint32_t {
+  kFxConfigurationDelayA = 1u << 0,
+  kFxConfigurationDelayB = 1u << 1,
+  kFxConfigurationReverb = 1u << 2,
+  kFxConfigurationGranular = 1u << 3,
+  kFxConfigurationFreeze = 1u << 4,
+  kFxConfigurationMasterDynamics = 1u << 5,
+  kFxConfigurationWetDynamics = 1u << 6,
+  kFxConfigurationAll = kFxConfigurationDelayA | kFxConfigurationDelayB |
+      kFxConfigurationReverb | kFxConfigurationGranular | kFxConfigurationFreeze |
+      kFxConfigurationMasterDynamics | kFxConfigurationWetDynamics,
+};
+
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+constexpr uint32_t kFxConfigurationGroupCount = 7u;
+#endif
+
 struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, ProductInteractionRuntimeState {
   explicit KesshoProductEngine(double in_sample_rate, uint32_t in_max_block_size, uint32_t in_flags);
   double sample_rate = 48000.0;
@@ -40,6 +59,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   HarmonyState harmony{};
   bool harmony_preview_active = false;
   SourceState sources[kSourceCount]{};
+  std::unique_ptr<kessho::product::internal::SequencerVariationStorage> sequencer_variation_storage;
   LaneState synth_lanes[kMaxLaneCount]{};
   LaneState drum_lanes[kMaxLaneCount]{};
   uint32_t synth_lane_count = 4;
@@ -80,8 +100,12 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   uint32_t pending_phrase_timing_event_count = 0u;
   uint64_t pending_phrase_timing_apply_frame = 0u;
   KesshoProductGeneratedSequencerCaptureConfig generated_sequencer_capture_config{};
-  kessho::product::GeneratedSequencerCaptureRing<2048> generated_sequencer_capture_ring{};
+  // Keep the capture ring off the aggregate so direct core test fixtures and
+  // native stack callers do not cross the platform stack limit when the event
+  // ABI grows.
+  std::unique_ptr<kessho::product::GeneratedSequencerCaptureRing<2048>> generated_sequencer_capture_ring;
   uint64_t generated_sequencer_capture_event_counter = 1u;
+  uint64_t generated_sequencer_capture_attack_counter = 1u;
   uint32_t simple_sequencer_visual_demand_mask = 0u;
   kessho::product::SimpleSequencerVisualRing<256> simple_sequencer_visual_ring{};
   uint64_t simple_sequencer_visual_event_counter = 1u;
@@ -197,12 +221,16 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   float journey_phase = 0.0f;
   float journey_rate_bars = 8.0f;
   uint32_t fx_configuration_batch_depth = 0u;
-  bool fx_configuration_pending = false, reverb_configuration_pending = false,
-       spectral_freeze_configuration_pending = false;
+  uint32_t fx_configuration_pending_mask = 0u;
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  uint32_t fx_configuration_debug_counts[kFxConfigurationGroupCount]{};
+#endif
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;
   void configureDynamicsDriftModule();
-  void configureFxModules();
+  void configureDynamicsDriftModule(uint32_t group_mask);
+  void configureFxModules(uint32_t group_mask = kFxConfigurationAll);
+  void configureFxModulesForRoute(uint8_t from, uint8_t to);
   void configureSpectralFreezeModule();
   void beginFxConfigurationBatch();
   void endFxConfigurationBatch();
@@ -255,45 +283,43 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void applySequencerChainParamEvent(const KesshoProductEvent& event);
   void applySequencerChainTransitions();
   uint64_t nextSequencerChainBoundaryFrame() const;
+  uint64_t nextSequencerVariationBoundaryFrame() const;
+  void applyPendingSequencerVariationBanks();
+  void advanceSequencerVariationBanks(uint32_t frames);
+  int32_t setSequencerVariationBank(uint32_t sequencer_id, uint32_t lane_index,
+      const KesshoProductSequencerVariationBank& bank);
+  int32_t selectSequencerVariation(uint32_t sequencer_id, uint32_t lane_index,
+      uint32_t variation_index);
+  void copySequencerVariationRuntime(uint32_t sequencer_id, uint32_t lane_index,
+      KesshoProductSequencerVariationRuntime& out) const;
+  void bindSequencerVariationRuntimes();
   bool isSequencerLaneTimingEvent(const KesshoProductEvent& event) const;
   void stageNextPhraseTimingEvent(const KesshoProductEvent& event);
   uint32_t resolveMidiTargetSource(const KesshoProductEvent& event, uint32_t status) const;
   void applyMidiEvent(const KesshoProductEvent& event);
   void clearStepOverride(LaneState& lane, uint32_t step);
   void clearPendingRatchets(LaneState& lane);
-  void clearPendingArpRatchets(LaneState& lane);
-  void resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary = true);
+  void clearPendingArpRatchets(LaneState& lane, uint64_t from_sample = 0u);
+  void resetSequencerLaneRuntime(LaneState& lane, bool wait_for_join_boundary = true,
+      bool preserve_pending_non_arp = false);
   bool stepMaskHas(uint32_t low, uint32_t high, uint32_t step) const;
   void setStepMask(uint32_t& low, uint32_t& high, uint32_t step);
   void clearStepMask(uint32_t& low, uint32_t& high, uint32_t step);
   float stepFloatValue(uint32_t step, uint32_t low, uint32_t high,
                        const float values[64], float fallback) const;
-  float stepFloatRangeValue(
-      uint32_t step,
-      uint32_t low,
-      uint32_t high,
-      const float values[64],
-      uint32_t range_low,
-      uint32_t range_high,
-      const float range_maxes[64],
-      float fallback,
+  float stepFloatRangeValue(uint32_t step, uint32_t low, uint32_t high,
+      const float values[64], uint32_t range_low, uint32_t range_high,
+      const float range_maxes[64], float fallback,
       uint32_t sample_seed) const;
-  uint32_t stepU32Value(
-      uint32_t step,
-      uint32_t low,
-      uint32_t high,
-      const uint32_t values[64],
-      uint32_t fallback) const;
+  uint32_t stepU32Value(uint32_t step, uint32_t low, uint32_t high,
+      const uint32_t values[64], uint32_t fallback) const;
   void setStepOverride(LaneState& lane, uint32_t step, bool enabled);
   void clearLaneStepOverrides(LaneState& lane);
   uint32_t stepFieldId(uint32_t field) const;
   bool validStepFieldId(uint32_t field_id) const;
   void applyStepFieldConfig(LaneState& lane, const KesshoProductEvent& event);
-  uint32_t subLaneStepForField(
-      const LaneState& lane,
-      uint32_t field,
-      uint32_t trigger_step,
-      int64_t absolute_step,
+  uint32_t subLaneStepForField(const LaneState& lane, uint32_t field,
+      uint32_t trigger_step, int64_t absolute_step,
       uint64_t hit_count_phase) const;
 #include "ProductSonicRuntimeMethods.inc"
   bool isSequencerLaneParam(uint32_t param_id) const;
@@ -357,10 +383,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void compileSourcePresetEndpoints(SourceState& source);
   void applySourcePresetMacros(const SourceState& source, float& morph, float& distance, float& expression) const;
   kessho::core::KesshoSourcePresetPatch drumVoiceMorphPatch(const SourceState& source) const;
-  void applyDrumVoiceMorphToPatch(
-      kessho::core::KesshoSourcePresetPatch& patch,
-      const SourceState& source,
-      uint32_t voice_index,
+  void applyDrumVoiceMorphToPatch(kessho::core::KesshoSourcePresetPatch& patch,
+      const SourceState& source, uint32_t voice_index,
       float morph) const;
   bool sourceMacrosDifferFromDefaults(float morph, float distance, float expression) const;
   float modulationRangeSample(const ModulationRange& range, float fallback, uint32_t sample_seed) const;
@@ -382,9 +406,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   bool trigConditionPass(uint32_t trig_condition, uint64_t absolute_sample) const;
   bool stepTrigConditionPass(const LaneState& lane, uint32_t step, int64_t absolute_step) const;
   bool manualMaskHit(const LaneState& lane, uint32_t step) const;
-  float resolveHarmonyMidi(
-      const LaneState& lane,
-      uint32_t lane_index,
+  float resolveHarmonyMidi(const LaneState& lane, uint32_t lane_index,
       uint32_t step_id,
       uint64_t absolute_sample) const;
   void rebuildHarmonyAuthorityCache();
@@ -396,20 +418,11 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void copySequencerLaneUiState(const LaneState& lane, KesshoProductSequencerLaneUiState& out) const;
   void copySequencerUiState(KesshoProductSequencerUiState& out) const;
   float evolutionDepth() const;
-  float evolvedLaneValue(
-      const LaneState& lane,
-      uint32_t lane_index,
-      uint32_t step_id,
-      uint64_t absolute_sample,
-      uint32_t component,
-      float base,
-      float depth,
-      float min_value,
+  float evolvedLaneValue(const LaneState& lane, uint32_t lane_index, uint32_t step_id,
+      uint64_t absolute_sample, uint32_t component,
+      float base, float depth, float min_value,
       float max_value) const;
-  void generateLaneEvents(
-      LaneState* lanes,
-      uint32_t lane_count,
-      uint32_t frames,
+  void generateLaneEvents(LaneState* lanes, uint32_t lane_count, uint32_t frames,
       SequencerBuffer& out);
   void generateSequencerEvents(uint32_t frames, bool include_inactive_sources = false);
   void resetArrangementRuntime();
@@ -521,26 +534,13 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void processVoicePostChain(Voice& voice, float& left, float& right);
   void updateProductBiquadCoefficients(ProductBiquadFilterState& filter, float cutoff_hz, uint32_t type);
   float processProductBiquadSample(const ProductBiquadFilterState& filter, BiquadState& state, float input) const;
-  void mixPadSourceBuffer(
-      uint32_t source_id,
-      const float* dry_l,
-      const float* dry_r,
-      const float* send_l,
-      const float* send_r,
-      float* out_l,
-      float* out_r,
-      uint32_t start,
+  void mixPadSourceBuffer(uint32_t source_id, const float* dry_l, const float* dry_r,
+      const float* send_l, const float* send_r,
+      float* out_l, float* out_r, uint32_t start,
       uint32_t frames);
-  void recordSourceGraphTaps(
-      uint32_t source_id,
-      uint32_t frame,
-      const SourceState& source,
-      float dry_left,
-      float dry_right,
-      float ducked_left,
-      float ducked_right,
-      float send_left,
-      float send_right,
+  void recordSourceGraphTaps(uint32_t source_id, uint32_t frame, const SourceState& source,
+      float dry_left, float dry_right, float ducked_left, float ducked_right,
+      float send_left, float send_right,
       float effective_granular_send);
   void triggerSequencerEvent(const KesshoSequencerEvent& event);
   uint32_t sampleFadeFrames(double seconds, uint32_t limit_frames) const;
