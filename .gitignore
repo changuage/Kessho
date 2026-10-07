@@ -95,6 +95,7 @@ public/samples/*
 !public/samples/TheSpellsinger/**
 !public/samples/WildPercussion/
 !public/samples/WildPercussion/**
+public/samples/**/*.mp3*
 
 # Digitone sysex tools (local development only)
 Digitone/

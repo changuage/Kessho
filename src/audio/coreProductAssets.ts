@@ -198,18 +198,32 @@ export function getCoreProductSoundscapeAssetDescriptorsForState(
   });
 }
 
+let useCompatibleAudioAssets = false;
+
+async function fetchDecodedAudio(context: BaseAudioContext, url: string): Promise<AudioBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Kessho Product asset ${url}: ${response.status}`);
+  }
+  return context.decodeAudioData(await response.arrayBuffer());
+}
+
 export async function decodeCoreProductAsset(
   context: BaseAudioContext,
   assetId: number,
   url: string,
   flags: number,
 ): Promise<DecodedCoreProductAsset> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Kessho Product asset ${url}: ${response.status}`);
+  const compatibleUrl = url.replace(/\.ogg(?=[?#]|$)/i, '.mp3');
+  let audioBuffer: AudioBuffer;
+  try {
+    audioBuffer = await fetchDecodedAudio(context, useCompatibleAudioAssets ? compatibleUrl : url);
+  } catch (error) {
+    if (useCompatibleAudioAssets || compatibleUrl === url || !(error instanceof DOMException) || error.name !== 'EncodingError') throw error;
+    audioBuffer = await fetchDecodedAudio(context, compatibleUrl);
+    // Some WebKit versions advertise Vorbis support but reject Ogg decoding.
+    useCompatibleAudioAssets = true;
   }
-  const bytes = await response.arrayBuffer();
-  const audioBuffer = await context.decodeAudioData(bytes.slice(0));
   const channels: Float32Array[] = [];
   for (let channel = 0; channel < Math.min(2, audioBuffer.numberOfChannels); channel += 1) {
     channels.push(new Float32Array(audioBuffer.getChannelData(channel)));

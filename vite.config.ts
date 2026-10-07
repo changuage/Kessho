@@ -2,12 +2,22 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const captureEnabled = process.env.VITE_KESSHO_ENABLE_GRAPH_CAPTURE === 'true';
 
 export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
+    {
+      name: 'native-audio-compatibility-assets',
+      async buildStart() {
+        await promisify(execFile)(process.execPath, [
+          fileURLToPath(new URL('./scripts/generate-audio-compatibility-assets.mjs', import.meta.url)),
+        ]);
+      },
+    },
     {
       name: 'point-clouds-shared-bridge-asset',
       apply: 'build' as const,

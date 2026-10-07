@@ -16,6 +16,8 @@ npm run core:product:ci
 
 The app is available at `http://localhost:5173` in development.
 
+Vite generates ignored MP3 versions of the Ogg samples before serving or building. Browsers that reject native Ogg decoding use these assets; compatible browsers keep using Ogg. Conversion uses the build-only `ffmpeg-static` dependency and is cached until a source sample or the generator changes.
+
 ## Product Core Architecture
 
 Production audio flows through:
