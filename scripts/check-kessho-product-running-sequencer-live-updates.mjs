@@ -46,8 +46,10 @@ const files = {
   generatedCaptureCommit: read('src/ui/sequencer/commitGeneratedCaptureToEuclid.ts'),
   generatedCaptureProductCommit: read('src/ui/sequencer/generatedCaptureProductCommit.ts'),
   generatedCaptureHook: read('src/ui/sequencer/useGeneratedSequenceCapture.ts'),
+  recordedCaptureHook: read('src/ui/sequencer/useRecordedNoteCapture.ts'),
   generatedCapturePhrase: read('src/ui/sequencer/generatedSequencerCapturePhrase.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
+  hostStateApplyCoordinator: read('src/audio/product/host/CoreProductHostStateApplyCoordinator.ts'),
   manualTriggers: read('src/ui/useProductRuntimeManualTriggers.ts'),
   liveTriggerUiCallbacks: read('src/ui/useLiveTriggerUiCallbacks.ts'),
   liveSequencerTiming: read('src/ui/commitLiveSequencerTiming.ts'),
@@ -126,7 +128,8 @@ check(
   'sequencer-controls-event-apply-mode',
   files.productRuntimeSequencerControls.includes("applyMode: 'event'") &&
     files.sequencerControls.includes("applyMode: 'event'") &&
-    files.host.includes("options?.applyMode === 'event'") &&
+    files.host.includes('this.stateApplyCoordinator.apply(sliderState, fallbackReloadReason, options)') &&
+    files.hostStateApplyCoordinator.includes("options?.applyMode === 'event'") &&
     files.hostCommitService.includes("commit.applyMode === 'event'"),
   'sequencer controls must commit explicit Product events without forcing snapshot receipt waits',
 );
@@ -336,7 +339,9 @@ check(
 check(
   'morph-slot-midpoint-atomic',
   files.morphSlotLoad.includes('applyMidMorphSlotReplacement') &&
-    files.morphSlotLoad.includes('scheduleProductRuntimeParamUpdate(nextState') &&
+    files.morphSlotLoad.includes('await commitProductRuntimeParamUpdate(nextState,') &&
+    files.morphSlotLoad.indexOf('await commitProductRuntimeParamUpdate(nextState,') <
+      files.morphSlotLoad.indexOf('setState(nextState)') &&
     files.morphSlotLoad.includes('triggerCritical: true'),
   'mid-morph slot replacement must commit the recomputed visible state immediately',
 );
@@ -494,13 +499,8 @@ check(
   'sequencer home capture must use generated ProductEvent markers instead of the sequencer UI patch bridge',
 );
 check(
-  'generated-sequencer-capture-stopped-transport-arms-before-product-event',
-  files.synthPage.includes('const generatedSequencerCaptureControls = activeLaneUsesGeneratedRecorder ? (') &&
-    count(files.synthPage, 'captureSlot={generatedSequencerCaptureControls}') >= 2 &&
-    files.synthPage.includes('synthSequencerFaces: sequencerFaceState') &&
-    files.synthPage.includes("phase: 'waitingForStart'") &&
-    !files.synthPage.includes('recordingUntilBoundary') &&
-    files.host.includes('generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry))') &&
+  'generated-sequencer-capture-history-and-phrase-policy',
+  files.host.includes('generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry))') &&
     files.host.includes('generatedSequencerCaptureTelemetryHistory.clearForEvent(event, this.latestTelemetry)') &&
     files.generatedCaptureTelemetryHistory.includes('GENERATED_SEQUENCER_CAPTURE_EVENT_HISTORY_LIMIT') &&
     files.generatedCaptureTelemetryHistory.includes('KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture') &&
@@ -521,15 +521,25 @@ check(
     files.generatedCaptureHook.includes('chooseGeneratedCaptureStopAction') &&
     files.generatedCaptureHook.includes('eventCycleIndex < scratch.cycleIndex') &&
     files.generatedCaptureHook.includes('eventCycleIndex > scratch.cycleIndex') &&
-    files.generatedCapturePhrase.includes('completedCycleIndex') &&
-    files.synthPage.includes('if (!isRunning) {\n      setGeneratedCaptureStartArm({\n        ...arm,\n        phase: \'waitingForStart\',\n        waitingForBoundary: true,\n        previousStep: null,') &&
-    files.synthPage.includes('if (currentStep === 0 || crossedStart) {\n      startGeneratedCapture({') &&
-    files.synthPage.includes('setGeneratedCaptureStartArm(null);\n      generatedCaptureCountIn.stop();\n      return;') &&
-    files.synthPage.includes('generatedCaptureCountIn.stop();\n      if (generatedCaptureSession.sourceLaneIndex === seq.activeTab) {\n        stopGeneratedCapture();') &&
-    files.synthPage.includes("['euclid', 'Step']") &&
-    files.synthPage.includes("'Saved to Step'") &&
-    !files.synthPage.includes('setGeneratedCaptureStartArm(null);\n      startSynthPlaybackForLaneRecording(arm.targetLaneIndex);'),
-  'generated orbit/walker capture must wait for a loop boundary to start, use rolling phrase stop policy, and keep telemetry through the host disable flush',
+    files.generatedCapturePhrase.includes('completedCycleIndex'),
+  'generated capture helpers must retain rolling phrase history and deliver the host disable flush',
+);
+check(
+  'recorded-capture-transport-and-bank-receipts',
+  files.synthPage.includes('const recordedCaptureControls = recordedCaptureAvailable ? (') &&
+    files.synthPage.includes('{recordedCaptureControls}') &&
+    files.synthPage.includes('if (onRequestPlaybackStart) setRecordedCaptureStartPendingLane(laneIndex)') &&
+    files.synthPage.includes('if (laneIndex === null || !isRunning) return') &&
+    files.synthPage.includes('if (laneIndex === seq.activeTab) startRecordedCaptureForActiveLane()') &&
+    files.synthPage.includes('source: sourceForMode(activeSequencerMode)') &&
+    files.recordedCaptureHook.includes("if (mode === 'anchorWalker') return 'walker'") &&
+    files.recordedCaptureHook.includes("if (mode === 'orbit') return 'orbit'") &&
+    files.recordedCaptureHook.includes("active.runtimePhase !== 'ready' || !watermarkReached(active)") &&
+    files.synthPage.includes('if (!await commitSynthSequenceVariationBank(laneIndex, result.bank))') &&
+    files.synthPage.includes('if (!settlement.accepted) return') &&
+    files.synthPage.indexOf('await commitSynthSequenceVariationBank(laneIndex, result.bank)') <
+      files.synthPage.indexOf('updateSynthVariationBank(laneIndex, () => result.bank)'),
+  'recording must wait for transport, drain the final runtime watermark, and publish a printed bank after an accepted receipt',
 );
 check(
   'sequencer-controls-no-direct-productevent-enqueue',

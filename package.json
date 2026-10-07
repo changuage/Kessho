@@ -34,7 +34,6 @@
     "test:preset-current-schema": "node scripts/run-current-preset-schema-regression.mjs",
     "test:preset-bundled-default": "tsx --test src/presets/bundledPresetLoaderRegression.test.ts",
     "test:preset-manager-query-ownership": "node scripts/check-preset-manager-query-ownership.mjs",
-    "test:preset-cloud-list-recovery": "node --import tsx src/presets/cloudPresetListRecovery.test.ts",
     "test:preset-sequencer-hash-coverage": "node scripts/run-preset-sequencer-hash-coverage.mjs",
     "test:product-snapshot-policy": "node scripts/run-product-snapshot-policy-regression.mjs",
     "test:preset-soft-delete": "node scripts/run-preset-soft-delete-regression.mjs",

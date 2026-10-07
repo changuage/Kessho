@@ -121,6 +121,7 @@ const routeConflictPolicy = read('src/ui/routing/routeConflictPolicy.ts');
 const presetUtils = read('src/ui/presetUtils.ts');
 const appSource = read('src/App.tsx');
 const appSliderRoutingState = read('src/app/sliderRoutingState.ts');
+const morphInterpolation = read('src/app/morphInterpolation.ts');
 const productManualTriggers = read('src/ui/useProductRuntimeManualTriggers.ts');
 const pageAliases = read('src/ui/pages/pageAliases.ts');
 const dirtyDiffClassification = read('scripts/check-kessho-product-dirty-diff-classification.mjs');
@@ -205,7 +206,8 @@ assert(
 assert(
   routeConflictPolicy.includes('export function normalizeDegradeReverbCrossfeed') &&
     appSliderRoutingState.includes('normalizeDegradeReverbCrossfeed(newState, previousState') &&
-    appSource.includes('normalizeDegradeReverbCrossfeed(result)') &&
+    appSource.includes('evaluatePreparedMorphPair(') &&
+    morphInterpolation.includes('normalizeDegradeReverbCrossfeed(result)') &&
     presetUtils.includes('normalizeDegradeReverbCrossfeed(newState)') &&
     presetV2Migration.includes('normalizeGraphRepairData'),
   'CPU conflict-normalization scenario requires App, preset load, morph/randomization, and repair paths to share routeConflictPolicy',
@@ -463,7 +465,8 @@ const scenarios = [
   }),
   passRow('11-degrade-reverb-conflict-normalization', 'Degrade/Reverb conflict normalization', [
     'src/ui/routing/routeConflictPolicy.ts: shared crossfeed policy',
-    'src/App.tsx: routing updates, preset load, morph/randomization normalize crossfeed conflicts',
+    'src/App.tsx and src/app/sliderRoutingState.ts: route updates normalize crossfeed conflicts',
+    'src/app/morphInterpolation.ts: App morph interpolation normalizes crossfeed conflicts',
     'src/ui/presetUtils.ts and src/presets/presetV2Migration.ts: repair/migration normalization',
   ]),
   passRow('12-zero-level-enabled-sources', 'Zero-level enabled sources', [

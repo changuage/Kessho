@@ -125,6 +125,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/host/CoreProductHostDebugSurface', 'product host debug read-surface adapter'],
   ['./product/host/CoreProductResolvedStateCommitService', 'product host resolved-state commit diagnostics adapter'],
   ['./product/host/CoreProductStatePatchQueue', 'product host coalesced state patch queue'],
+  ['./product/host/CoreProductHostStateApplyCoordinator', 'product host state application and variation synchronization coordinator'],
   ['./product/host/CoreProductHostProxy', 'product host runtime proxy'],
   ['./product/host/CoreProductJourneyMorphClock', 'product host journey morph clock bridge'],
   ['./product/host/CoreProductPatchClassifier', 'product host patch reload reason classifier'],
@@ -142,6 +143,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./product/journey/compileBackgroundJourneyPlan', 'type-only deterministic background Journey plan contract'],
   ['./product/ports/ProductJourneyPort', 'type-only Product Journey port contract'],
   ['./product/compileProductSourceMorphAutomation', 'deterministic Product Core source-morph compiler'],
+  ['./product/synthSequenceVariationEncoder', 'Product synth variation bank ABI encoder'],
   ['./product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory', 'product generated sequencer capture telemetry history'],
   ['./product/host/CoreProductSamplePlaybackChange', 'product sample playback reload classifier'],
   ['./product/host/CoreProductHostSnapshotFactory', 'product host snapshot state factory'],
@@ -320,6 +322,8 @@ const classifiedRuntimeAllowlist = new Map([
   ['../../../native/capacitorMacShell', 'host platform detection for Product asset transfer ownership'],
   ['../../../native/capacitorAudioSession', 'host native Product runtime capability bridge'],
   ['../ui/state', 'UI serialization defaults only'],
+  ['../ui/sequencer/synthSequenceVariations', 'type-only serialized synth variation bank contract'],
+  ['../ui/sequencer/recordedNoteCaptureTypes', 'type-only recorded note capture contract'],
   ['../ui/routing/routingMuteGroups', 'type-only routing mute-group event input contract'],
   ['../ui/routing/fxRoutingGraph', 'pure cycle-safe Product FX graph schema and ordering policy'],
 ]);
@@ -335,6 +339,9 @@ for (const file of productFiles) {
     const specifier = imported.specifier;
     if (specifier === '../ui/routing/routingMuteGroups') {
       assert(imported.isTypeOnly, `${file} routing mute-group dependency must remain type-only`);
+    }
+    if (specifier === '../ui/sequencer/synthSequenceVariations' || specifier === '../ui/sequencer/recordedNoteCaptureTypes') {
+      assert(imported.isTypeOnly, `${file} sequencer UI contract dependency must remain type-only`);
     }
     if (specifier === './engine' && imported.isTypeOnly) {
       continue;

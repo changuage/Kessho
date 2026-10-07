@@ -15,11 +15,11 @@ import type { SequencerPitchSettings } from './sequencerPitchSettings';
 import { normalizeSequencerSwing } from './sequencerSwing';
 import { drumVoiceBaseMidiFromIndex } from './drumVoiceMidi';
 import { getCoreProductSequencerLaneSwing, patchCoreProductSequencerLaneSwing } from './CoreProductHostSequencerSwing';
-import { drumVoiceIndex, runtimeWalkConfigChanged, runtimeWalkConfigFromState } from './CoreProductHostRuntimeGuards';
+import { drumVoiceIndex } from './CoreProductHostRuntimeGuards';
 import { CoreProductRuntime, type CoreProductGraphTapCaptureChunk } from './coreProductRuntime';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
-import { coreProductSequencerClockRejoinMask, EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK, hasCoreProductSequencerClockRejoin, type CoreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
+import { EMPTY_CORE_PRODUCT_SEQUENCER_CLOCK_REJOIN_MASK, hasCoreProductSequencerClockRejoin, type CoreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import { CoreProductHostSequencerChain } from './CoreProductHostSequencerChain';
 import { createCoreProductSequencerHomeStore } from './CoreProductHostSequencerHome';
 import { createCoreProductHostMidiEvent, createCoreProductLiveNoteEvent } from './CoreProductHostMidi';
@@ -71,16 +71,14 @@ import { CoreProductRuntimeEventBatcher } from './product/host/CoreProductRuntim
 import { CoreProductTelemetryCallbackScheduler } from './product/host/CoreProductTelemetryCallbackScheduler';
 import { CoreProductHostLifecycleCoordinator } from './product/host/CoreProductHostLifecycleCoordinator';
 import { CoreProductGeneratedSequencerCaptureTelemetryHistory } from './product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory';
-import { productSamplePlaybackTriggerCriticalChange } from './product/host/CoreProductSamplePlaybackChange';
 import { publishProductInteractionSignalSnapshot } from './productInteractionSignalStore';
 import { publishProductInteractionEvents } from './productInteractionEventStore';
 import type { BackgroundJourneyPlan } from './product/journey/compileBackgroundJourneyPlan';
 import type { ProductBackgroundJourneyReadiness } from './product/ports/ProductJourneyPort';
 import { CoreProductBackgroundJourneyCoordinator } from './product/host/CoreProductBackgroundJourneyCoordinator';
-import { CoreProductSynthSequenceVariationSynchronizer, type CoreProductSynthSequenceVariationRuntimeBridge } from './product/host/CoreProductSynthSequenceVariationSynchronizer';
+import { CoreProductHostStateApplyCoordinator } from './product/host/CoreProductHostStateApplyCoordinator';
 import type { SynthSequenceVariationBank } from '../ui/sequencer/synthSequenceVariations';
 const PRODUCT_VISIBLE_SYNTH_LANE_COUNT = SYNTH_EUCLIDEAN_LANE_COUNT, PRODUCT_VISIBLE_DRUM_LANE_COUNT = DRUM_EUCLIDEAN_LANE_COUNT;
-type CoreProductSynthVariationRuntime = CoreProductRuntime & CoreProductSynthSequenceVariationRuntimeBridge;
 type SequencerLanePitchState = { steps?: number; direction?: LaneDirection; scaleQuantize?: boolean };
 class CoreProductEngineHost {
   private readonly runtime = new CoreProductRuntime();
@@ -88,7 +86,6 @@ class CoreProductEngineHost {
   private readonly sequencerChain = new CoreProductHostSequencerChain({ post: (event) => this.postRuntimeProductEvent(event) });
   private readonly snapshotAckMetadata = new CoreProductSnapshotAckMetadataFactory();
   private latestSliderState: Record<string, unknown> | null = null;
-  private readonly synthSequenceVariationSynchronizer = new CoreProductSynthSequenceVariationSynchronizer(PRODUCT_VISIBLE_SYNTH_LANE_COUNT);
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
   private readonly arrangementBridge = new CoreProductArrangementBridge(
     (event) => this.postRuntimeProductEvent(event),
@@ -126,7 +123,6 @@ class CoreProductEngineHost {
   private readonly resolvedStateCommitService = new CoreProductResolvedStateCommitService({ diagnostics: this.diagnostics, applyProductStatePatch: (patch, reason, options) => this.applyProductStatePatch(patch, reason, options), postProductEvents: (events) => this.postProductEvents(events) });
   private readonly realtimeInputBootstrap = new CoreProductRealtimeInputBootstrap({ runtime: this.runtime, runtimeReady: () => this.runtimeReady, setRuntimeReady: (ready) => { this.runtimeReady = ready; }, loadLatestSnapshot: () => this.loadLatestSnapshot('runtime-bootstrap'), post: (event) => this.postRuntimeProductEvent(event), postMany: (events) => this.postRuntimeProductEvents(events) });
   private readonly realtimeTimestampMapper = new CoreProductRealtimeTimestampMapper();
-  private sequencerTransportStartInFlight = false;
   private pendingSnapshotReloadReason: SnapshotReloadReason | null = null;
   private lastSequencerUiStateRevision = 0;
   private readonly sequencerCache: CoreProductSequencerCacheState = createCoreProductSequencerCacheState();
@@ -152,6 +148,25 @@ class CoreProductEngineHost {
   private readonly generatedSequencerCaptureTelemetryHistory = new CoreProductGeneratedSequencerCaptureTelemetryHistory();
   private readonly sequencerEvolveBridge = new CoreProductSequencerEvolveRuntimeBridge({ adapterState: () => this.adapterState, latestSliderState: () => this.latestSliderState, latestProductSnapshot: () => this.latestProductSnapshot, latestTelemetry: () => this.latestTelemetry, runtimeReady: () => this.runtimeReady, postWithHomeCapture: (event) => { this.captureSequencerHomeForEvent(event); this.postRuntimeProductEvent(event); } });
   private readonly harmonyStateBridge = new CoreProductHarmonyStateBridge();
+  private readonly stateApplyCoordinator = new CoreProductHostStateApplyCoordinator({
+    runtime: this.runtime,
+    assetRegistrar: this.assetRegistrar,
+    leadPresetDataLoader: this.leadPresetDataLoader,
+    sequencerChain: this.sequencerChain,
+    modulationRangeBridge: this.modulationRangeBridge,
+    arrangementBridge: this.arrangementBridge,
+    latestSliderState: () => this.latestSliderState,
+    setLatestSliderState: (state) => { this.latestSliderState = state; },
+    adapterState: () => this.adapterState,
+    setAdapterState: (state) => { this.adapterState = state; },
+    setLatestProductSnapshot: (snapshot) => { this.latestProductSnapshot = snapshot; },
+    runtimeReady: () => this.runtimeReady,
+    running: () => this.running,
+    start: (state) => this.start(state),
+    applyLatestSnapshotUpdate: (reason, mask, options) => this.applyLatestSnapshotUpdate(reason, mask, options),
+    createLatestSnapshot: () => this.createLatestSnapshot(),
+    publishStateIfHarmonyChanged: () => this.publishStateIfHarmonyChanged(),
+  });
   private readonly lifecycleCoordinator = new CoreProductHostLifecycleCoordinator({
     runtime: this.runtime,
     assetRegistrar: this.assetRegistrar,
@@ -317,11 +332,7 @@ class CoreProductEngineHost {
     laneIndex: number,
     bank: SynthSequenceVariationBank | null,
   ): Promise<boolean> {
-    return this.synthSequenceVariationSynchronizer.commit(
-      laneIndex,
-      bank,
-      () => this.runtimeReady && this.running ? this.synthVariationRuntime() : null,
-    );
+    return this.stateApplyCoordinator.commitVariationBank(laneIndex, bank);
   }
 
   getActiveSynthSequenceVariationIndices(): readonly (number | null)[] {
@@ -358,81 +369,12 @@ class CoreProductEngineHost {
     return this.statePatchQueue.apply(patch, fallbackReloadReason, options);
   }
 
-  private synthVariationRuntime(): CoreProductSynthVariationRuntime {
-    return this.runtime as unknown as CoreProductSynthVariationRuntime;
-  }
-
-  private syncSynthSequenceVariationTargetsFromState(sliderState: Record<string, unknown>): void {
-    this.synthSequenceVariationSynchronizer.setTargetsFromState(sliderState.synthSequenceVariationBanks);
-  }
-
-  private syncSynthSequenceVariationsToRuntime(): Promise<void> {
-    // A preloaded/suspended runtime cannot produce an audio-boundary receipt.
-    // Keep the target pending until the lifecycle is actually running.
-    return this.synthSequenceVariationSynchronizer.sync(() => this.runtimeReady && this.running ? this.synthVariationRuntime() : null);
-  }
-
-  private async applyProductState(
+  private applyProductState(
     sliderState: Record<string, unknown>,
     fallbackReloadReason: SnapshotReloadReason,
     options?: CoreProductStateApplyOptions,
   ): Promise<ProductPatchApplyReceipt> {
-    const previousSliderState = this.latestSliderState, previousWalkConfig = runtimeWalkConfigFromState(previousSliderState);
-    this.latestSliderState = sliderState;
-    this.syncSynthSequenceVariationTargetsFromState(sliderState);
-    const nextWalkConfig = runtimeWalkConfigFromState(this.latestSliderState);
-    const sequencerClockRejoinMask = coreProductSequencerClockRejoinMask(previousSliderState, sliderState);
-    this.adapterState = this.leadPresetDataLoader.syncPresetData(sliderState, this.adapterState);
-    if (!this.running && !this.sequencerTransportStartInFlight && this.sequencerTransportRequested(sliderState)) {
-      this.sequencerTransportStartInFlight = true;
-      void this.start(sliderState)
-        .catch((error) => {
-          console.warn('Failed to start Product Core sequencer transport:', error);
-        })
-        .finally(() => {
-          this.sequencerTransportStartInFlight = false;
-        });
-      return { applied: false, mode: 'deferred' };
-    }
-    const samplePlaybackCritical = this.running &&
-      productSamplePlaybackTriggerCriticalChange(previousSliderState, this.latestSliderState);
-    this.assetRegistrar.updateRequiredAssetsForState();
-    const shouldRefreshAssetsAndAck =
-      this.runtimeReady &&
-      (this.assetRegistrar.hasMissingDefaultAssetsForState() || samplePlaybackCritical);
-    if (shouldRefreshAssetsAndAck) {
-      const assetResult = await this.assetRegistrar.ensureDefaultAssetsForState();
-      if (assetResult.status === 'not-ready') throw new CoreProductAssetNotReadyError(assetResult);
-      const receipt = await this.applyLatestSnapshotUpdate('asset-reference-change', sequencerClockRejoinMask, {
-        ...options,
-        triggerCritical: true,
-        forceFullSnapshot: samplePlaybackCritical,
-      });
-      if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
-      await this.syncSynthSequenceVariationsToRuntime();
-      this.publishStateIfHarmonyChanged();
-      return receipt;
-    }
-    if (options?.applyMode === 'event') {
-      this.latestProductSnapshot = this.createLatestSnapshot();
-      this.sequencerChain.update(this.latestSliderState, this.adapterState, this.sequencerChain.active(this.latestSliderState, this.adapterState));
-      if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
-      await this.syncSynthSequenceVariationsToRuntime();
-      this.publishStateIfHarmonyChanged();
-      return { applied: true, mode: 'event' };
-    }
-    const receipt = await this.applyLatestSnapshotUpdate(fallbackReloadReason, sequencerClockRejoinMask, options);
-    if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) this.modulationRangeBridge.flushRuntimeWalkRanges();
-    if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
-    await this.syncSynthSequenceVariationsToRuntime();
-    this.publishStateIfHarmonyChanged();
-    return receipt;
-  }
-
-  private sequencerTransportRequested(sliderState: Record<string, unknown>): boolean {
-    return sliderState.drumEuclidMasterEnabled === true || sliderState.synthEuclideanMasterEnabled === true;
+    return this.stateApplyCoordinator.apply(sliderState, fallbackReloadReason, options);
   }
 
   private setSequencerLaneParamSet(sequencer: SequencerKind, suffix: 'ClockDivision' | 'Swing', values: unknown[], paramId: number, mapValue: (value: unknown) => number): void { const events: CoreProductEvent[] = []; this.adapterState = applyCoreProductSequencerLaneParamSet({ adapterState: this.adapterState, sequencer, suffix, values, paramId, mapValue, runtimeReady: this.runtimeReady, post: (event) => events.push(event) }); this.postRuntimeProductEvents(events); }
@@ -479,14 +421,14 @@ class CoreProductEngineHost {
 
   async start(sliderState?: Record<string, unknown>): Promise<void> {
     if (sliderState) {
-      this.syncSynthSequenceVariationTargetsFromState(sliderState);
+      this.stateApplyCoordinator.setVariationTargetsFromState(sliderState);
     }
     await this.lifecycleCoordinator.start(sliderState);
-    await this.syncSynthSequenceVariationsToRuntime();
+    await this.stateApplyCoordinator.syncVariations();
     this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
-  async preload(): Promise<void> { await this.runtime.ensureStarted(); this.runtimeReady = true; await this.loadLatestSnapshot('runtime-bootstrap', false, false); await this.syncSynthSequenceVariationsToRuntime(); this.latestProductSnapshot = this.createLatestSnapshot(); }
+  async preload(): Promise<void> { await this.runtime.ensureStarted(); this.runtimeReady = true; await this.loadLatestSnapshot('runtime-bootstrap', false, false); await this.stateApplyCoordinator.syncVariations(); this.latestProductSnapshot = this.createLatestSnapshot(); }
 
   primeAudioContext(): void {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('parity') === '1') {
@@ -508,7 +450,7 @@ class CoreProductEngineHost {
 
   async resume(): Promise<void> {
     await this.lifecycleCoordinator.resume();
-    await this.syncSynthSequenceVariationsToRuntime();
+    await this.stateApplyCoordinator.syncVariations();
     this.latestProductSnapshot = this.createLatestSnapshot();
   }
 
@@ -784,7 +726,7 @@ class CoreProductEngineHost {
   }
 
   private async afterProductSnapshotLoad(): Promise<void> {
-    await this.synthSequenceVariationSynchronizer.replay(() => this.runtimeReady && this.running ? this.synthVariationRuntime() : null);
+    await this.stateApplyCoordinator.replayVariations();
     const events: CoreProductEvent[] = [];
     this.collectSequencerStepToggles(events);
     this.collectSynthPitchBindingModeEvents(events);

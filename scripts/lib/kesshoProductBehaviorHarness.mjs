@@ -334,6 +334,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.visualTelemetryCallback = null;
       this.visualTelemetryActive = false;
       this.ensureStartedCount = 0;
+      this.variationBankCommits = [];
       runtimeInstances.push(this);
     }
 
@@ -368,6 +369,11 @@ export function loadCoreProductHostHarness(options = {}) {
     loadSnapshot(snapshot) {
       this.snapshots.push(snapshot);
       return Promise.resolve({ applied: true });
+    }
+
+    async commitSynthSequenceVariationBank(laneIndex, bank) {
+      this.variationBankCommits.push({ laneIndex, bank });
+      return true;
     }
 
     reset() {
@@ -1631,6 +1637,16 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductBackgroundJourneyCoordinator,
 });`, context, { filename: backgroundJourneyCoordinatorPath });
+
+  for (const [helperPath, exports] of [
+    ['src/ui/sequencer/synthSequenceVariations.ts', 'normalizeSynthSequenceVariationBank'],
+    ['src/audio/product/host/CoreProductSynthSequenceVariationSynchronizer.ts', 'CoreProductSynthSequenceVariationSynchronizer'],
+    ['src/audio/product/host/CoreProductHostStateApplyCoordinator.ts', 'CoreProductHostStateApplyCoordinator'],
+  ]) {
+    const helperSource = stripImportsAndExports(readProjectFile(helperPath));
+    const helperJs = transpileForVm(helperSource, resolve(root, helperPath));
+    vm.runInNewContext(`(() => {${helperJs}\nObject.assign(globalThis, { ${exports} });\n})();`, context, { filename: helperPath });
+  }
 
   const path = 'src/audio/coreProductEngineHost.ts';
   const source = stripImportsAndExports(readProjectFile(path)).replaceAll('import.meta.env', '__IMPORT_META_ENV__');

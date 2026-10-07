@@ -417,6 +417,14 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
+  if (key === 'synthSequenceVariationBanks') {
+    return {
+      path: 'sequencer-variation-bank-transaction',
+      evidence: ['src/audio/product/host/CoreProductHostStateApplyCoordinator.ts#setVariationTargetsFromState', 'src/audio/product/host/CoreProductSynthSequenceVariationSynchronizer.ts', 'src/audio/coreProductRuntime.ts#commitSynthSequenceVariationBank', 'cpp/KesshoCore/src/product/KesshoProductSequencerApi.cpp#kessho_product_set_sequencer_variation_bank'],
+      reason: 'Persisted variation banks are normalized, encoded, and committed through acknowledged Product bank transactions, with changed targets synchronized and accepted banks replayed after snapshot loads.',
+    };
+  }
+
   if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
     return {
       path: 'pad-voice-routing-snapshot',
@@ -1182,6 +1190,9 @@ function collectProductParamCoverage() {
 
 function collectProductWiredKeys(sliderKeys) {
   const keys = collectProductSnapshotReferencedKeys(sliderKeys);
+  for (const key of collectStateReferencedKeysInProductFiles(sliderKeys, ['src/audio/product/host/CoreProductHostStateApplyCoordinator.ts'])) {
+    keys.add(key);
+  }
   for (const key of objectKeysInConst('src/audio/coreProductEvents.ts', 'RANGE_KEY_TARGETS')) {
     keys.add(key);
   }

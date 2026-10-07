@@ -33,19 +33,19 @@ Thresholds:
 
 | FX branch | RMS | Peak |
 | --- | ---: | ---: |
-| delay_a_main | 1.419818e-1 | 2.771829e-1 |
-| delay_a_reverb | 1.419818e-1 | 2.771829e-1 |
-| delay_b_main | 8.395189e-2 | 1.967846e-1 |
-| delay_b_reverb | 8.395189e-2 | 1.967846e-1 |
+| delay_a_main | 1.421395e-1 | 2.771815e-1 |
+| delay_a_reverb | 1.421395e-1 | 2.771815e-1 |
+| delay_b_main | 1.085130e-1 | 4.984554e-1 |
+| delay_b_reverb | 1.085130e-1 | 4.984554e-1 |
 | granular_main | 4.356953e-3 | 1.887561e-2 |
 | granular_reverb | 1.327302e-2 | 5.763481e-2 |
-| reverb_main | 5.011238e-2 | 1.605471e-1 |
+| reverb_main | 5.825783e-2 | 1.823467e-1 |
 
 | Product FX loudness fixture | Delta LU | Output LUFS |
 | --- | ---: | ---: |
-| delay_a_matched_100ms | -2.764612 | -17.206226 |
-| delay_b_matched_100ms_activity0 | -7.985923 | -22.427537 |
-| delay_b_matched_100ms_activity1 | 4.725589 | -9.716026 |
+| delay_a_matched_100ms | -2.766753 | -17.208368 |
+| delay_b_matched_100ms_activity0 | -7.988591 | -22.430206 |
+| delay_b_matched_100ms_activity1 | 4.722823 | -9.718791 |
 | reverb_controlled | -16.175750 | -30.615580 |
 | granular_controlled | -9.095928 | -23.538562 |
 | degrade_drift_controlled | -2.980891 | -17.429668 |
@@ -67,4 +67,4 @@ Thresholds:
 | earth.water_dry | -83.757816 | active_window_ungated |
 
 Drum pre-limiter peak: 8.310294e-1; drum limiter reduction: 0.000000 dB.
-Headroom pre-limiter peak: 2.385129e-1; limiter reduction: 0.000000 dB.
+Headroom pre-limiter peak: 2.380749e-1; limiter reduction: 0.000000 dB.

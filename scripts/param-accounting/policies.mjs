@@ -156,6 +156,7 @@ export function collectAppVisibleStructuralPolicyInventory(appVisibleLiveUpdateP
 }
 
 export function controlDomain(key) {
+  if (key === 'synthSequenceVariationBanks') return 'music.sequencer';
   if (/^sample[12]/.test(key)) return 'source.sample';
   if (/^piano/.test(key)) return 'source.piano';
   if (/^(synthAttack|synthDecay|synthSustain|synthHold|synthRelease|synthLevel|synthVoiceMask)$/.test(key)) return 'source.pad';
@@ -279,6 +280,11 @@ export const behaviorEvidenceByAppVisibleGroup = {
     owner: 'Product Core sequencer owner',
     reason: 'Structured sequencer chain controls must gate active lanes through generated lane-enabled events without expanding the Product snapshot schema.',
     evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireDirectSequencerCoverage', 'src/audio/CoreProductHostSequencerChain.ts'],
+  },
+  'music.sequencer|sequencer-variation-bank-transaction': {
+    owner: 'Product Core sequencer owner',
+    reason: 'Persisted variation bank edits and restores must reach the Product variation bank ABI with accepted receipts and preserve native variation playback.',
+    evidence: ['core:product:sequencer', 'ProductSequencerTests.cpp#requireProductSequencerVariationRuntimeTests', 'src/audio/product/host/CoreProductSynthSequenceVariationSynchronizer.test.ts#bootstrap, restore, and null preset state send only changed targets'],
   },
   'music.sequencer|sequencer-clock-rejoin-policy': {
     owner: 'Product Core sequencer owner',

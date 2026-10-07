@@ -2157,8 +2157,10 @@ export class SupabasePresetStore implements IPresetStore {
     const { data, error } = await buildQuery();
 
     if (error) {
-      this.markV2UnavailableIfMissing(error);
-      throw error;
+      if (this.markV2UnavailableIfMissing(error)) return [];
+      this.openListCircuitIfTerminal(error);
+      console.error('SupabasePresetStore.listV2 error:', error);
+      return [];
     }
 
     const rows = dedupePreferredV2Rows(
@@ -2681,12 +2683,6 @@ export class SupabasePresetStore implements IPresetStore {
 
     const request = this.listUncached(type, scope)
       .then((summaries) => {
-        // A schema probe can open the quota circuit and skip the list read.
-        // Keep that skipped read out of the successful-list caches.
-        if (this.shouldSkipReadForCircuit()) {
-          const fallback = this.listCache.get(key);
-          return fallback ? clonePresetSummaries(fallback.summaries) : summaries;
-        }
         this.listCache.set(key, {
           expiresAt: Date.now() + PRESET_LIST_MEMORY_CACHE_TTL_MS,
           summaries: clonePresetSummaries(summaries),
