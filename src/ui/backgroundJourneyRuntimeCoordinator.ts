@@ -1,10 +1,10 @@
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
 import type { JourneyConfig } from '../audio/journeyTypes';
-import type { SavedPreset } from './state';
 import {
   resolveBackgroundJourneyRuntimePhase,
   type BackgroundJourneyRuntimePhase,
 } from '../audio/product/journey/reconcileBackgroundJourneyProjection';
+import type { SavedPreset } from './state';
 
 export type BackgroundJourneyTelemetryProjection = {
   phase: BackgroundJourneyRuntimePhase;
@@ -15,16 +15,22 @@ export type BackgroundJourneyTelemetryProjection = {
   morphProgress: number;
 };
 
-export type BackgroundJourneyRuntimeVisibility = {
-  documentVisible: boolean;
-  runtimeProjectionActive: boolean;
-};
-
 export type BackgroundJourneyMorphProjection = {
   presetA: SavedPreset;
   presetB: SavedPreset;
   position: number;
   direction: 'toA' | 'toB';
+  morphPresetA: SavedPreset;
+  morphPresetB: SavedPreset;
+  morphSlotAName: string;
+  morphSlotBName: string;
+  morphPosition: number;
+  morphDirection: 'toA' | 'toB';
+};
+
+export type BackgroundJourneyRuntimeVisibility = {
+  documentVisible: boolean;
+  runtimeProjectionActive: boolean;
 };
 
 type ScheduleTelemetryRead = (callback: () => void) => () => void;
@@ -94,22 +100,40 @@ export function projectBackgroundJourneyTelemetry(
 }
 
 export function projectBackgroundJourneyMorph(
-  telemetry: Pick<CoreProductTelemetrySnapshot, 'journeyCurrentNodeIndex' | 'journeyNextNodeIndex' | 'journeyMorphProgress' | 'journeyTransitionCount'>,
+  telemetry: Pick<CoreProductTelemetrySnapshot, 'journeyCurrentNodeIndex' | 'journeyNextNodeIndex' | 'journeyScheduleIndex' | 'journeyTransitionCount' | 'journeyMorphProgress'>,
   playableNodes: JourneyConfig['nodes'],
   presets: ReadonlyMap<string, SavedPreset>,
 ): BackgroundJourneyMorphProjection | null {
-  const currentNode = playableNodes[telemetry.journeyCurrentNodeIndex ?? 0];
-  const nextNode = playableNodes[telemetry.journeyNextNodeIndex ?? 0];
-  const currentPreset = currentNode ? presets.get(currentNode.id) : null;
-  const nextPreset = nextNode ? presets.get(nextNode.id) : null;
+  const currentNode = playableNodes[telemetry.journeyCurrentNodeIndex ?? -1];
+  const nextNode = playableNodes[telemetry.journeyNextNodeIndex ?? -1];
+  const currentPreset = currentNode ? presets.get(currentNode.id) : undefined;
+  const nextPreset = nextNode ? presets.get(nextNode.id) : undefined;
   if (!currentPreset || !nextPreset) return null;
 
-  const progress = Math.max(0, Math.min(1, telemetry.journeyMorphProgress ?? 0));
-  const transitionCount = Math.max(0, Math.trunc(telemetry.journeyTransitionCount ?? 0));
-  if (transitionCount % 2 === 0) {
-    return { presetA: currentPreset, presetB: nextPreset, position: progress * 100, direction: 'toB' };
-  }
-  return { presetA: nextPreset, presetB: currentPreset, position: (1 - progress) * 100, direction: 'toA' };
+  const paritySource = Number.isInteger(telemetry.journeyTransitionCount)
+    ? telemetry.journeyTransitionCount!
+    : telemetry.journeyScheduleIndex ?? 0;
+  const reverse = (Math.max(0, paritySource) & 1) === 1;
+  const progress = Number.isFinite(telemetry.journeyMorphProgress)
+    ? Math.max(0, Math.min(1, telemetry.journeyMorphProgress!))
+    : 0;
+  const presetA = reverse ? nextPreset : currentPreset;
+  const presetB = reverse ? currentPreset : nextPreset;
+  const position = (reverse ? 1 - progress : progress) * 100;
+  const direction = reverse ? 'toA' : 'toB';
+
+  return {
+    presetA,
+    presetB,
+    position,
+    direction,
+    morphPresetA: presetA,
+    morphPresetB: presetB,
+    morphSlotAName: presetA.name,
+    morphSlotBName: presetB.name,
+    morphPosition: position,
+    morphDirection: direction,
+  };
 }
 
 export function shouldRefreshBackgroundJourneyTelemetry(

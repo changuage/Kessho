@@ -55,6 +55,9 @@ void KesshoProductEngine::configureReverbModule() {
       fx.reverb_bloom + clampFloat(reverb_bloom_boost, 0.0f, 1.0f) * 0.18f,
       -1.0f,
       1.0f);
+#if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
+  ++debug_reverb_configuration_count;
+#endif
   reverb_module->commitParams();
 #if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
   ++fx_configuration_debug_counts[2];

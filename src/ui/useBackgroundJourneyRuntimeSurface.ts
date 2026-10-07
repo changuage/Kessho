@@ -19,8 +19,8 @@ import {
 import type { SavedPreset, SliderState } from './state';
 import type { UseJourneyResult } from './journeyState';
 import {
-  projectBackgroundJourneyTelemetry,
   projectBackgroundJourneyMorph,
+  projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
   shouldRefreshBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
@@ -61,8 +61,9 @@ type OptimizationContext = {
   configFingerprint: string;
 };
 
-export type { BackgroundJourneyTelemetryProjection } from './backgroundJourneyRuntimeCoordinator';
+export type { BackgroundJourneyMorphProjection, BackgroundJourneyTelemetryProjection } from './backgroundJourneyRuntimeCoordinator';
 export {
+  projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
@@ -464,5 +465,16 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     setUiState({ status: 'idle' });
   }, [journey.stop, setIsJourneyPlaying]);
 
-  return { uiState, prepare, findOptimization, confirmOptimization, startPrepared, foregroundOnly, stop, cancel, morphProjection };
+  return {
+    uiState,
+    morphProjection,
+    runtimeProjectionActive,
+    prepare,
+    findOptimization,
+    confirmOptimization,
+    startPrepared,
+    foregroundOnly,
+    stop,
+    cancel,
+  };
 }

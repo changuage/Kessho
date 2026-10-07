@@ -220,10 +220,10 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   bool journey_running = false;
   float journey_phase = 0.0f;
   float journey_rate_bars = 8.0f;
-  uint32_t fx_configuration_batch_depth = 0u;
-  uint32_t fx_configuration_pending_mask = 0u;
+  uint32_t fx_configuration_batch_depth = 0u, fx_configuration_pending_mask = 0u;
 #if defined(KESSHO_PRODUCT_ENABLE_DEBUG_API)
   uint32_t fx_configuration_debug_counts[kFxConfigurationGroupCount]{};
+  uint32_t debug_fx_configuration_count = 0u, debug_reverb_configuration_count = 0u;
 #endif
   bool prepareProductModules();
   float dynamicsModRoute(const float sources[kDynamicsModSourceCount], uint32_t target) const;

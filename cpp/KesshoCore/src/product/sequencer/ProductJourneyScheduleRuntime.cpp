@@ -253,8 +253,9 @@ void KesshoProductEngine::scheduleJourneyRuntime() {
     const uint64_t elapsed = transport.sample_frame > runtime.phase_start_frame
         ? std::min(transport.sample_frame - runtime.phase_start_frame, duration)
         : 0u;
-    const float next_position = static_cast<float>(
-        static_cast<double>(elapsed) / static_cast<double>(duration));
+    const float next_position = elapsed >= duration
+        ? 1.0f
+        : static_cast<float>(static_cast<double>(elapsed) / static_cast<double>(duration));
     if (next_position != runtime.scene_position) {
       runtime.previous_scene_position = runtime.scene_position;
       runtime.scene_position = next_position;
