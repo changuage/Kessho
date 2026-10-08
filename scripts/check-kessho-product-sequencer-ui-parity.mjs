@@ -1595,12 +1595,19 @@ function countPlayheadTransitions(samples) {
 }
 
 async function sampleTriggerPlayheadCadence(page, durationMs = 2200, intervalMs = 85) {
-  const samples = [];
-  const deadline = Date.now() + durationMs;
-  while (Date.now() < deadline) {
-    samples.push((await activeTriggerCells(page)).join(','));
-    await page.waitForTimeout(intervalMs);
-  }
+  // Keep polling in the browser so runner round trips cannot undersample fast clocks.
+  const samples = await page.evaluate(async ({ durationMs, intervalMs }) => {
+    const samples = [];
+    const deadline = performance.now() + durationMs;
+    while (performance.now() < deadline) {
+      samples.push(Array.from(document.querySelectorAll('.seq-trigger-always .seq-step-cell'))
+        .map((el, index) => String(el.className).includes('playing') ? index : -1)
+        .filter((index) => index >= 0)
+        .join(','));
+      await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+    }
+    return samples;
+  }, { durationMs, intervalMs });
   const activeSamples = samples.filter(Boolean);
   return {
     samples,
