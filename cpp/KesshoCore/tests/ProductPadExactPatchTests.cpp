@@ -831,9 +831,54 @@ void requireWrongPadSnapshotCountsRejected() {
   kessho_product_destroy(engine);
 }
 
+void requireRepeatedPadCommitsPreservePcm() {
+  auto cached = kessho::core::createPadModule();
+  auto full = kessho::core::createPadModule();
+  require(cached->prepare(48000.0, 128) && full->prepare(48000.0, 128), "Pad commit fixture prepare failed");
+  constexpr uint32_t count = kessho::core::KESSHO_SOURCE_PRESET_PAD_PARAM_COUNT;
+  kessho::core::KesshoSourcePresetPatch patch{};
+  patch.exact_pad_param_count = count;
+  std::copy_n(cached->params(), count, patch.exact_pad_params);
+  const auto trigger = [&] {
+    for (auto* module : {cached.get(), full.get()}) {
+      require(module->noteOn(220.0f, 0.7f, 1.0f, 0) != 0, "Pad commit fixture note failed");
+      require(module->noteOn(330.0f, 0.5f, 1.0f, PAD_VOICES_PER_PAD) != 0,
+          "Pad commit fixture second pad note failed");
+    }
+  };
+  trigger();
+  float peak = 0.0f;
+  for (uint32_t block = 0u; block < 128u; ++block) {
+    for (auto* module : {cached.get(), full.get()}) {
+      if (block == 24u) module->setIndexedParam(21, 80.0f);
+      if (block == 48u) module->setSourceMacros(0, 0.9f, 0.8f, 0.6f);
+      if (block == 64u) {
+        module->params()[count + 21u] = 4000.0f;
+        module->commitParams();
+      }
+      if (block == 80u) module->reset();
+      if (block == 104u) require(module->prepare(44100.0, 128), "Pad commit fixture reprepare failed");
+    }
+    if (block == 80u || block == 104u) trigger();
+    // Invalidate only the reference, forcing the original full setter path.
+    full->setIndexedParam(0, full->params()[0]);
+    require(cached->setSourcePresetPatch(0, patch) && full->setSourcePresetPatch(0, patch),
+        "Pad commit fixture patch failed");
+    std::array<float, 256> a{}, b{};
+    cached->processInterleaved(nullptr, a.data(), 128);
+    full->processInterleaved(nullptr, b.data(), 128);
+    for (uint32_t sample = 0u; sample < a.size(); ++sample) {
+      require(std::isfinite(a[sample]) && a[sample] == b[sample], "Pad commit reuse changed PCM");
+      peak = std::max(peak, std::fabs(a[sample]));
+    }
+  }
+  require(peak > 0.00001f, "Pad commit fixture was silent");
+}
+
 } // namespace
 
 int main() {
+  requireRepeatedPadCommitsPreservePcm();
   requireNamedPluckPresetParams();
   requireAllParamPadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD1);
   requireAllParamPadSparseOverridesSurviveTrigger(KESSHO_PRODUCT_SOURCE_PAD2);

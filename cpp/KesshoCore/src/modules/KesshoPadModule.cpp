@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 #include "KesshoCore/KesshoTypes.h"
@@ -168,6 +169,7 @@ public:
   }
 
   bool prepare(double sample_rate, int max_block_size) override {
+    params_committed_ = false;
     sample_rate_ = sample_rate > 1000.0 ? static_cast<float>(sample_rate) : 48000.0f;
     max_block_size_ = std::max(1, std::min(max_block_size, kPadBlockSize));
     pad_instance_destroy(instance_);
@@ -181,6 +183,7 @@ public:
 
   void reset() override {
     if (instance_ != nullptr && pad_instance_reset(instance_, sample_rate_) == 1) {
+      params_committed_ = false;
       commitParams();
     }
   }
@@ -268,6 +271,7 @@ public:
     if (param_index < 0 || param_index >= kParamCount) {
       return 0;
     }
+    params_committed_ = false;
     params_[param_index] = value;
     if (instance_ == nullptr) {
       return 1;
@@ -287,6 +291,11 @@ public:
 
   void commitParams() override {
     if (instance_ == nullptr) {
+      return;
+    }
+    // Pad setters only assign fields; identical morph patches need no DSP update.
+    if (params_committed_ &&
+        std::memcmp(params_.data(), committed_params_.data(), sizeof(params_)) == 0) {
       return;
     }
 
@@ -353,6 +362,8 @@ public:
     }
 
     pad_instance_set_reverb_send(instance_, params_[kParamReverbSend]);
+    committed_params_ = params_;
+    params_committed_ = true;
   }
 
   int noteOn(float frequency, float velocity, float hold_seconds, int lead_index) override {
@@ -404,6 +415,7 @@ public:
     if (instance_ == nullptr || source_index < 0 || source_index >= PAD_NUM_PADS) {
       return 0;
     }
+    params_committed_ = false;
     const float m = clampUnit(morph);
     const float d = clampUnit(distance);
     const float e = clampUnit(expression);
@@ -756,6 +768,8 @@ private:
   float sample_rate_ = 48000.0f;
   int max_block_size_ = kPadBlockSize;
   std::array<float, kParamCount> params_ = makeDefaultParams();
+  std::array<float, kParamCount> committed_params_{};
+  bool params_committed_ = false;
 };
 
 } // namespace
