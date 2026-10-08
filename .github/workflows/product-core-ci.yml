@@ -123,6 +123,8 @@ jobs:
             docs/reports/kessho-product-page-cpu-comparison-latest.json
             docs/reports/kessho-product-page-cpu-comparison-latest.md
             docs/reports/kessho-product-ci-latest.json
+            docs/reports/kessho-product-browser-runtime-latest.json
+            docs/reports/kessho-product-browser-runtime-latest.md
             docs/reports/kessho-product-default-gate-v3-latest.json
             docs/reports/kessho-product-default-gate-v3-latest.md
             docs/reports/kessho-product-web-graph-capture-smoke-fast-latest.json
