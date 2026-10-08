@@ -34,6 +34,15 @@ public:
   [[nodiscard]] uint32_t lastCaptureSerial() const noexcept { return last_capture_serial_; }
 
 #if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  void debugSetMagnitudeBookkeepingCacheEnabled(bool enabled) noexcept {
+    magnitude_bookkeeping_cache_enabled_ = enabled;
+    held_matches_unblended_capture_ = false;
+    normalization_target_valid_ = false;
+  }
+  [[nodiscard]] uint64_t debugMemoryCaptureCount() const noexcept { return memory_capture_count_; }
+  [[nodiscard]] uint64_t debugNormalizationCalculationCount() const noexcept {
+    return normalization_calculation_count_;
+  }
   void debugSetCaptureAnalysisCacheEnabled(bool enabled) noexcept {
     capture_analysis_cache_enabled_ = enabled;
   }
@@ -62,7 +71,7 @@ private:
 
   void processHop() noexcept;
   void analyzeLiveFrames(bool include_phase) noexcept;
-  void analyzeCaptureFrames(double center_position) noexcept;
+  bool analyzeCaptureFrames(double center_position) noexcept;
   void analyzeCaptureMagnitudes(
       double center_position,
       std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& magnitude) noexcept;
@@ -70,7 +79,7 @@ private:
       double center_position,
       std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& magnitude,
       std::array<std::array<float, SpectralFreezeStft::kBinCount>, 2>& phase) noexcept;
-  void blendEndpointMagnitudes(double center_position, float scan_ratio) noexcept;
+  bool blendEndpointMagnitudes(double center_position, float scan_ratio) noexcept;
   void extractLiveMidSideFrames() noexcept;
   void extractCaptureMidSideFrames(double center_position) noexcept;
   void beginCaptureAtHop() noexcept;
@@ -89,6 +98,14 @@ private:
   void updatePositionTarget() noexcept;
   void updateSpectralCaches() noexcept;
   void invalidateCaptureAnalysisCache() noexcept;
+  float normalizationTarget() noexcept;
+  bool bookkeepingCacheEnabled() const noexcept {
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+    return magnitude_bookkeeping_cache_enabled_;
+#else
+    return true;
+#endif
+  }
   [[nodiscard]] bool captureAnalysisCacheMatches(double center_position) const noexcept;
 
   [[nodiscard]] float deterministicSignedRandom(int channel, int bin) const noexcept;
@@ -108,6 +125,9 @@ private:
   double crossfade_step_ = 1.0;
   float held_decay_gain_ = 1.0f;
   float normalization_gain_ = 1.0f;
+  float normalization_target_ = 1.0f;
+  bool normalization_target_valid_ = false;
+  bool held_matches_unblended_capture_ = false;
   float smoothed_position_ = 0.0f;
   double previous_scan_position_ = 0.0;
 
@@ -141,6 +161,9 @@ private:
   std::array<std::array<float, kOutputRingSize>, 2> output_ring_{};
 
 #if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  bool magnitude_bookkeeping_cache_enabled_ = true;
+  uint64_t memory_capture_count_ = 0;
+  uint64_t normalization_calculation_count_ = 0;
   bool capture_analysis_cache_enabled_ = true;
   uint64_t capture_forward_analysis_count_ = 0;
   uint64_t capture_analysis_cache_hit_count_ = 0;

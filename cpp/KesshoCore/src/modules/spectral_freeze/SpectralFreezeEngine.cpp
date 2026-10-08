@@ -52,6 +52,9 @@ void SpectralFreezeEngine::reset() noexcept {
   stft_.reset();
   ++capture_generation_;
   capture_analysis_cache_ = CaptureAnalysisCache{};
+  held_matches_unblended_capture_ = false;
+  normalization_target_valid_ = false;
+  normalization_target_ = 1.0f;
   live_ring_l_.fill(0.0f);
   live_ring_r_.fill(0.0f);
   analysis_frame_mid_.fill(0.0f);
@@ -163,6 +166,10 @@ void SpectralFreezeEngine::setParams(const SpectralFreezeParams& incoming) noexc
       std::isfinite(incoming.transition_seconds) ? incoming.transition_seconds : 0.1f);
   const bool was_active = params_.active;
   const bool tone_changed = sanitized.tone != params_.tone;
+  if (sanitized.mode != params_.mode) {
+    held_matches_unblended_capture_ = false;
+    normalization_target_valid_ = false;
+  }
   params_ = sanitized;
   if (tone_changed) {
     updateSpectralCaches();
@@ -231,7 +238,7 @@ void SpectralFreezeEngine::analyzeLiveFrames(bool include_phase) noexcept {
   }
 }
 
-void SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept {
+bool SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept {
   const bool locked_capture = capture_.isLocked();
 #if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
   const bool cache_enabled = capture_analysis_cache_enabled_;
@@ -244,10 +251,11 @@ void SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept
 #if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
     ++capture_analysis_cache_hit_count_;
 #endif
-    return;
+    return true;
   }
 
   analyzeCaptureFramesInto(center_position, source_magnitude_, source_phase_);
+  normalization_target_valid_ = false;
 #if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
   ++capture_forward_analysis_count_;
 #endif
@@ -258,6 +266,7 @@ void SpectralFreezeEngine::analyzeCaptureFrames(double center_position) noexcept
     capture_analysis_cache_.center_position = center_position;
     capture_analysis_cache_.valid = true;
   }
+  return false;
 }
 
 void SpectralFreezeEngine::analyzeCaptureMagnitudes(
@@ -338,6 +347,9 @@ void SpectralFreezeEngine::beginCaptureAtHop() noexcept {
       source_magnitude_[0].data(),
       source_magnitude_[1].data(),
       SpectralFreezeStft::kBinCount);
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  ++memory_capture_count_;
+#endif
   source_phase_valid_ = false;
   updatePhaseAdvance(0, source_phase_[0].data(), SpectralFreezeStft::kHopSize, true);
   updatePhaseAdvance(1, source_phase_[1].data(), SpectralFreezeStft::kHopSize, true);
@@ -381,19 +393,29 @@ void SpectralFreezeEngine::renderFrozenHop() noexcept {
   if (stretch_mode && scan_head_.isValid()) {
     updatePositionTarget();
     const double current_position = scan_head_.positionSamples();
-    analyzeCaptureFrames(current_position);
+    const bool reused_analysis = analyzeCaptureFrames(current_position);
     const float analysis_delta = static_cast<float>(current_position - previous_scan_position_);
     updatePhaseAdvance(0, source_phase_[0].data(), analysis_delta, false);
     updatePhaseAdvance(1, source_phase_[1].data(), analysis_delta, false);
     source_phase_valid_ = true;
     previous_scan_position_ = current_position;
     const float scan_ratio = SpectralFreezeScanHead::normalizedToRatio(params_.stretch_speed);
-    blendEndpointMagnitudes(current_position, scan_ratio);
-    memory_.capture(
-        source_magnitude_[0].data(),
-        source_magnitude_[1].data(),
-        SpectralFreezeStft::kBinCount);
-    if (params_.mode == SpectralFreezeMode::LivingStretch && params_.refresh > 0.0f) {
+    const bool blended_endpoint = blendEndpointMagnitudes(current_position, scan_ratio);
+    const bool update_from_live = params_.mode == SpectralFreezeMode::LivingStretch && params_.refresh > 0.0f;
+    // Only reuse memory that still equals this exact, unblended capture frame.
+    if (!bookkeepingCacheEnabled() || !reused_analysis || !held_matches_unblended_capture_ ||
+        blended_endpoint || update_from_live) {
+      memory_.capture(
+          source_magnitude_[0].data(),
+          source_magnitude_[1].data(),
+          SpectralFreezeStft::kBinCount);
+      normalization_target_valid_ = false;
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+      ++memory_capture_count_;
+#endif
+    }
+    held_matches_unblended_capture_ = !blended_endpoint && !update_from_live;
+    if (update_from_live) {
       memory_.updateFromLive(
           live_magnitude_[0].data(),
           live_magnitude_[1].data(),
@@ -401,10 +423,13 @@ void SpectralFreezeEngine::renderFrozenHop() noexcept {
           params_.refresh,
           params_.input_sensitivity,
           params_.sustain);
+      normalization_target_valid_ = false;
     }
     held_decay_gain_ *= decayGainPerHop();
     scan_head_.advance(scan_ratio);
   } else if (params_.mode == SpectralFreezeMode::Slushy) {
+    held_matches_unblended_capture_ = false;
+    normalization_target_valid_ = false;
     memory_.updateFromLive(
         live_magnitude_[0].data(),
         live_magnitude_[1].data(),
@@ -419,22 +444,7 @@ void SpectralFreezeEngine::renderFrozenHop() noexcept {
     held_decay_gain_ *= decayGainPerHop();
   }
 
-  double source_energy = 0.0;
-  double target_energy = 0.0;
-  for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
-    const float source_mid = source_magnitude_[0][static_cast<size_t>(bin)];
-    const float source_side = source_magnitude_[1][static_cast<size_t>(bin)];
-    const float held_mid = memory_.heldMagnitude(0, bin);
-    const float held_side = memory_.heldMagnitude(1, bin);
-    source_energy += static_cast<double>(source_mid * source_mid + source_side * source_side);
-    target_energy += static_cast<double>(held_mid * held_mid + held_side * held_side);
-  }
-  const float target_normalization = target_energy > 1.0e-12
-      ? std::clamp(
-            static_cast<float>(std::sqrt(source_energy / target_energy)),
-            0.501187f,
-            1.995262f)
-      : 1.0f;
+  const float target_normalization = normalizationTarget();
   normalization_gain_ += (target_normalization - normalization_gain_) * 0.1f;
 
   const float hop_seconds = static_cast<float>(SpectralFreezeStft::kHopSize) /
@@ -447,13 +457,40 @@ void SpectralFreezeEngine::renderFrozenHop() noexcept {
   synthesizeChannel(1, magnitude_attack, magnitude_release);
 }
 
-void SpectralFreezeEngine::blendEndpointMagnitudes(
+float SpectralFreezeEngine::normalizationTarget() noexcept {
+  if (bookkeepingCacheEnabled() && normalization_target_valid_) {
+    return normalization_target_;
+  }
+#if defined(KESSHO_SPECTRAL_FREEZE_ENABLE_TEST_COUNTERS)
+  ++normalization_calculation_count_;
+#endif
+  double source_energy = 0.0;
+  double target_energy = 0.0;
+  for (int bin = 0; bin < SpectralFreezeStft::kBinCount; ++bin) {
+    const float source_mid = source_magnitude_[0][static_cast<size_t>(bin)];
+    const float source_side = source_magnitude_[1][static_cast<size_t>(bin)];
+    const float held_mid = memory_.heldMagnitude(0, bin);
+    const float held_side = memory_.heldMagnitude(1, bin);
+    source_energy += static_cast<double>(source_mid * source_mid + source_side * source_side);
+    target_energy += static_cast<double>(held_mid * held_mid + held_side * held_side);
+  }
+  normalization_target_ = target_energy > 1.0e-12
+      ? std::clamp(
+            static_cast<float>(std::sqrt(source_energy / target_energy)),
+            0.501187f,
+            1.995262f)
+      : 1.0f;
+  normalization_target_valid_ = true;
+  return normalization_target_;
+}
+
+bool SpectralFreezeEngine::blendEndpointMagnitudes(
     double center_position,
     float scan_ratio) noexcept {
   if (
       scan_head_.direction() != SpectralScanDirection::PingPong ||
       scan_ratio <= 0.0f) {
-    return;
+    return false;
   }
 
   constexpr double kTransitionHops = 8.0;
@@ -467,7 +504,7 @@ void SpectralFreezeEngine::blendEndpointMagnitudes(
       : scan_head_.minimumPosition();
   const double distance = std::fabs(endpoint - center_position);
   if (distance >= transition_samples) {
-    return;
+    return false;
   }
 
   const double outgoing_position = approaching_maximum
@@ -489,6 +526,8 @@ void SpectralFreezeEngine::blendEndpointMagnitudes(
           approaching_log + (outgoing_log - approaching_log) * blend);
     }
   }
+  normalization_target_valid_ = false;
+  return true;
 }
 
 void SpectralFreezeEngine::synthesizeChannel(
@@ -602,6 +641,8 @@ float SpectralFreezeEngine::decayGainPerHop() const noexcept {
 
 void SpectralFreezeEngine::invalidateCaptureAnalysisCache() noexcept {
   capture_analysis_cache_.valid = false;
+  held_matches_unblended_capture_ = false;
+  normalization_target_valid_ = false;
 }
 
 bool SpectralFreezeEngine::captureAnalysisCacheMatches(double center_position) const noexcept {

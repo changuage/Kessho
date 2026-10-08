@@ -44,6 +44,7 @@ enum CloudStyle {
 static constexpr int kOctavePalette[] = {0, 12, -12, 24};
 static constexpr int kFifthsPalette[] = {0, 7, 12, -5, 19};
 static constexpr float kStarsAnchors[] = {0.10f, 0.30f, 0.50f, 0.70f, 0.90f};
+static constexpr int kCurveTableSegments = 1024;
 
 // ═══════════════ Internal Structures ═══════════════
 
@@ -269,6 +270,9 @@ struct GranularState {
 
     // LUTs
     float hann_table[KESSHO_HANN_TABLE_SIZE];
+    float saw_up_decay_table[kCurveTableSegments + 1];
+    float saw_down_decay_table[kCurveTableSegments + 1];
+    float tide_sine_table[kCurveTableSegments + 1];
     float pan_table_l[KESSHO_PAN_TABLE_SIZE];
     float pan_table_r[KESSHO_PAN_TABLE_SIZE];
     float xfade_table_a[KESSHO_XFADE_TABLE_SIZE + 1];
@@ -689,15 +693,31 @@ static inline float grain_attack_curve(const GranularState* s, int shape, float 
     }
 }
 
+static inline float curve_table_lookup(const float* table, float x) {
+    if (x <= 0.0f) return table[0];
+    if (x >= 1.0f) return table[kCurveTableSegments];
+    const float position = x * (float)kCurveTableSegments;
+    const int index = (int)position;
+    return table[index] + (table[index + 1] - table[index]) * (position - (float)index);
+}
+
+static inline float tide_sine(const GranularState* s, float cycles) {
+    cycles -= floorf(cycles);
+    return curve_table_lookup(s->tide_sine_table, cycles);
+}
+
 static inline float grain_decay_curve(const GranularState* s, int shape, float t) {
     t = clampf(t, 0.0f, 1.0f);
     switch (shape) {
         case KESSHO_GRAIN_SHAPE_TRIANGLE:
             return 1.0f - t;
         case KESSHO_GRAIN_SHAPE_SAW_UP:
-            return powf(1.0f - t, 0.65f);
+            // Preserve the steep final tail where a uniform table is least accurate.
+            return 1.0f - t < 4.0f / (float)kCurveTableSegments
+                ? powf(1.0f - t, 0.65f)
+                : curve_table_lookup(s->saw_up_decay_table, 1.0f - t);
         case KESSHO_GRAIN_SHAPE_SAW_DOWN:
-            return powf(1.0f - t, 1.4f);
+            return curve_table_lookup(s->saw_down_decay_table, 1.0f - t);
         case KESSHO_GRAIN_SHAPE_SQUARE:
         default:
             return hann_window(s, 0.5f + t * 0.5f);
@@ -1298,6 +1318,7 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
         float abs_scan_rate = fabsf(scan_adv);
         static const float SCAN_XFADE_INC = 1.0f / 5760.0f;
         static const float SCAN_DRIFT_THRESH = 7200.0f;
+        const int lookback_samples = write_follow > 0.01f ? clean_lookback_samples_for_voice(s, vp) : 0;
 
         ScanState* sc = &s->scan[v];
         const int scan_aa_stage_count = anti_alias_stage_count_for_rate(s, abs_scan_rate);
@@ -1326,7 +1347,6 @@ static void process_clean_voice(GranularState* s, int v, float* out_l, float* ou
             float lfo_val = vp->pos_lfo_rate > 0.01f ? s->clean_pos_lfo_value[v] : 0.0f;
             float target_pos = wrap_position(lfo_val * lfo_depth * (float)s->buffer_size, (float)s->buffer_size);
             if (write_follow > 0.01f) {
-                const int lookback_samples = clean_lookback_samples_for_voice(s, vp);
                 float wp = (float)wrap_index_any(s->write_pos - lookback_samples, s->buffer_size);
                 target_pos = target_pos * (1.0f - write_follow) + wp * write_follow;
             }
@@ -1529,24 +1549,27 @@ static void process_granular_voice(GranularState* s, int v, float* out_l, float*
             active_count++;
 
             const float read_pos = grain->position;
-            const float grain_abs_rate = fabsf(grain->playback_rate);
-            float sL = read_buffer_quality(s, s->buffer_l, s->buffer_size, read_pos, grain_abs_rate);
-            float sR = read_buffer_quality(s, s->buffer_r, s->buffer_size, read_pos, grain_abs_rate);
+            // Waiting ghosts remain in the overlap count and advance below, but contribute zero.
+            if (!(grain->is_ghost && grain->start_sample < 0 && grain->env_z1 == 0.0f)) {
+                const float grain_abs_rate = fabsf(grain->playback_rate);
+                float sL = read_buffer_quality(s, s->buffer_l, s->buffer_size, read_pos, grain_abs_rate);
+                float sR = read_buffer_quality(s, s->buffer_r, s->buffer_size, read_pos, grain_abs_rate);
 
-            float raw_env = grain_envelope(s, grain->start_sample, grain->length,
-                                        grain->attack_smp, grain->decay_smp, s->grain_shape);
-            if (grain->tide_depth > 0.001f) {
-                const float phase = clampf((float)grain->start_sample / fmaxf(1.0f, (float)grain->length), 0.0f, 1.0f);
-                const float tide = 1.0f - grain->tide_depth * 0.5f
-                    + grain->tide_depth * (0.5f + 0.5f * sinf((phase + grain->tide_phase) * 6.2831853f));
-                raw_env *= tide;
+                float raw_env = grain_envelope(s, grain->start_sample, grain->length,
+                                            grain->attack_smp, grain->decay_smp, s->grain_shape);
+                if (grain->tide_depth > 0.001f) {
+                    const float phase = clampf((float)grain->start_sample / fmaxf(1.0f, (float)grain->length), 0.0f, 1.0f);
+                    const float tide = 1.0f - grain->tide_depth * 0.5f
+                        + grain->tide_depth * (0.5f + 0.5f * tide_sine(s, phase + grain->tide_phase));
+                    raw_env *= tide;
+                }
+                // One-pole envelope smoother — removes micro-discontinuities
+                float env = grain->env_z1 + 0.005f * (raw_env - grain->env_z1);
+                grain->env_z1 = env;
+
+                wet_l += sL * env * grain->gain * grain->pan_l;
+                wet_r += sR * env * grain->gain * grain->pan_r;
             }
-            // One-pole envelope smoother — removes micro-discontinuities
-            float env = grain->env_z1 + 0.005f * (raw_env - grain->env_z1);
-            grain->env_z1 = env;
-
-            wet_l += sL * env * grain->gain * grain->pan_l;
-            wet_r += sR * env * grain->gain * grain->pan_r;
 
             grain->position = wrap_position(read_pos + grain->playback_rate, buffer_size_f);
             grain->playback_rate += grain->playback_rate_step;
@@ -2040,6 +2063,14 @@ int granular_init(float sample_rate, float buffer_seconds) {
     s->unfreeze_fade = 0;
 
     // ── Pre-compute LUTs ──
+
+    for (int i = 0; i <= kCurveTableSegments; i++) {
+        const float x = (float)i / (float)kCurveTableSegments;
+        s->saw_up_decay_table[i] = powf(x, 0.65f);
+        s->saw_down_decay_table[i] = powf(x, 1.4f);
+        s->tide_sine_table[i] = sinf(x * 6.2831853f);
+    }
+    s->tide_sine_table[kCurveTableSegments] = s->tide_sine_table[0];
 
     // Hann window
     for (int i = 0; i < KESSHO_HANN_TABLE_SIZE; i++) {

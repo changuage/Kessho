@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test:ambient-fx-cpu": "node scripts/test-ambient-fx-cpu.mjs",
     "build": "npm run core:pad:wasm && npm run core:product:wasm && tsc && vite build",
     "point-clouds:embedded:generate": "node scripts/generate-point-clouds-embedded-engine.mjs",
     "test:point-clouds-bridge": "node --test point-clouds/shared/kessho-site-bridge.test.mjs",
