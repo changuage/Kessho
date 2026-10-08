@@ -1,9 +1,10 @@
 import { isCapacitorNativeShell } from '../../../native/capacitorAudioSession';
 
 export type BrowserAudioSessionState = 'inactive' | 'active' | 'interrupted';
+export type BrowserAudioSessionType = 'auto' | 'playback' | 'play-and-record';
 
 export type BrowserAudioSession = EventTarget & {
-  type: 'auto' | 'playback';
+  type: BrowserAudioSessionType;
   state?: BrowserAudioSessionState;
 };
 
@@ -15,11 +16,20 @@ function currentNavigator(): NavigatorWithAudioSession | null {
   return typeof navigator === 'undefined' ? null : navigator as NavigatorWithAudioSession;
 }
 
+function setPlaybackTypeWithoutStealingCapture(session: BrowserAudioSession, requested: boolean): void {
+  // A browser microphone owner may have explicitly selected play-and-record.
+  // Product playback must not downgrade that category to playback while input
+  // capture is active, otherwise WebKit rejects getUserMedia() with
+  // "AudioSession category is not compatible with audio capture".
+  if (session.type === 'play-and-record') return;
+  session.type = requested ? 'playback' : 'auto';
+}
+
 export function setBrowserPlaybackSession(active: boolean): void {
   if (isCapacitorNativeShell()) return;
   const session = currentNavigator()?.audioSession;
   if (!session) return;
-  session.type = active ? 'playback' : 'auto';
+  setPlaybackTypeWithoutStealingCapture(session, active);
 }
 
 export class ProductBrowserAudioSession {
@@ -53,7 +63,7 @@ export class ProductBrowserAudioSession {
   setPlaybackRequested(requested: boolean): void {
     if (this.disposed) return;
     this.playbackRequested = requested;
-    if (this.session) this.session.type = requested ? 'playback' : 'auto';
+    if (this.session) setPlaybackTypeWithoutStealingCapture(this.session, requested);
   }
 
   dispose(): void {
@@ -61,7 +71,8 @@ export class ProductBrowserAudioSession {
     this.disposed = true;
     this.playbackRequested = false;
     if (this.session) {
-      this.session.type = 'auto';
+      // Do not clear a capture category owned by another browser subsystem.
+      if (this.session.type !== 'play-and-record') this.session.type = 'auto';
       this.session.removeEventListener('statechange', this.handleStateChange);
     }
   }
