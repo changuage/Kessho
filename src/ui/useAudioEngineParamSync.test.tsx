@@ -77,6 +77,7 @@ test('audio scheduler flushes current morph targets and drops stale timer values
 
   const engine = await loadProductEngine();
   const originalMethods = new Map<string, PropertyDescriptor | undefined>();
+  const resolvedCommits: ProductResolvedStateCommit[] = [];
   const timerDispatches: Array<{
     kind: 'timer' | 'immediate';
     reason: ProductSnapshotPatchReason;
@@ -97,6 +98,7 @@ test('audio scheduler flushes current morph targets and drops stale timer values
     });
   });
   replace('commitResolvedState', async (commit: ProductResolvedStateCommit) => {
+    resolvedCommits.push(commit);
     timerDispatches.push({
       kind: 'immediate',
       reason: commit.reason,
@@ -155,6 +157,14 @@ test('audio scheduler flushes current morph targets and drops stale timer values
       [{ target: 0.65, rootNote: 9 }],
       'endpoint content replacement at the same position cannot replay stale work',
     );
+    const armed = { ...makeState(0.65, 9), spectralFreezeActive: true, spectralFreezeCaptureSerial: 1 };
+    await getSchedule()(armed, { immediate: true });
+    assert.equal(resolvedCommits[resolvedCommits.length - 1]!.applyMode, 'event', 'pure Freeze gesture uses direct events');
+    await getSchedule()({ ...armed, spectralFreezeActive: false, spectralFreezeTone: 0.5, nature1FilterCutoff: 900 }, { immediate: true });
+    const mixed = resolvedCommits[resolvedCommits.length - 1]!;
+    assert.notEqual(mixed.applyMode, 'event', 'mixed Freeze/morph patch must apply all parameters');
+    assert.equal(mixed.patch.nature1FilterCutoff, 900);
+    assert.equal(mixed.patch.spectralFreezeTone, 0.5);
   } finally {
     if (root) await act(async () => root!.unmount());
     for (const [name, descriptor] of originalMethods) {

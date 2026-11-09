@@ -43,6 +43,8 @@ export interface UseJourneyResult {
   // State
   config: JourneyConfig | null;
   state: JourneyState;
+  isStarting?: boolean;
+  startupError?: string | null;
   setConfig: React.Dispatch<React.SetStateAction<JourneyConfig | null>>;
   
   // Actions
@@ -79,14 +81,20 @@ export interface UseJourneyResult {
  */
 export function useJourney(
   phraseSeconds: number = 16,
-  onMorphTo?: (presetName: string, duration: number) => void,
-  onLoadPreset?: (presetName: string) => void
+  onMorphTo?: (presetName: string, duration: number, durationMs: number, getProgress: () => number) => void | Promise<void>,
+  onLoadPreset?: (presetName: string, isCurrent: () => boolean) => void | Promise<void>
 ): UseJourneyResult {
   // Configuration state
   const [config, setConfig] = useState<JourneyConfig | null>(null);
   
   // Runtime state
   const [state, setState] = useState<JourneyState>(INITIAL_JOURNEY_STATE);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const startupGenerationRef = useRef(0);
+  const morphPreparingRef = useRef(false);
+  const morphDurationMsRef = useRef(0);
+  const morphProgressRef = useRef(0);
   
   // Animation frame ref for smooth updates
   const animationRef = useRef<number | null>(null);
@@ -105,8 +113,29 @@ export function useJourney(
   const onLoadPresetRef = useRef(onLoadPreset);
   onLoadPresetRef.current = onLoadPreset;
   
-  // Calculate milliseconds per phrase (1 phrase = phraseSeconds, default 16s)
   const msPerPhrase = phraseSeconds * 1000;
+
+  const requestMorph = useCallback((presetName: string, duration: number) => {
+    if (morphPreparingRef.current) return;
+    const generation = startupGenerationRef.current;
+    morphPreparingRef.current = true;
+    morphProgressRef.current = 0;
+    morphDurationMsRef.current = Math.max(1, duration * msPerPhrase);
+    void Promise.resolve().then(() => {
+      if (generation !== startupGenerationRef.current) return;
+      return onMorphToRef.current?.(presetName, duration, morphDurationMsRef.current, () => morphProgressRef.current);
+    }).then(() => {
+      if (generation !== startupGenerationRef.current) return;
+      morphPreparingRef.current = false;
+      lastTimeRef.current = performance.now();
+    }).catch((error) => {
+      if (generation !== startupGenerationRef.current) return;
+      morphPreparingRef.current = false;
+      cancelAnimationFrame(animationRef.current ?? 0);
+      setStartupError(error instanceof Error ? error.message : String(error));
+      setState((previous) => ({ ...previous, phase: 'idle' }));
+    });
+  }, [msPerPhrase]);
 
   const cancelScheduledTick = useCallback(() => {
     if (animationRef.current !== null) {
@@ -371,6 +400,11 @@ export function useJourney(
       return;
     }
     
+    if (morphPreparingRef.current) {
+      lastTimeRef.current = timestamp;
+      scheduleTickRef.current();
+      return;
+    }
     const deltaTime = timestamp - lastTimeRef.current;
     lastTimeRef.current = timestamp;
     
@@ -447,7 +481,7 @@ export function useJourney(
                 
                 // Trigger morph callback for normal morph
                 if (nextNode && connection && onMorphToRef.current) {
-                  onMorphToRef.current(nextNode.presetName, resolvedMorph);
+                  requestMorph(nextNode.presetName, resolvedMorph);
                 }
               }
             } else {
@@ -516,7 +550,7 @@ export function useJourney(
                 newState.plannedNextNodeId = null; // Will be set when morph completes
                 newState.resolvedMorphDuration = resolvedMorph;
                 if (nextNode && connection && onMorphToRef.current) {
-                  onMorphToRef.current(nextNode.presetName, resolvedMorph);
+                  requestMorph(nextNode.presetName, resolvedMorph);
                 }
               }
             } else {
@@ -533,9 +567,10 @@ export function useJourney(
         );
         if (connection) {
           // Use resolved duration (already randomized when phase started)
-          const morphDuration = prev.resolvedMorphDuration * msPerPhrase;
+          const morphDuration = morphDurationMsRef.current || prev.resolvedMorphDuration * msPerPhrase;
           const morphElapsed = newState.elapsedTime - prev.morphStartTime;
           newState.morphProgress = Math.min(1, morphElapsed / morphDuration);
+          morphProgressRef.current = newState.morphProgress;
           
           // Check if morph is complete
           if (newState.morphProgress >= 1) {
@@ -589,7 +624,7 @@ export function useJourney(
     } else {
       cancelScheduledTick();
     }
-  }, [cancelScheduledTick, msPerPhrase, selectNextNode]); // Uses refs to avoid stale closures
+  }, [cancelScheduledTick, msPerPhrase, requestMorph, selectNextNode]); // Uses refs to avoid stale closures
 
   const scheduleNextTick = useCallback(() => {
     if (document.visibilityState !== 'visible') return;
@@ -603,7 +638,7 @@ export function useJourney(
   /**
    * Start journey playback
    */
-  const play = useCallback(() => {
+  const play = useCallback(async () => {
     if (!config || config.nodes.length === 0) return;
     
     // Find the center node
@@ -654,11 +689,25 @@ export function useJourney(
     
     const firstNodeId = firstNode.id;
     
-    // Load first preset
-    if (onLoadPresetRef.current) {
-      onLoadPresetRef.current(firstNode.presetName);
+    const generation = ++startupGenerationRef.current;
+    const isCurrent = () => generation === startupGenerationRef.current;
+    cancelScheduledTick();
+    morphPreparingRef.current = false;
+    setIsStarting(true);
+    setStartupError(null);
+    setState(INITIAL_JOURNEY_STATE);
+    try {
+      await onLoadPresetRef.current?.(firstNode.presetName, isCurrent);
+    } catch (error) {
+      if (isCurrent()) {
+        setStartupError(error instanceof Error ? error.message : String(error));
+        setIsStarting(false);
+      }
+      return;
     }
-    
+    if (!isCurrent()) return;
+    setIsStarting(false);
+
     // Calculate initial phrase duration (with dual mode support)
     const minPhrase = firstNode.phraseLength;
     const maxPhrase = firstNode.phraseLengthMax ?? minPhrase;
@@ -691,6 +740,9 @@ export function useJourney(
    * Stop journey playback
    */
   const stop = useCallback(() => {
+    startupGenerationRef.current += 1;
+    morphPreparingRef.current = false;
+    setIsStarting(false);
     cancelScheduledTick();
     
     setState(prev => ({
@@ -732,6 +784,7 @@ export function useJourney(
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      startupGenerationRef.current += 1;
       cancelScheduledTick();
     };
   }, [cancelScheduledTick]);
@@ -789,6 +842,8 @@ export function useJourney(
   return {
     config,
     state,
+    isStarting,
+    startupError,
     setConfig,
     createFromMorph,
     createEmptyDiamond,

@@ -73,3 +73,18 @@ test('Nature router is active only with the master and an enabled layer', () => 
   assert.equal(natureRouter.isOn(state({ natureMasterEnabled: true, nature1Enabled: false })), false);
   assert.equal(natureRouter.isOn(state({ natureMasterEnabled: true, nature3Enabled: true })), true);
 });
+
+test('Freeze settings belong to morph policies while capture commands remain runtime-only', () => {
+  for (const key of ['spectralFreezeStretchSpeed', 'spectralFreezePosition', 'spectralFreezeRefresh',
+    'spectralFreezeInputSensitivity', 'spectralFreezeDiffusion', 'spectralFreezeTone',
+    'spectralFreezeWidth', 'spectralFreezeSustain', 'spectralFreezeMix', 'spectralFreezeReverbCrossfade']) {
+    assert.equal(countKey(NUMERIC_MORPH_KEYS, key), 1, key);
+  }
+  for (const key of ['spectralFreezeMode', 'spectralFreezeDirection', 'spectralFreezeRouting']) {
+    assert.equal(countKey(DISCRETE_MORPH_KEYS, key), 1, key);
+  }
+  for (const key of ['spectralFreezeEnabled', 'spectralFreezeActive']) {
+    assert.equal(countKey(ENGINE_TOGGLE_KEYS, key), 1, key);
+  }
+  assert.equal(countKey(NUMERIC_MORPH_KEYS, 'spectralFreezeCaptureSerial'), 0);
+});

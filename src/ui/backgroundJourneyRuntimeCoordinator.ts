@@ -1,10 +1,28 @@
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
+import { createCoreProductSnapshot } from '../audio/coreProductSnapshot';
 import type { JourneyConfig } from '../audio/journeyTypes';
+import type { ResolvedBackgroundJourneyNode } from '../audio/product/journey/compileBackgroundJourneyPlan';
+import { canonicalizePresetParameterBehaviorMetadata } from '../presets/versionMetadataHelpers';
 import {
   resolveBackgroundJourneyRuntimePhase,
   type BackgroundJourneyRuntimePhase,
 } from '../audio/product/journey/reconcileBackgroundJourneyProjection';
 import type { SavedPreset } from './state';
+import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
+
+export function resolveBackgroundJourneyNode(preset: SavedPreset): ResolvedBackgroundJourneyNode {
+  const snapshot = createCoreProductSnapshot(preset.state as unknown as Record<string, unknown>);
+  const dualSliderConfigs: Record<string, DualSliderConfig> = {};
+  for (const [key, config] of Object.entries(preset.dualSliderConfigs ?? {})) {
+    if (config) dualSliderConfigs[key] = config;
+  }
+  const behavior = canonicalizePresetParameterBehaviorMetadata({ ...preset, dualSliderConfigs });
+  return {
+    snapshot,
+    phraseSeconds: snapshot.transport.phraseSeconds,
+    modulationKeys: Object.keys(behavior.dualSliderConfigs ?? {}),
+  };
+}
 
 export type BackgroundJourneyTelemetryProjection = {
   phase: BackgroundJourneyRuntimePhase;

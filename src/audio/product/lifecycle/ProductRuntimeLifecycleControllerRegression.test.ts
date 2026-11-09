@@ -199,6 +199,9 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
       ensureStarted: async () => { calls.push('ensureStarted'); },
       resume: async () => { calls.push('resume'); },
       suspend: async () => { calls.push('suspend'); },
+      setOutputGain: (target: number, durationSeconds: number) => {
+        calls.push(`outputGain:${target}:${durationSeconds}`);
+      },
     } as never,
     assetRegistrar: {
       ensureDefaultAssetsForState: async () => {
@@ -274,6 +277,7 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
     calls.slice(calls.indexOf('loadDone')),
     [
       'loadDone',
+      'outputGain:1:0.01',
       'running:true',
       'sequencerStart',
       'telemetryPolling',

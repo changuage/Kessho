@@ -20,8 +20,10 @@ let releaseFailed: (assetId: number, result: number) => void = () => { throw new
 const releaseRequests: number[] = [];
 const registrations: number[] = [];
 const ownerships: AssetTransferOwnership[] = [];
+let runtimeStarts = 0;
 const runtime = {
   audioContext: null,
+  ensureStarted: async () => { runtimeStarts += 1; },
   registerAsset: async (asset: DecodedCoreProductAsset, ownership: AssetTransferOwnership) => {
     registrations.push(asset.assetId);
     ownerships.push(ownership);
@@ -36,6 +38,8 @@ const runtime = {
 } as unknown as CoreProductRuntime;
 
 const registrar = new CoreProductAssetRegistrar(runtime, () => null);
+await registrar.ensureSceneAssets([]);
+assert.equal(runtimeStarts, 1, 'scene asset preparation must initialize the runtime before decoding');
 const asset: DecodedCoreProductAsset = {
   assetId: 77,
   sampleRate: 48000,

@@ -9,6 +9,7 @@ export type ProductRuntimePresetLoadFadeOptions = {
   isJourneyPlaying: boolean;
   fadeProductRuntimeOutput: (target: number, durationMs: number) => Promise<void>;
   stopProductPlayback: () => void;
+  stopAudioForJourneyPresetLoad?: () => void;
 };
 
 export function useProductRuntimePresetLoadFade({
@@ -16,12 +17,16 @@ export function useProductRuntimePresetLoadFade({
   isJourneyPlaying,
   fadeProductRuntimeOutput,
   stopProductPlayback,
+  stopAudioForJourneyPresetLoad,
 }: ProductRuntimePresetLoadFadeOptions) {
-  return useCallback(async () => {
+  return useCallback(async (preserveJourney = false, isCurrent?: () => boolean) => {
+    if (isCurrent && !isCurrent()) return;
     if (!(playbackIsRunning || isJourneyPlaying)) return;
     await fadeProductRuntimeOutput(0, PRESET_LOAD_FADE_MS);
-    stopProductPlayback();
+    if (isCurrent && !isCurrent()) return;
+    (preserveJourney && stopAudioForJourneyPresetLoad ? stopAudioForJourneyPresetLoad : stopProductPlayback)();
     await new Promise((resolve) => window.setTimeout(resolve, PRESET_LOAD_STOP_SETTLE_MS));
+    if (isCurrent && !isCurrent()) return;
     void fadeProductRuntimeOutput(1, PRESET_LOAD_RESTORE_FADE_MS);
-  }, [fadeProductRuntimeOutput, isJourneyPlaying, playbackIsRunning, stopProductPlayback]);
+  }, [stopAudioForJourneyPresetLoad, fadeProductRuntimeOutput, isJourneyPlaying, playbackIsRunning, stopProductPlayback]);
 }

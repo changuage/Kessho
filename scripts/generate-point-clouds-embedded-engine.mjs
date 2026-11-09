@@ -3,10 +3,15 @@
 import { build, transform } from 'esbuild';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
-const outputDir = resolve(root, 'point-clouds/shared/embedded');
-const engineEntry = resolve(outputDir, 'kessho-engine-entry.tsx');
+const root = fileURLToPath(new URL('..', import.meta.url));
+const outputOption = process.argv.indexOf('--output-dir');
+if (outputOption >= 0 && (!process.argv[outputOption + 1] || process.argv[outputOption + 1].startsWith('--'))) {
+  throw new Error('--output-dir requires a destination directory.');
+}
+const outputDir = resolve(root, outputOption >= 0 ? process.argv[outputOption + 1] : 'point-clouds/shared/embedded');
+const engineEntry = resolve(root, 'point-clouds/shared/embedded/kessho-engine-entry.tsx');
 const engineOutput = resolve(outputDir, 'kessho-engine.iife.js');
 const assetOutput = resolve(outputDir, 'kessho-product-core-assets.js');
 const engineDocumentOutput = resolve(outputDir, 'kessho-engine.html');
@@ -14,7 +19,7 @@ const workletPath = resolve(root, 'public/worklets/kessho-core-product.worklet.j
 const wasmPath = resolve(root, 'public/worklets/kessho_core.wasm');
 const stringWavesSamplePath = resolve(root, 'public/samples/Ghetary-Waves-Rocks_120s_m_441_cl-normalized.ogg');
 const bridgePath = resolve(root, 'point-clouds/shared/kessho-site-bridge.js');
-const pointCloudPagePaths = [
+const pointCloudPagePaths = outputOption >= 0 ? [] : [
   resolve(root, 'point-clouds/index.html'),
   resolve(root, 'point-clouds/alternative-a/index.html'),
   resolve(root, 'point-clouds/alternative-b/index.html'),
@@ -82,8 +87,9 @@ function makeAssetScript(workletSource, wasmBytes, stringWavesSampleBytes, strin
     }))
     : wasmDataUrl;
   const assetBaseUrl = 'https://point-clouds.invalid/';
-  const isFileOrOpaqueOrigin = () => (
-    global.location?.protocol === 'file:' || global.location?.origin === 'null'
+  const usesEmbeddedPresets = () => (
+    global.__pointCloudsEmbeddedEngineMode === true
+      || global.location?.protocol === 'file:' || global.location?.origin === 'null'
   );
   const sampleBinaryString = global.atob(embeddedSampleBase64);
   const sampleBytes = new Uint8Array(sampleBinaryString.length);
@@ -101,7 +107,7 @@ function makeAssetScript(workletSource, wasmBytes, stringWavesSampleBytes, strin
       // discovery request with an empty manifest and keep the rest of fetch
       // untouched. The embedded String Waves snapshot is provided below.
       if (
-        isFileOrOpaqueOrigin()
+        usesEmbeddedPresets()
         && (inputUrl === '/presets/manifest.json'
           || (parsedUrl?.protocol === 'file:' && parsedUrl.pathname === '/presets/manifest.json'))
       ) {
@@ -111,7 +117,7 @@ function makeAssetScript(workletSource, wasmBytes, stringWavesSampleBytes, strin
         }));
       }
       if (
-        isFileOrOpaqueOrigin()
+        usesEmbeddedPresets()
         && (inputUrl?.startsWith?.('/presets/')
           || (parsedUrl?.protocol === 'file:' && parsedUrl.pathname?.startsWith('/presets/')))
         && (inputUrl?.endsWith?.('.json') || parsedUrl?.pathname?.endsWith('.json'))

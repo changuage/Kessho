@@ -6,6 +6,7 @@ type ProductRuntimeJourneyPlaybackOptions = {
   activeJourneyPresetName: string;
   config: unknown;
   play: () => void;
+  isStarting?: boolean;
   validation: {
     playable: boolean;
     issues: readonly string[];
@@ -27,7 +28,7 @@ export function useProductRuntimePlaybackUiProps({
   stopProductPlayback,
   journey,
 }: ProductRuntimePlaybackUiPropsOptions) {
-  const anyPlaybackIsRunning = playbackIsRunning || isJourneyPlaying;
+  const anyPlaybackIsRunning = playbackIsRunning || isJourneyPlaying || Boolean(journey.isStarting);
   const startProductPlaybackFromUi = useCallback((): void => {
     void startProductPlayback();
   }, [startProductPlayback]);

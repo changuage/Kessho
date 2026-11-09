@@ -1784,7 +1784,8 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       );
       this.sourceSamplesUntilChord = initialStartDelaySamples + Math.max(this.frames, this.sourceChordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
-        this.killSourceVoices();
+        const preserveManualVoices = noteKey.startsWith('manual:') && this.sourceNoteKey.startsWith('manual:');
+        if (!preserveManualVoices) this.killSourceVoices();
       } else {
         this.scheduleSourceChord(this.sourceChordSets[0], initialStartDelaySamples);
       }
@@ -1924,7 +1925,8 @@ class KesshoCoreProcessor extends AudioWorkletProcessor {
       );
       slot.samplesUntilChord = initialStartDelaySamples + Math.max(this.frames, slot.chordIntervalSamples - initialChordLeadSamples);
       if (message.triggerInitial === false) {
-        this.killSourceSlotVoices(slot);
+        const preserveManualVoices = noteKey.startsWith('manual:') && slot.noteKey.startsWith('manual:');
+        if (!preserveManualVoices) this.killSourceSlotVoices(slot);
       } else {
         this.scheduleSlotChord(slot, slot.chordSets[0], initialStartDelaySamples);
       }

@@ -1,3 +1,4 @@
+import { prepareSpectralFreezeCaptureForMorph } from './spectralFreezeGesture';
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { calculateDriftedRoot } from '../audio/harmony';
 import { clampMorphPosition, isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
@@ -472,11 +473,11 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
       }
 
       finalState = preserveRunningSimpleSequencers(finalState, stateRef.current);
+      finalState = prepareSpectralFreezeCaptureForMorph(finalState, stateRef.current);
 
       setState(finalState);
       scheduleProductRuntimeParamUpdate(finalState, {
         reason: 'morph-control-change',
-        triggerCritical: true,
         ...(isFlush ? { immediate: true } : {}),
       });
 

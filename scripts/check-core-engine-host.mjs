@@ -377,7 +377,7 @@ function assertWorkletFxRoutingBehavior(source, label) {
   const delayAModule = 202;
   const reverbModule = 303;
   const sourceTapCount = 6;
-  const delayATapCount = 4;
+  const delayATapCount = 5;
   const prefaderPad1 = 2;
   const prefaderPad2 = 3;
   const postfaderPad1 = 4;
@@ -493,10 +493,10 @@ function assertWorkletFxRoutingBehavior(source, label) {
     delayBModule: 0,
     delayBInputLeftPtr: allocFrames(),
     delayBInputRightPtr: allocFrames(),
-    delayBTapLPtrsPtr: allocPtrTable(4),
-    delayBTapRPtrsPtr: allocPtrTable(4),
-    delayBTapLeftPtrs: Array.from({ length: 4 }, allocFrames),
-    delayBTapRightPtrs: Array.from({ length: 4 }, allocFrames),
+    delayBTapLPtrsPtr: allocPtrTable(5),
+    delayBTapRPtrsPtr: allocPtrTable(5),
+    delayBTapLeftPtrs: Array.from({ length: 5 }, allocFrames),
+    delayBTapRightPtrs: Array.from({ length: 5 }, allocFrames),
     granularInputLeftPtr: allocFrames(),
     granularInputRightPtr: allocFrames(),
     granularOutputLeftPtr: allocFrames(),
@@ -702,7 +702,7 @@ function assertWorkletManualTriggerBehavior(source, label) {
   });
 
   assert(
-    JSON.stringify(killedVoices) === JSON.stringify([0, 1, 2, 3, 4, 5]),
+    JSON.stringify(killedVoices) === JSON.stringify(Array.from({ length: 16 }, (_, index) => index)),
     `${label} manual triggerInitial=false must hard-kill all pad voices, got ${JSON.stringify(killedVoices)}`,
   );
   assert(allNotesOffCalls === 0, `${label} manual triggerInitial=false must not leave release tails via allNotesOff`);
@@ -718,7 +718,7 @@ function assertWorkletManualTriggerBehavior(source, label) {
   assert(noteOns.length === 1, `${label} pad2 manual route must trigger exactly one source note`);
   assert(noteOns[0].route === 7, `${label} pad2 manual route must be forwarded with pad bank offset`);
   assert(processor.sourcePendingNoteOffs.length === 1, `${label} pad2 manual release must schedule one note-off`);
-  assert(processor.sourcePendingNoteOffs[0].voiceIndex === 1, `${label} pad2 manual note-off must use voice index modulo the pad bank offset`);
+  assert(processor.sourcePendingNoteOffs[0].voiceIndex === 7, `${label} pad2 manual note-off must preserve the routed pad voice index`);
 
   processor.sourcePendingNoteOffs = [{ samplesUntil: 512, voiceIndex: 0 }];
   Processor.prototype.configureSourceModule.call(processor, {
@@ -735,7 +735,7 @@ function assertWorkletManualTriggerBehavior(source, label) {
     triggerInitial: false,
   });
 
-  assert(killedVoices.length === 6, `${label} manual note-to-note config must preserve active manual voices`);
+  assert(killedVoices.length === 16, `${label} manual note-to-note config must preserve active manual voices`);
   assert(processor.sourcePendingNoteOffs.length === 1, `${label} manual note-to-note config must preserve pending note-offs`);
 }
 
@@ -793,6 +793,7 @@ function assertWorkletLeadSourceBehavior(source, label) {
       moduleCommitParams: () => {
         commitCalls += 1;
       },
+      moduleKillVoice: () => 1,
       moduleAllNotesOff: () => 1,
     },
   });
@@ -858,10 +859,10 @@ function assertWorkletLeadSourceBehavior(source, label) {
     delayBModule: 0,
     delayBInputLeftPtr: allocFrames(),
     delayBInputRightPtr: allocFrames(),
-    delayBTapLPtrsPtr: allocPtrTable(4),
-    delayBTapRPtrsPtr: allocPtrTable(4),
-    delayBTapLeftPtrs: Array.from({ length: 4 }, allocFrames),
-    delayBTapRightPtrs: Array.from({ length: 4 }, allocFrames),
+    delayBTapLPtrsPtr: allocPtrTable(5),
+    delayBTapRPtrsPtr: allocPtrTable(5),
+    delayBTapLeftPtrs: Array.from({ length: 5 }, allocFrames),
+    delayBTapRightPtrs: Array.from({ length: 5 }, allocFrames),
     granularInputLeftPtr: allocFrames(),
     granularInputRightPtr: allocFrames(),
     granularOutputLeftPtr: allocFrames(),
@@ -945,8 +946,8 @@ function assertWorkletLeadSourceBehavior(source, label) {
   assert(processor.sourcePendingNoteOffs.length === 0, `${label} lead source must rely on module hold time instead of scheduling pad note-offs`);
 
   Processor.prototype.killSourceVoices.call(processor);
-  assert(allNotesOffCalls === 1, `${label} lead source kill must use allNotesOff`);
-  assert(killedVoices.length === 0, `${label} lead source kill must not call pad voice kill`);
+  assert(allNotesOffCalls === 0, `${label} successful lead source kill must not fall back to allNotesOff`);
+  assert(JSON.stringify(killedVoices) === JSON.stringify([0]), `${label} lead source kill must target its single voice`);
 
   const makeStereoOutput = () => [new Float32Array(frames), new Float32Array(frames)];
   const outputs = [
@@ -1392,12 +1393,12 @@ function assertWorkletSpectralFreezeRoutingBehavior(source, label) {
   const peak = Processor.prototype.processSpectralFreezePreReverb.call(processor, frames, 0.01);
   assertArrayClose(
     readPlanar(processor.reverbInputLeftPtr),
-    inputLeft.map((value) => value * 2 * 0.25 + value * 0.75),
+    inputLeft.map((value) => value + value * 2 * 0.25),
     `${label} spectral pre routing L`,
   );
   assertArrayClose(
     readPlanar(processor.reverbInputRightPtr),
-    inputRight.map((value) => value * -2 * 0.25 + value * 0.75),
+    inputRight.map((value) => value + value * -2 * 0.25),
     `${label} spectral pre routing R`,
   );
   assert(peak > 0.1, `${label} spectral pre routing must recompute reverb input peak`);
@@ -1410,12 +1411,12 @@ function assertWorkletSpectralFreezeRoutingBehavior(source, label) {
   Processor.prototype.processSpectralFreezePostReverb.call(processor, frames);
   assertArrayClose(
     readPlanar(processor.reverbOutputLeftPtr),
-    reverbOutLeft.map((value) => value * 2),
+    reverbOutLeft,
     `${label} spectral post routing L`,
   );
   assertArrayClose(
     readPlanar(processor.reverbOutputRightPtr),
-    reverbOutRight.map((value) => value * -2),
+    reverbOutRight,
     `${label} spectral post routing R`,
   );
 
@@ -1492,10 +1493,10 @@ function assertWorkletDelayBFacadeBehavior(source, label) {
     delayBParamCount: 0,
     delayBInputLeftPtr: allocFrames(),
     delayBInputRightPtr: allocFrames(),
-    delayBTapLPtrsPtr: allocPtrTable(4),
-    delayBTapRPtrsPtr: allocPtrTable(4),
-    delayBTapLeftPtrs: Array.from({ length: 4 }, allocFrames),
-    delayBTapRightPtrs: Array.from({ length: 4 }, allocFrames),
+    delayBTapLPtrsPtr: allocPtrTable(5),
+    delayBTapRPtrsPtr: allocPtrTable(5),
+    delayBTapLeftPtrs: Array.from({ length: 5 }, allocFrames),
+    delayBTapRightPtrs: Array.from({ length: 5 }, allocFrames),
     mixLeftPtr: allocFrames(),
     mixRightPtr: allocFrames(),
     mixLeft: null,
@@ -1513,13 +1514,13 @@ function assertWorkletDelayBFacadeBehavior(source, label) {
       return delayBModule;
     },
     moduleDestroy: () => {},
-    moduleGetOutputTapCount: () => 4,
+    moduleGetOutputTapCount: () => 5,
     moduleGetParamsPtr: () => paramsPtr,
     moduleGetParamCount: () => 16,
     moduleCommitParams: () => {},
     moduleProcessPlanarStereoTaps: (module, inputLPtr, inputRPtr, tapLPtrsPtr, tapRPtrsPtr, tapCount) => {
       assert(module === delayBModule, `${label} Delay B facade must process its own module`);
-      assert(tapCount === 4, `${label} Delay B facade tap count mismatch`);
+      assert(tapCount === 5, `${label} Delay B facade tap count mismatch`);
       assertArrayClose(
         readPlanar(inputLPtr),
         auxLeft.map((value, index) => value * 0.5 + delayAToBLeft[index]),
@@ -1761,7 +1762,8 @@ function assertWorkletMixerContract(source, label) {
     'this.processSpectralFreezePreReverb(frames, reverbInputPeak)',
     'this.processSpectralFreezePostReverb(frames)',
     'killSourceVoices()',
-    "this.postQueueFailure('sourceModuleKillVoice');",
+    "this.killModuleVoices(this.sourceModule, this.sourceModuleType, 'sourceModuleKillVoice');",
+    'if (!ok) this.postQueueFailure(label);',
     'this.killSourceVoices();',
     "noteKey.startsWith('manual:')",
     'this.api.moduleGetOutputTapCount(this.delayAModule) < KESSHO_MODULE_DELAY_A_OUTPUT_TAP_COUNT',

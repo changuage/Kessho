@@ -56,6 +56,8 @@ export class CoreProductBackgroundJourneyCoordinator {
     this.uploadCompletion = completion;
     const generation = ++this.uploadGeneration;
     try {
+      await runtime.ensureStarted();
+      if (generation !== this.uploadGeneration) return this.discardReadiness();
       const sampleRate = runtime.audioContext?.sampleRate ?? this.dependencies.telemetry()?.sampleRate;
       if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
         return this.fail({ status: 'not-ready', reason: 'sample-rate-unavailable' });
@@ -157,12 +159,16 @@ export class CoreProductBackgroundJourneyCoordinator {
 
   stop(): void {
     this.uploadGeneration += 1;
-    this.dependencies.post(createCoreProductJourneyScheduleEnabledEvent(false));
+    if (this.readiness.status !== 'idle') {
+      this.dependencies.post(createCoreProductJourneyScheduleEnabledEvent(false));
+    }
   }
 
   discard(): void {
     this.uploadGeneration += 1;
-    this.dependencies.post(createCoreProductJourneyScheduleEnabledEvent(false));
+    if (this.readiness.status !== 'idle') {
+      this.dependencies.post(createCoreProductJourneyScheduleEnabledEvent(false));
+    }
     this.dependencies.assets.clearSceneAssets();
     this.assetReadinessRevision = 0;
     this.setReadiness({ status: 'idle' });

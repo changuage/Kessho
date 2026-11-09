@@ -9,13 +9,13 @@ const colors = {
   ending: 'rgba(220, 235, 255, 0.7)',
 };
 
-export function JourneyStatusPill({ state, config }: { state: JourneyState; config: JourneyConfig }) {
+export function JourneyStatusPill({ state, config, morphPosition }: { state: JourneyState; config: JourneyConfig; morphPosition: number }) {
   const current = config.nodes.find((node) => node.id === state.currentNodeId);
   const next = config.nodes.find((node) => node.id === state.nextNodeId);
   const morphing = state.phase === 'morphing' && next;
   const ending = state.phase === 'ending';
   const color = morphing ? colors.morphing : ending ? colors.ending : current?.color || colors.playing;
-  const progress = morphing || ending ? state.morphProgress : state.phraseProgress;
+  const progress = morphing ? morphPosition / 100 : ending ? state.morphProgress : state.phraseProgress;
 
   return (
     <div style={{
@@ -33,7 +33,7 @@ export function JourneyStatusPill({ state, config }: { state: JourneyState; conf
       <span style={{ width: 40, height: 3, borderRadius: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.15)' }}>
         <span style={{ display: 'block', width: `${Math.max(0, Math.min(1, progress)) * 100}%`, height: '100%', background: color }} />
       </span>
-      {morphing && <span style={{ fontSize: 9, color: colors.muted }}>{Math.round(state.morphProgress * 100)}%</span>}
+      {morphing && <span style={{ fontSize: 9, color: colors.muted }}>{Math.round(morphPosition)}%</span>}
     </div>
   );
 }

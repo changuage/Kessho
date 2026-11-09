@@ -776,7 +776,7 @@
     }
 
     ensureFrameSource() {
-      if (global.location?.protocol === 'file:') {
+      if (global.location?.protocol === 'file:' || global.__pointCloudsStandalone === true) {
         if (bootstrapEmbeddedEngineInParent()) return;
         // Prefer a regular sibling file over an opaque `about:srcdoc` frame.
         // Safari and Chromium can reject file:// subresources requested by an

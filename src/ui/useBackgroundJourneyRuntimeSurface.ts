@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { createCoreProductSnapshot } from '../audio/coreProductSnapshot';
 import type { CoreProductTelemetrySnapshot } from '../audio/coreProductTelemetry';
 import type { JourneyConfig } from '../audio/journeyTypes';
 import { productEngine } from '../audio/product/ProductEngineProxy';
@@ -16,12 +15,14 @@ import type { ProductBackgroundJourneyReadiness } from '../audio/product/ports/P
 import {
   reconcileBackgroundJourneyTerminal,
 } from '../audio/product/journey/reconcileBackgroundJourneyProjection';
+import { prepareSpectralFreezeCaptureForPlayback } from './spectralFreezeGesture';
 import type { SavedPreset, SliderState } from './state';
 import type { UseJourneyResult } from './journeyState';
 import {
   projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
+  resolveBackgroundJourneyNode,
   shouldRefreshBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
 import { useVisibleInterval } from './hooks/useVisibleInterval';
@@ -30,6 +31,7 @@ import { useDocumentVisibility } from './hooks/useDocumentVisibility';
 export type BackgroundJourneyUiState =
   | { status: 'idle' }
   | { status: 'planning' }
+  | { status: 'starting' }
   | { status: 'preparing'; uploadedEvents: number; totalEvents: number }
   | { status: 'ready'; durationSeconds: number; assetBytes: number; sceneCount: number; revision: number }
   | { status: 'optimizable'; sceneCount: number; totalSceneCount: number; assetBytes: number }
@@ -118,14 +120,18 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   journey: UseJourneyResult;
   resolveSavedPresetByName: (name: string) => Promise<SavedPreset | null>;
   startProductPlayback: StartProductPlayback;
+  primeProductRuntimeAudio?: () => void;
+  stopProductPlayback?: () => void;
+  clearPresetModulation: () => void;
   setIsJourneyPlaying: (playing: boolean) => void;
 }) {
-  const { config, journey, resolveSavedPresetByName, startProductPlayback, setIsJourneyPlaying } = options;
+  const { config, journey, resolveSavedPresetByName, startProductPlayback, primeProductRuntimeAudio, stopProductPlayback, clearPresetModulation, setIsJourneyPlaying } = options;
   const documentVisible = useDocumentVisibility();
   const [uiState, setUiState] = useState<BackgroundJourneyUiState>({ status: 'idle' });
   const [telemetry, setTelemetry] = useState<CoreProductTelemetrySnapshot | null>(null);
   const [runtimeProjectionActive, setRuntimeProjectionActive] = useState(false);
   const [preparationPollingGeneration, setPreparationPollingGeneration] = useState<number | null>(null);
+  const startingPreparedRef = useRef(false);
   const preparedRef = useRef<PreparedJourney | null>(null);
   const optimizationContextRef = useRef<OptimizationContext | null>(null);
   const optimizationCandidateRef = useRef<{ plan: BackgroundJourneyPlan; playableNodes: JourneyConfig['nodes']; assetBytes: number } | null>(null);
@@ -180,6 +186,8 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   useEffect(() => {
     if (appliedConfigFingerprintRef.current === configFingerprint) return;
     appliedConfigFingerprintRef.current = configFingerprint;
+    if (startingPreparedRef.current || journey.isStarting) stopProductPlayback?.();
+    startingPreparedRef.current = false;
     generationRef.current += 1;
     productEngine.discardBackgroundJourney();
     journey.stop();
@@ -191,7 +199,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     optimizationContextRef.current = null;
     optimizationCandidateRef.current = null;
     setUiState({ status: 'stale' });
-  }, [configFingerprint, journey.stop, setIsJourneyPlaying]);
+  }, [configFingerprint, journey.stop, setIsJourneyPlaying, stopProductPlayback]);
 
   useEffect(() => {
     const currentVisibility = { documentVisible, runtimeProjectionActive };
@@ -290,9 +298,8 @@ export function useBackgroundJourneyRuntimeSurface(options: {
         setUiState({ status: 'unavailable', reason: 'missing-preset' });
         return;
       }
-      const snapshot = createCoreProductSnapshot(preset.state as unknown as Record<string, unknown>);
       presets.set(node.id, preset);
-      resolvedNodes.set(node.id, { snapshot, phraseSeconds: snapshot.transport.phraseSeconds });
+      resolvedNodes.set(node.id, resolveBackgroundJourneyNode(preset));
     }
     const firstSnapshot = resolvedNodes.values().next().value?.snapshot;
     const revision = revisionFor(configFingerprint);
@@ -404,7 +411,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
 
   const startPrepared = useCallback(async (): Promise<boolean> => {
     const prepared = preparedRef.current;
-    if (!prepared || uiState.status !== 'ready') return false;
+    if (!prepared || uiState.status !== 'ready' || startingPreparedRef.current) return false;
     if (prepared.configFingerprint !== latestConfigFingerprintRef.current) {
       generationRef.current += 1;
       productEngine.discardBackgroundJourney();
@@ -416,11 +423,28 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     const firstNode = firstEntry ? prepared.playableNodes[firstEntry.fromNodeIndex] : null;
     const preset = firstNode ? prepared.presets.get(firstNode.id) : null;
     if (!preset) return false;
-    await startProductPlayback({
-      state: preset.state,
-      dualRanges: preset.dualRanges ?? {},
-      title: config?.name || preset.name,
-    });
+    startingPreparedRef.current = true;
+    setUiState({ status: 'starting' });
+    primeProductRuntimeAudio?.();
+    const generation = generationRef.current;
+    try {
+      clearPresetModulation();
+      await startProductPlayback({
+        state: prepareSpectralFreezeCaptureForPlayback(preset.state),
+        dualRanges: preset.dualRanges ?? {},
+        title: config?.name || preset.name,
+      });
+    } catch (error) {
+      if (generation === generationRef.current) {
+        startingPreparedRef.current = false;
+        setUiState({ status: 'unavailable', reason: 'runtime-error' });
+        console.error('[Journey] Audio failed to start:', error);
+      }
+      return false;
+    }
+    if (generation !== generationRef.current) return false;
+    startingPreparedRef.current = false;
+    setUiState(uiStateFromHost(productEngine.getBackgroundJourneyReadiness(), prepared.plan, prepared.playableNodes.length, prepared.sampleRate));
     if (!productEngine.startBackgroundJourney(prepared.plan.revision)) {
       setUiState(uiStateFromHost(
         productEngine.getBackgroundJourneyReadiness(),
@@ -434,16 +458,20 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     setIsJourneyPlaying(true);
     setRuntimeProjectionActive(true);
     return true;
-  }, [config?.name, setIsJourneyPlaying, startProductPlayback, uiState.status]);
+  }, [clearPresetModulation, config?.name, primeProductRuntimeAudio, setIsJourneyPlaying, startProductPlayback, uiState.status]);
 
   const foregroundOnly = useCallback(() => {
+    if (startingPreparedRef.current || journey.isStarting) return;
     generationRef.current += 1;
     productEngine.discardBackgroundJourney();
     preparedRef.current = null;
     journey.play();
-  }, [journey.play]);
+  }, [journey.play, journey.isStarting]);
 
   const stop = useCallback(() => {
+    if (startingPreparedRef.current) setUiState({ status: 'stale' });
+    generationRef.current += 1;
+    startingPreparedRef.current = false;
     productEngine.stopBackgroundJourney();
     journey.stop();
     setIsJourneyPlaying(false);
@@ -452,6 +480,8 @@ export function useBackgroundJourneyRuntimeSurface(options: {
   }, [journey.stop, setIsJourneyPlaying]);
 
   const cancel = useCallback(() => {
+    if (startingPreparedRef.current) stopProductPlayback?.();
+    startingPreparedRef.current = false;
     generationRef.current += 1;
     productEngine.discardBackgroundJourney();
     preparedRef.current = null;
@@ -463,7 +493,7 @@ export function useBackgroundJourneyRuntimeSurface(options: {
     journey.stop();
     setIsJourneyPlaying(false);
     setUiState({ status: 'idle' });
-  }, [journey.stop, setIsJourneyPlaying]);
+  }, [journey.stop, setIsJourneyPlaying, stopProductPlayback]);
 
   return {
     uiState,

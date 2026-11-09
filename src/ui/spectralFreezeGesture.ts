@@ -16,6 +16,23 @@ export function prepareSpectralFreezeCaptureForPlayback(state: SliderState): Sli
   };
 }
 
+// Capture serials are runtime commands, not preset values to interpolate.
+export function prepareSpectralFreezeCaptureForMorph(next: SliderState, previous: SliderState): SliderState {
+  const wasActive = previous.spectralFreezeEnabled && previous.spectralFreezeActive;
+  const active = next.spectralFreezeEnabled && next.spectralFreezeActive;
+  return {
+    ...next,
+    spectralFreezeCaptureSerial: active && !wasActive
+      ? nextSpectralFreezeCaptureSerial(previous.spectralFreezeCaptureSerial)
+      : previous.spectralFreezeCaptureSerial,
+  };
+}
+
+export function isOnlySpectralFreezeGesturePatch(patch: Partial<SliderState>): boolean {
+  return isSpectralFreezeGesturePatch(patch) && Object.keys(patch).every((key) =>
+    key === 'spectralFreezeActive' || key === 'spectralFreezeCaptureSerial');
+}
+
 export function isSpectralFreezeGesturePatch(patch: Partial<SliderState>): boolean {
   return patch.spectralFreezeActive !== undefined ||
     patch.spectralFreezeCaptureSerial !== undefined;

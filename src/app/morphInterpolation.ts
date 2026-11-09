@@ -1,3 +1,4 @@
+import { canEnableFxRoute, type FxRoutingConnection, type FxRoutingGraphState } from '../audio/fxRoutingGraph';
 import { calculateDriftedRoot } from '../audio/harmony';
 import { clampMorphPosition, isAtEndpoint0, isAtEndpoint1, selectDiscreteMorphEndpoint } from '../audio/morphUtils';
 import { getMorphedRootNote } from '../ui/CircleOfFifths';
@@ -67,6 +68,8 @@ export type PreparedMorphPair = {
   allDualKeys: Set<string>;
   dualMetadata: Map<string, PreparedDualMorphMetadata>;
   keysToSnap: Set<keyof SliderState>;
+  fxEdges: Array<{ a?: FxRoutingConnection; b?: FxRoutingConnection }>;
+  fxUnionCompatible: boolean;
 };
 
 export function prepareMorphPair(
@@ -156,7 +159,25 @@ export function prepareMorphPair(
     }
   }
 
+  const fxEdges = new Map<string, { a?: FxRoutingConnection; b?: FxRoutingConnection }>();
+  for (const edge of stateA.fxRoutingGraph.edges) fxEdges.set(`${edge.from}>${edge.to}`, { a: edge });
+  for (const edge of stateB.fxRoutingGraph.edges) {
+    const key = `${edge.from}>${edge.to}`;
+    fxEdges.set(key, { ...fxEdges.get(key), b: edge });
+  }
+  const union: FxRoutingConnection[] = [];
+  let fxUnionCompatible = true;
+  for (const { a, b } of fxEdges.values()) {
+    const edge = (a ?? b)!;
+    if (!canEnableFxRoute(union, edge.from, edge.to)) {
+      fxUnionCompatible = false;
+      break;
+    }
+    union.push(edge);
+  }
   return {
+    fxEdges: [...fxEdges.values()],
+    fxUnionCompatible,
     stateA,
     stateB,
     routerZeroSide,
@@ -215,6 +236,39 @@ export function createMorphPairPreparer(
       current = { contentA, contentB, prepared };
       return prepared;
     },
+  };
+}
+
+function interpolateFxGraph(prepared: PreparedMorphPair, t: number): FxRoutingGraphState {
+  const graphA = prepared.stateA.fxRoutingGraph;
+  const graphB = prepared.stateB.fxRoutingGraph;
+  if (!prepared.fxUnionCompatible) {
+    // Opposing routes cannot coexist: fade the old graph out before bringing the new one in.
+    const graph = t < 0.5 ? graphA : graphB;
+    const gain = Math.abs(2 * t - 1);
+    return { ...graph, edges: graph.edges.map((edge) => ({
+      ...edge, amount: edge.amount * gain,
+      ...(edge.min != null ? { min: edge.min * gain } : {}),
+      ...(edge.max != null ? { max: edge.max * gain } : {}),
+    })) };
+  }
+  const amount = (edge?: FxRoutingConnection) => edge && !edge.muted ? edge.amount : 0;
+  const bound = (edge: FxRoutingConnection | undefined, key: 'min' | 'max') =>
+    edge && !edge.muted ? edge[key] ?? edge.amount : 0;
+  return {
+    version: 1,
+    dynamicsBuses: (t < 0.5 ? graphA : graphB).dynamicsBuses,
+    edges: prepared.fxEdges.map(({ a, b }) => {
+      const selected = (t < 0.5 ? a ?? b : b ?? a)!;
+      const value = amount(a) + (amount(b) - amount(a)) * t;
+      return {
+        ...selected, muted: false, amount: value,
+        ...((selected.mode ?? 'single') !== 'single' ? {
+          min: bound(a, 'min') + (bound(b, 'min') - bound(a, 'min')) * t,
+          max: bound(a, 'max') + (bound(b, 'max') - bound(a, 'max')) * t,
+        } : {}),
+      };
+    }),
   };
 }
 
@@ -311,7 +365,10 @@ export function evaluatePreparedMorphPair(
       const selectedMode = tNorm < 0.5
         ? modeA || modeB || 'walk'
         : modeB || modeA || 'sampleHold';
-      if (selectedMode === 'single') continue;
+      if (selectedMode === 'single') {
+        resultDualModes[keyStr] = 'single';
+        continue;
+      }
       const selectedConfig = tNorm < 0.5 ? configA : configB;
       resultDualModes[key as string] = selectedMode;
       resultDualRanges[key] = { min: morphedMin, max: morphedMax };
@@ -379,6 +436,11 @@ export function evaluatePreparedMorphPair(
     }
   }
 
+  result.spectralFreezeActive = Boolean(
+    (stateA.spectralFreezeEnabled && stateA.spectralFreezeActive) ||
+    (stateB.spectralFreezeEnabled && stateB.spectralFreezeActive)
+  );
+  result.fxRoutingGraph = interpolateFxGraph(prepared, tNorm);
   if (atEndpointA) Object.assign(result, stateA);
   else if (atEndpointB) Object.assign(result, stateB);
 

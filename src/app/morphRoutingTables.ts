@@ -6,6 +6,10 @@ export const ROUTER_MATRIX_BY_ENGINE: Array<{
   keys: (keyof SliderState)[];
 }> = [
   {
+    isOn: (s) => s.spectralFreezeEnabled && s.spectralFreezeActive,
+    keys: ['spectralFreezeMix', 'spectralFreezeReverbCrossfade'],
+  },
+  {
     isOn: (s) => !!s.padEnabled,
     keys: ['synthLevel', 'pad1ReverbSend', 'pad1DelayASend', 'pad1DelayBSend', 'granularPad1Send', 'degradePad1Send', 'spectralFreezePad1Send'],
   },
@@ -206,6 +210,10 @@ export const PARENT_CHILD_MAP: Record<string, (keyof SliderState)[]> = {
 };
 
 export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
+  'spectralFreezeSample1Send', 'spectralFreezeSample2Send',
+  'spectralFreezeStretchSpeed', 'spectralFreezePosition', 'spectralFreezeRefresh',
+  'spectralFreezeInputSensitivity', 'spectralFreezeDiffusion', 'spectralFreezeTone',
+  'spectralFreezeWidth', 'spectralFreezeSustain', 'spectralFreezeMix', 'spectralFreezeReverbCrossfade',
   'masterVolume',
   'synthLevel',
   'pad2Level',
@@ -594,6 +602,7 @@ export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
 ];
 
 export const DISCRETE_MORPH_KEYS: (keyof SliderState)[] = [
+  'spectralFreezeMode', 'spectralFreezeDirection', 'spectralFreezeRouting',
   'seedWindow',
   'filterType',
   'reverbEngine',
@@ -678,6 +687,7 @@ export const BOOLEAN_MORPH_KEYS: (keyof SliderState)[] = [
 ];
 
 export const ENGINE_TOGGLE_KEYS: (keyof SliderState)[] = [
+  'spectralFreezeEnabled', 'spectralFreezeActive',
   'cofDriftEnabled',
   'padEnabled',
   'pad2Enabled',

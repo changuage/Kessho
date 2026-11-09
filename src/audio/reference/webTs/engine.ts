@@ -12032,7 +12032,7 @@ export class AudioEngine {
               const distanceDir = ov.distanceDirection[laneIndex] ?? 'forward';
               const distanceSteps = distanceArr?.length ?? 0;
               const probArr = ov.probability[laneIndex];
-              const ratchetArr = slEnabled.expression === true && slEnabled.ratchet !== false ? ov.ratchet[laneIndex] : null;
+              const ratchetArr = ov.ratchet[laneIndex];
               const trigCondArr = ov.trigCondition[laneIndex];
 
               // Synchronously increment hit count for sub-lane accuracy

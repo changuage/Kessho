@@ -1,3 +1,4 @@
+import { buildFxRenderOrder, FX_ROUTING_NODE_IDS } from '../../fxRoutingGraph';
 import { buildCoreProductSnapshotDiff } from '../../CoreProductRuntimeAdapter';
 import {
   CORE_PRODUCT_SOUNDSCAPE_ASSET_LEVEL_TARGET_BASE,
@@ -67,6 +68,8 @@ function isContinuousCandidate(event: CoreProductEvent): boolean {
 }
 
 function interpolationFor(event: CoreProductEvent): ProductSceneInterpolation {
+  if (event.paramId === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled ||
+      event.paramId === KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive) return 'enable-gate';
   const metadata = paramMetadata.get(event.paramId ?? 0);
   if (metadata?.type === 'uint' && /(?:Id|Mode|Role|Type|Direction|Source|Quality|Articulation|Condition|Binding|Preset|Bus|Trigger|Feel|Tuning)$/.test(metadata.name)) {
     return 'discrete-a';
@@ -124,6 +127,15 @@ function normalizedSceneEndpoints(
 ): { a: CoreProductSnapshot; b: CoreProductSnapshot; syntheticEntries: ProductSceneEntry[]; requiredAssetIds: number[] } {
   const a = structuredClone(endpointA);
   const b = structuredClone(endpointB);
+  for (const snapshot of [a, b]) {
+    const fx = snapshot.fx;
+    fx.spectralFreezeActive = fx.spectralFreezeEnabled && fx.spectralFreezeActive;
+    fx.spectralFreezeCaptureSerial = 0;
+    if (!fx.spectralFreezeActive) {
+      fx.spectralFreezeMix = 0;
+      fx.spectralFreezeReverbCrossfade = 0;
+    }
+  }
   const zeroAudibleSourceSide = (source: CoreProductSnapshot['sources'][number]): void => {
     source.level = 0;
     source.reverbSend = 0;
@@ -131,6 +143,7 @@ function normalizedSceneEndpoints(
     source.delayBSend = 0;
     source.granularSend = 0;
     source.degradeSend = 0;
+    source.spectralFreezeSend = 0;
   };
   for (let index = 0; index < Math.min(a.sources.length, b.sources.length); index += 1) {
     const sourceA = a.sources[index]!;
@@ -236,6 +249,12 @@ export function compileProductSceneProgram(
   const forward = buildCoreProductSnapshotDiff(normalized.a, normalized.b);
   const reverse = buildCoreProductSnapshotDiff(normalized.b, normalized.a);
   const unsupportedKeys: string[] = [];
+  const unionEdges = FX_ROUTING_NODE_IDS.flatMap((from, index) => {
+    const mask = (endpointA.routing.fxEdgeMask[index] ?? 0) | (endpointB.routing.fxEdgeMask[index] ?? 0);
+    return FX_ROUTING_NODE_IDS.flatMap((to, target) => mask & (1 << target) ? [{ from, to }] : []);
+  });
+  // Conflicting graph directions use the foreground fade through zero.
+  if (buildFxRenderOrder(unionEdges) === null) unsupportedKeys.push('fx-route-union-cycle');
   if (!forward.applied) unsupportedKeys.push(`endpoint-a-to-b:${forward.reason}`);
   if (!reverse.applied) unsupportedKeys.push(`endpoint-b-to-a:${reverse.reason}`);
   if (!forward.applied || !reverse.applied) {

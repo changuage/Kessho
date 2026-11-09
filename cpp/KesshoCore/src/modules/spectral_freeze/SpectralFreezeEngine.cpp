@@ -76,7 +76,8 @@ void SpectralFreezeEngine::reset() noexcept {
   hop_counter_ = 0;
   output_read_position_ = 0;
   spectral_frame_index_ = 0;
-  pending_capture_ = false;
+  pending_capture_ = params_.active;
+  capture_input_started_ = false;
   source_phase_valid_ = false;
   active_crossfade_ = 0.0f;
   held_decay_gain_ = 1.0f;
@@ -104,7 +105,11 @@ void SpectralFreezeEngine::process(
     const float in_r = std::isfinite(input_r[frame]) ? input_r[frame] : 0.0f;
 
     if (runtime_state_ == SpectralFreezeRuntimeState::Recording) {
-      capture_.write(&in_l, &in_r, 1);
+      // Delayed sources must enter before the initial capture clock starts.
+      if (!capture_input_started_ && (std::fabs(in_l) > 1.0e-7f || std::fabs(in_r) > 1.0e-7f)) {
+        capture_input_started_ = true;
+      }
+      if (capture_input_started_) capture_.write(&in_l, &in_r, 1);
     }
 
     live_ring_l_[static_cast<size_t>(live_write_position_)] = in_l;
@@ -179,13 +184,14 @@ void SpectralFreezeEngine::setParams(const SpectralFreezeParams& incoming) noexc
 
   if (!params_.active && was_active) {
     requestRelease();
-  } else if (params_.active && params_.capture_serial != last_capture_serial_) {
-    requestCapture(params_.capture_serial);
+  } else if (params_.active && (!was_active ||
+             (params_.capture_serial != 0u && params_.capture_serial != last_capture_serial_))) {
+    requestCapture(params_.capture_serial, !was_active);
   }
 }
 
-void SpectralFreezeEngine::requestCapture(uint32_t capture_serial) noexcept {
-  if (capture_serial == last_capture_serial_) {
+void SpectralFreezeEngine::requestCapture(uint32_t capture_serial, bool force) noexcept {
+  if (!force && capture_serial == last_capture_serial_) {
     return;
   }
   last_capture_serial_ = capture_serial;

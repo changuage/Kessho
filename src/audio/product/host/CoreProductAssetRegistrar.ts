@@ -200,6 +200,7 @@ export class CoreProductAssetRegistrar {
   }
 
   async ensureSceneAssets(states: readonly Record<string, unknown>[]): Promise<CoreProductAssetEnsureResult> {
+    await this.runtime.ensureStarted();
     this.requirements.replaceSceneStates(states);
     return this.ensureAssetsForStates(this.requirements.states(this.readSliderState()));
   }

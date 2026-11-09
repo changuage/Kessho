@@ -1,5 +1,7 @@
 # Kessho Harmony UI Redesign Spec
 
+> Historical UI proposal. The accepted 5 November 2026 direction for Random defaults, the circle of fifths, free key walking, preset transitions and Brain is [Harmony, Random and Brain](../ui/harmony-random-brain-design.md). Its live-control rule supersedes the endpoint-only restrictions below: Brain is available at held intermediate blends and unavailable only while Journey actively drives a transition. The older popup layouts and midpoint rules here are retained as design history, not the implementation target for that new surface.
+
 ## Goal
 
 Replace the current dense Harmony dashboard with a clean, modern VST-style workflow that surfaces the simplest information first and hides advanced editing behind focused popups.

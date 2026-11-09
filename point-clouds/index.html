@@ -3,24 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#050505">
-  <meta name="description" content="Point Clouds — generative ambient, field recordings, rhythm, and systems.">
-  <title>Point Clouds — time / space / sound</title>
+  <meta name="theme-color" content="#090a0b">
+  <meta name="description" content="Point Clouds is Patrick Chang’s musical moniker, exploring field recordings, rhythm and guided randomness through Kessho, an evolving composition.">
+  <title>Patrick Chang — Point Clouds</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poiret+One&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
-
     :root {
       color-scheme: dark;
-      --paper: #e7e5de;
-      --dim: rgba(231, 229, 222, .52);
-      --faint: rgba(231, 229, 222, .18);
-      --signal: #ff3b18;
-      --ink: #050505;
-      --mx: 50vw;
-      --my: 50vh;
+      --paper: #ede8dc;
+      --dim: #aaa79e;
+      --signal: #df795c;
+      --ink: #090a0b;
+      --serif: "Instrument Serif", Georgia, serif;
+      --sans: "Manrope", Arial, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -35,14 +32,13 @@
 
     body {
       color: var(--paper);
-      font-family: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-      cursor: none;
+      font-family: var(--sans);
+      cursor: auto;
       overscroll-behavior: none;
       text-rendering: geometricPrecision;
     }
 
-    button, a { color: inherit; font: inherit; }
-    button { cursor: none; }
+    button, a { color: inherit; font: inherit; cursor: pointer; }
 
     #field {
       position: fixed;
@@ -51,7 +47,7 @@
       height: 100%;
       display: block;
       touch-action: none;
-      filter: saturate(.86) contrast(1.08);
+      filter: saturate(.78);
     }
 
     #kessho-engine {
@@ -70,455 +66,223 @@
       inset: 0;
       pointer-events: none;
       background:
-        radial-gradient(circle 22rem at var(--mx) var(--my), transparent 0%, rgba(0,0,0,.035) 40%, rgba(0,0,0,.34) 100%),
-        linear-gradient(90deg, rgba(0,0,0,.34), transparent 22%, transparent 78%, rgba(0,0,0,.28));
-      mix-blend-mode: multiply;
+        radial-gradient(ellipse at 50% 46%, transparent 28%, rgba(5,1,0,.12) 58%, rgba(0,0,0,.82) 100%),
+        linear-gradient(180deg, rgba(10,7,4,.8), transparent 22%, transparent 75%, rgba(10,7,4,.86)),
+        radial-gradient(ellipse at 0% 82%, rgba(130,87,46,.28), transparent 55%),
+        radial-gradient(ellipse at 100% 12%, rgba(100,63,35,.21), transparent 52%);
     }
 
-    .grain {
-      position: fixed;
-      inset: -60%;
-      width: 220%;
-      height: 220%;
-      pointer-events: none;
-      opacity: .085;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.93' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
-      animation: grain .18s steps(2) infinite;
-      mix-blend-mode: soft-light;
+    .film {
+      position: fixed; inset: 0; z-index: 12;
+      overflow: hidden; pointer-events: none;
+    }
+    .film::before {
+      content: ""; position: absolute; inset: -32px; pointer-events: none;
+      background-image: var(--grain-texture); background-size: 192px 192px;
+      opacity: .065; animation: film-grain 1.44s steps(1, end) infinite;
+    }
+    .film::after {
+      content: ""; position: absolute; inset: 0;
+      background: repeating-linear-gradient(180deg, rgba(0,0,0,.09) 0 1px, transparent 1px 4px);
+      opacity: .22;
+    }
+    .page-hidden .film::before, .portfolio-open #film::before { animation-play-state: paused; }
+    @keyframes film-grain {
+      0%, 100% { transform: translate3d(0, 0, 0); }
+      12.5% { transform: translate3d(-17px, 9px, 0); }
+      25% { transform: translate3d(13px, -21px, 0); }
+      37.5% { transform: translate3d(-7px, -13px, 0); }
+      50% { transform: translate3d(23px, 17px, 0); }
+      62.5% { transform: translate3d(-19px, -3px, 0); }
+      75% { transform: translate3d(5px, 23px, 0); }
+      87.5% { transform: translate3d(-11px, 15px, 0); }
     }
 
-    @keyframes grain {
-      0% { transform: translate3d(-3%, 2%, 0); }
-      25% { transform: translate3d(4%, -5%, 0); }
-      50% { transform: translate3d(-5%, 4%, 0); }
-      75% { transform: translate3d(5%, 3%, 0); }
-      100% { transform: translate3d(-2%, -4%, 0); }
+    [hidden] { display: none !important; }
+    button:focus-visible, a:focus-visible {
+      outline: 1px solid var(--signal); outline-offset: 5px;
     }
-
+    #field, #field-snapshot { z-index: 0; }
+    #field-snapshot {
+      position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1;
+      pointer-events: none; filter: saturate(.78);
+    }
+    .veil { z-index: 2; }
     .frame {
-      position: fixed;
-      inset: 0;
-      z-index: 3;
-      display: grid;
-      grid-template: auto 1fr auto / 1fr;
-      padding:
-        max(24px, env(safe-area-inset-top))
-        max(30px, env(safe-area-inset-right))
-        max(24px, env(safe-area-inset-bottom))
-        max(30px, env(safe-area-inset-left));
+      position: fixed; inset: 0; z-index: 9;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: max(32px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-right))
+        max(36px, env(safe-area-inset-bottom)) max(48px, env(safe-area-inset-left));
       pointer-events: none;
-      opacity: 0;
-      visibility: hidden;
-      transition: opacity 1.1s ease, visibility 1.1s;
     }
-
-    .frame.is-live { opacity: 1; visibility: visible; }
-
     .topline, .baseline {
-      display: grid;
-      align-items: start;
-      grid-template-columns: 1fr auto 1fr;
-      gap: 28px;
-      pointer-events: auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 24px; pointer-events: none;
     }
-
-    .baseline { align-items: end; }
-
-    .eyebrow, .coordinates, .scene-index, .hint, .audio-state {
-      font-size: 9px;
-      letter-spacing: .17em;
-      line-height: 1.5;
-      text-transform: uppercase;
+    .corner-label { margin: 0; font: 400 16px/1.4 var(--sans); letter-spacing: 0; }
+    .brand { display: flex; align-items: center; min-height: 44px; }
+    .portfolio-nav { pointer-events: auto; }
+    .text-button, .audio, .close {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 44px; min-height: 44px; border: 0; border-radius: 0;
+      padding: 0; background: transparent; font: 400 15px/1.4 var(--sans);
+      color: inherit; text-decoration: none; pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
     }
-
-    .eyebrow {
-      margin: 0;
-      font-weight: 400;
-      white-space: nowrap;
-    }
-
-    .eyebrow span {
-      display: inline-block;
-      width: 5px;
-      height: 5px;
-      margin: 0 9px 1px 0;
-      border-radius: 50%;
-      background: var(--signal);
-      box-shadow: 0 0 14px var(--signal);
-    }
-
-    .coordinates {
-      justify-self: center;
-      color: var(--dim);
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-
-    .text-button {
-      justify-self: end;
-      border: 0;
-      padding: 0 0 4px;
-      background: transparent;
-      text-transform: uppercase;
-      font-size: 9px;
-      letter-spacing: .17em;
-      position: relative;
-    }
-
+    .text-button { position: relative; transition: color .18s ease; }
     .text-button::after {
-      content: "";
-      position: absolute;
-      inset: auto 0 0;
-      height: 1px;
-      background: currentColor;
-      transform: scaleX(.24);
-      transform-origin: right;
-      transition: transform .5s cubic-bezier(.16, 1, .3, 1);
+      content: ""; position: absolute; bottom: 8px; left: 0; right: 0;
+      height: 1px; background: currentColor; transform: scaleX(0);
+      transform-origin: left; transition: transform .24s cubic-bezier(.2,.7,.3,1);
     }
-
-    .text-button:hover::after,
-    .text-button:focus-visible::after { transform: scaleX(1); }
-
-    .identity {
-      align-self: center;
-      display: grid;
-      grid-template-columns: minmax(170px, .68fr) minmax(360px, 1.45fr) minmax(170px, .68fr);
-      align-items: center;
-      pointer-events: none;
+    .text-button:hover { color: var(--signal); }
+    .text-button:hover::after, .text-button[aria-expanded="true"]::after { transform: scaleX(1); }
+    .corner-label.text-button, .corner-label.audio { font-size: 16px; }
+    .dimmable { opacity: 1; transition: opacity .2s ease, color .18s ease; }
+    .frame.is-idle .dimmable { opacity: .6; transition-duration: .8s, .18s; }
+    .signature::after { transform: scaleX(1); opacity: .35; }
+    .concept { pointer-events: auto; }
+    .concept-popover {
+      position: fixed; inset: auto auto max(100px, calc(env(safe-area-inset-bottom) + 72px)) max(48px, env(safe-area-inset-left));
+      width: min(460px, calc(100vw - 96px)); max-height: calc(100dvh - 160px);
+      margin: 0; padding: 30px 32px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+      border: 1px solid rgba(237,220,190,.12); border-top-color: rgba(237,220,190,.3);
+      color: var(--paper); background: #211c17;
+      box-shadow: 0 16px 60px rgba(0,0,0,.3); font: 400 15px/1.65 var(--sans);
+      opacity: 0; transform: translateY(4px);
+      transition: opacity .2s ease, transform .2s ease, display .2s allow-discrete, overlay .2s allow-discrete;
     }
-
-    .descriptor {
-      grid-column: 2;
-      justify-self: center;
-      margin: clamp(24px, 5vh, 60px) 0 0;
-      max-width: 460px;
-      text-align: center;
-      color: var(--dim);
-      font-size: clamp(8px, .7vw, 11px);
-      line-height: 1.7;
-      letter-spacing: .11em;
-      text-transform: uppercase;
-    }
-
-    .scene-index { color: var(--dim); }
-    .scene-index b { color: var(--paper); font-weight: 400; }
-
-    .hint {
-      justify-self: center;
-      color: var(--dim);
-      text-align: center;
-      transition: opacity .5s ease;
-    }
-
-    .hint::before {
-      content: "";
-      display: inline-block;
-      width: 32px;
-      height: 1px;
-      margin: 0 10px 3px 0;
-      background: var(--paper);
-      transform-origin: right;
-      animation: breathe 2.8s ease-in-out infinite;
-    }
-
-    @keyframes breathe {
-      0%, 100% { transform: scaleX(.24); opacity: .3; }
-      50% { transform: scaleX(1); opacity: 1; }
-    }
-
-    .audio {
-      justify-self: end;
-      display: inline-grid;
-      grid-template-columns: auto 34px;
-      align-items: center;
-      gap: 10px;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      text-align: right;
-    }
-
-    .meter {
-      display: flex;
-      height: 13px;
-      align-items: end;
-      justify-content: flex-end;
-      gap: 2px;
-    }
-
-    .meter i {
-      width: 1px;
-      height: calc(3px + var(--level, 0) * 10px);
-      background: currentColor;
-      opacity: .38;
-      transform-origin: bottom;
-      transition: height .08s linear, opacity .3s ease, color .3s ease;
-    }
-
-    .audio[data-active="true"] { color: var(--signal); }
-    .audio[data-active="true"] .meter i { opacity: 1; }
-
+    .concept-popover:popover-open { opacity: 1; transform: translateY(0); }
+    @starting-style { .concept-popover:popover-open { opacity: 0; transform: translateY(4px); } }
+    .concept-popover p { margin: 0; }
+    .concept-popover .concept-eyebrow { color: #c3b39c; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    .concept-title { margin: 10px 0 12px; font: 400 36px/1.1 var(--serif); letter-spacing: -.02em; }
+    .concept-popover .concept-deck { color: #e0d0b7; font: 400 19px/1.42 var(--serif); }
+    .concept-kessho { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(237,220,190,.16); }
+    .concept-subtitle { margin: 8px 0 0; font: 400 30px/1.1 var(--serif); letter-spacing: -.02em; }
+    .concept-popover .concept-copy { margin-top: 16px; color: #ddd5c8; }
+    .concept-popover .concept-note { margin-top: 16px; color: #bfb09b; font-size: 12px; }
+    .audio { margin-left: auto; text-align: right; transition: color .2s ease; }
+    .audio[data-active="true"], .audio:hover { color: var(--signal); }
+    .audio:disabled { cursor: default; }
     .intro-play {
-      position: fixed;
-      z-index: 8;
-      left: 50%;
-      top: 50%;
-      width: min(34vw, 270px);
-      aspect-ratio: 1;
-      padding: 0;
-      border: 0;
-      border-radius: 50%;
-      background: transparent;
-      opacity: 0;
-      pointer-events: none;
+      position: fixed; z-index: 8; left: 50%; top: 50%;
+      width: min(34vw, 270px); min-width: 100px; aspect-ratio: 1; padding: 0;
+      border: 0; border-radius: 50%; background: transparent;
+      opacity: 0; visibility: hidden; pointer-events: none;
       transform: translate(-50%, -50%) scale(.88);
       transition: opacity .7s ease, transform 1.2s cubic-bezier(.16,1,.3,1);
     }
-
     .intro-play.is-ready {
-      opacity: 1;
-      pointer-events: auto;
+      opacity: 1; visibility: visible; pointer-events: auto;
       transform: translate(-50%, -50%) scale(1);
     }
-
     .intro-play::after {
-      content: "";
-      position: absolute;
-      inset: 5%;
-      border: 1px solid transparent;
-      border-radius: inherit;
+      content: ""; position: absolute; inset: 5%;
+      border: 1px solid transparent; border-radius: inherit;
       transition: border-color .3s ease, transform .3s ease;
     }
-
-    .intro-play:hover::after,
-    .intro-play:focus-visible::after {
-      border-color: rgba(231,229,222,.28);
-      transform: scale(1.08);
+    .intro-play:hover::after, .intro-play:focus-visible::after {
+      border-color: rgba(231,229,222,.28); transform: scale(1.08);
     }
-
-    .intro-play:focus-visible { outline: 1px solid var(--paper); outline-offset: 8px; }
-
-    .axis {
-      position: fixed;
-      z-index: 2;
-      left: 50%;
-      top: 50%;
-      width: min(72vw, 1060px);
-      height: 1px;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      background: linear-gradient(90deg, transparent, rgba(231,229,222,.12) 8%, rgba(231,229,222,.22) 49.8%, var(--signal) 50%, rgba(231,229,222,.22) 50.2%, rgba(231,229,222,.12) 92%, transparent);
-      opacity: 0;
-      transition: opacity 1.2s ease;
-      mix-blend-mode: screen;
-    }
-
-    body.is-live .axis { opacity: .68; }
-
-    .cursor {
-      position: fixed;
-      z-index: 30;
-      left: 0;
-      top: 0;
-      width: 28px;
-      height: 28px;
-      margin: -14px 0 0 -14px;
-      border: 1px solid rgba(231, 229, 222, .56);
-      border-radius: 50%;
-      pointer-events: none;
-      transform: translate3d(-50px, -50px, 0);
-      transition: width .25s ease, height .25s ease, margin .25s ease, border-color .25s ease;
-      mix-blend-mode: difference;
-    }
-
-    .cursor::after {
-      content: "";
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 2px;
-      height: 2px;
-      border-radius: 50%;
-      background: var(--paper);
-      transform: translate(-50%, -50%);
-    }
-
-    .cursor.is-action {
-      width: 52px;
-      height: 52px;
-      margin: -26px 0 0 -26px;
-      border-color: var(--signal);
-    }
-
     .info {
+      --signal: #e6ad88;
       position: fixed;
-      z-index: 15;
-      inset: 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(410px, 43vw);
-      visibility: hidden;
-      pointer-events: none;
+      color-scheme: dark;
+      width: min(960px, calc(100vw - 96px));
+      max-width: none; max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px);
+      padding: 0; border: 1px solid rgba(237,232,220,.17); border-radius: 0;
+      margin: auto;
+      color: var(--paper); background: #12100d;
+      box-shadow: 0 24px 100px rgba(0,0,0,.2);
+      overflow: hidden; font: 400 17px/1.65 var(--sans); text-align: center;
+      opacity: 0; transition: opacity .24s ease;
     }
-
-    #info-backdrop {
-      grid-column: 1;
-      grid-row: 1;
-      background: rgba(0,0,0,.42);
-      opacity: 0;
-      backdrop-filter: blur(3px);
-      transition: opacity .6s ease;
+    .info[open] { display: flex; flex-direction: column; }
+    .info.is-visible { opacity: 1; }
+    .info::before {
+      content: ""; position: absolute; inset: 0; z-index: 1;
+      background: rgba(18,16,13,.56); pointer-events: none;
     }
-
-    .info-panel {
-      grid-column: 2;
-      grid-row: 1;
-      position: relative;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      padding: max(26px, 4.2vw);
-      background: rgba(8,8,8,.94);
-      border-left: 1px solid rgba(231,229,222,.16);
-      transform: translateX(102%);
-      transition: transform .82s cubic-bezier(.16, 1, .3, 1);
-      overflow: hidden;
-      pointer-events: auto;
+    .info-frost {
+      position: absolute; inset: 0; z-index: 0; display: block;
+      width: 100%; height: 100%; pointer-events: none; filter: saturate(.78) brightness(2.8);
     }
-
-    .info-panel::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      opacity: .07;
-      background: repeating-linear-gradient(0deg, transparent 0 11px, rgba(231,229,222,.3) 12px);
-      pointer-events: none;
+    .info::backdrop {
+      background: rgba(5,4,3,.2); opacity: 0; transition: opacity .24s ease;
     }
-
-    .info.is-open { visibility: visible; pointer-events: auto; }
-    .info.is-open #info-backdrop { opacity: 1; }
-    .info.is-open .info-panel { transform: translateX(0); }
-
+    .info.is-visible::backdrop { opacity: 1; }
     .info-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      position: relative;
+      position: relative; z-index: 2;
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      min-height: 72px; padding: 14px 104px;
+      border-bottom: 1px solid rgba(237,232,220,.16);
     }
-
-    .info-kicker {
-      margin: 0;
-      color: var(--signal);
-      font-size: 8px;
-      letter-spacing: .2em;
-      text-transform: uppercase;
+    .info-head p { margin: 0; font-size: 12px; letter-spacing: .02em; }
+    .close { position: absolute; right: 32px; top: 0; bottom: 0; gap: 12px; color: #c6bfb1; font-size: 13px; transition: color .18s ease; }
+    .close:hover { color: var(--signal); }
+    .close span { font-size: 20px; line-height: 1; }
+    .info-body {
+      position: relative; z-index: 2;
+      min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+      padding: 36px 56px 48px; scrollbar-width: thin; scrollbar-color: #6d6557 transparent;
     }
-
-    .close {
-      padding: 0;
-      border: 0;
-      background: transparent;
-      font-size: 9px;
-      letter-spacing: .16em;
-      text-transform: uppercase;
+    .profile-opening { display: grid; grid-template-columns: 1fr; gap: 32px; justify-items: center; }
+    .info-title { margin: 0; font: 400 clamp(48px, 4.5vw, 64px)/1.05 var(--serif); letter-spacing: -.035em; }
+    .info-title:focus { outline: none; }
+    .info-alias { margin: 8px 0 24px; color: #c6bfb1; font-size: 13px; }
+    .profile-opening .portfolio-section h3 { margin-bottom: 16px; }
+    .portrait { width: min(100%, 240px); margin: 0 auto; }
+    .portrait img { display: block; width: 100%; height: auto; background: #d6ccb6; }
+    .portrait figcaption { margin-top: 10px; color: #c6bfb1; font-size: 12px; line-height: 1.5; }
+    .portfolio-section { scroll-margin-top: 24px; }
+    .info-body > .portfolio-section { margin-top: 40px; padding-top: 28px; border-top: 1px solid rgba(237,232,220,.16); }
+    .portfolio-section h3 { margin: 0 0 24px; scroll-margin-top: 24px; color: #c6bfb1; font-size: 12px; line-height: 1.4; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+    .portfolio-section h3:focus { outline: none; }
+    .bio { max-width: 54ch; margin: 0 auto; color: #ded8cb; }
+    .work-entry + .work-entry { margin-top: 32px; padding-top: 32px; border-top: 1px solid rgba(237,232,220,.12); }
+    .work-date { display: block; margin-bottom: 12px; color: #c6bfb1; font-size: 13px; line-height: 1.7; }
+    .work-date br { display: none; }
+    .work-title { margin: 0 0 8px; font: 400 30px/1.15 var(--serif); letter-spacing: -.02em; }
+    .work-venue, .work-role, .work-credit { margin: 0; color: #c6bfb1; font-size: 13px; line-height: 1.7; }
+    .work-role { margin-top: 6px; color: #ded8cb; font-weight: 500; }
+    .work-credit { margin-top: 4px; }
+    .work-copy { max-width: 60ch; margin: 16px auto 0; font-size: 16px; line-height: 1.7; color: #ded8cb; }
+    .work-link, .profile-contact a { color: var(--signal); font-size: 12px; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    .work-link { display: inline-block; margin-top: 12px; }
+    .profile-contact { margin-top: 48px; padding-top: 24px; border-top: 1px solid rgba(237,232,220,.16); }
+    .profile-contact p { margin: 0 0 8px; color: #c6bfb1; font-size: 12px; }
+    .artwork-unavailable {
+      position: fixed; inset: 0; display: grid; place-content: center; padding: 32px;
+      max-width: 40ch; margin: auto; color: var(--dim); text-align: center;
+      font: 16px/1.6 var(--sans);
     }
-
-    .info-copy {
-      align-self: center;
-      position: relative;
-    }
-
-    .info h2 {
-      margin: 0 0 28px;
-      font-family: "Instrument Serif", Georgia, serif;
-      font-size: clamp(54px, 7vw, 104px);
-      line-height: .82;
-      letter-spacing: -.045em;
-      font-weight: 400;
-    }
-
-    .lede {
-      max-width: 40ch;
-      margin: 0;
-      color: rgba(231,229,222,.78);
-      font-family: "Instrument Serif", Georgia, serif;
-      font-size: clamp(19px, 1.8vw, 27px);
-      line-height: 1.26;
-    }
-
-    .cv {
-      position: relative;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 30px;
-      padding-top: 28px;
-      border-top: 1px solid rgba(231,229,222,.18);
-    }
-
-    .cv h3 {
-      margin: 0 0 10px;
-      color: var(--dim);
-      font-size: 8px;
-      font-weight: 400;
-      letter-spacing: .18em;
-      text-transform: uppercase;
-    }
-
-    .cv p {
-      margin: 0;
-      font-size: 9px;
-      line-height: 1.8;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    .noscript {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      padding: 30px;
-      background: #050505;
-      color: var(--paper);
-      text-align: center;
-      font: 11px/1.8 "Space Mono", monospace;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-    }
-
+    .noscript { position: fixed; inset: 0; display: grid; place-items: center; padding: 32px; background: var(--ink); font: 16px/1.6 var(--sans); }
     @media (max-width: 760px) {
       .frame {
-        padding:
-          max(18px, env(safe-area-inset-top))
-          max(18px, env(safe-area-inset-right))
-          max(18px, env(safe-area-inset-bottom))
-          max(18px, env(safe-area-inset-left));
+        padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+          max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
       }
-      .topline { grid-template-columns: 1fr auto; }
-      .coordinates { display: none; }
-      .identity { grid-template-columns: 1fr; }
-      .descriptor { grid-column: 1; max-width: 31ch; }
-      .baseline { grid-template-columns: 1fr auto; }
-      .hint { display: none; }
-      .info { grid-template-columns: 1fr; padding-top: 8vh; }
-      #info-backdrop { display: none; }
-      .info-panel {
-        grid-column: 1;
-        border-left: 0;
-        border-top: 1px solid rgba(231,229,222,.16);
-        padding: 26px 24px max(24px, env(safe-area-inset-bottom));
+      .topline { gap: 16px; }
+      .corner-label, .corner-label.text-button, .corner-label.audio { font-size: 15px; }
+      .baseline { gap: 16px; }
+      .concept-popover { left: max(20px, env(safe-area-inset-left)); bottom: max(84px, calc(env(safe-area-inset-bottom) + 64px)); width: min(460px, calc(100vw - 40px)); padding: 26px; }
+      .info {
+        width: 100%; height: 100vh; height: 100dvh;
+        max-height: 100vh; max-height: 100dvh; border: 0; margin: 0;
       }
-      .cv { gap: 18px; }
-      .axis { width: 92vw; }
+      .info-head { padding: max(16px, env(safe-area-inset-top)) 96px 16px; }
+      .close { right: 24px; }
+      .info-body { padding: 24px 24px max(32px, env(safe-area-inset-bottom)); }
+      .profile-opening { gap: 24px; }
+      .info-title { font-size: 48px; }
+      .portrait { width: min(100%, 220px, 40dvh); }
+      .info-body > .portfolio-section { margin-top: 36px; padding-top: 28px; }
+      .work-title { font-size: 28px; }
+      .film::before { animation-duration: 2.4s; }
     }
-
-    @media (hover: none), (pointer: coarse) {
-      body, button { cursor: auto; }
-      .cursor { display: none; }
-    }
-
     @media (prefers-reduced-motion: reduce) {
-      .grain { animation: none; }
-      .hint::before { animation: none; transform: scaleX(.65); }
-      .info-panel { transition-duration: .01ms; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     }
   </style>
 </head>
@@ -532,65 +296,286 @@
     }
   </script>
   <canvas id="field" aria-label="An interactive field of points forming the Point Clouds mark"></canvas>
-  <div class="axis" aria-hidden="true"></div>
+  <canvas id="field-snapshot" aria-hidden="true" hidden></canvas>
   <div class="veil" aria-hidden="true"></div>
-  <div class="grain" aria-hidden="true"></div>
-  <button class="intro-play action" id="intro-play" type="button" aria-label="Play Kessho and enter the Point Clouds field" disabled></button>
+  <div class="film" id="film" aria-hidden="true"></div>
+  <button class="intro-play" id="intro-play" type="button" aria-label="Play Kessho and enter the Point Clouds field" disabled></button>
 
   <main class="frame" id="frame">
     <header class="topline">
-      <h1 class="eyebrow"><span></span>Point Clouds / Helsinki</h1>
-      <div class="coordinates" aria-live="polite"><span id="coord-x">60.1699° N</span> &nbsp;/&nbsp; <span id="coord-y">24.9384° E</span></div>
-      <button class="text-button action" id="about-open" type="button" aria-haspopup="dialog">Field notes</button>
+      <h1 class="brand corner-label dimmable">Patrick Chang</h1>
+      <nav class="portfolio-nav" aria-label="Portfolio">
+        <button class="text-button corner-label corner-control" id="info-open" type="button" aria-haspopup="dialog" aria-controls="info" aria-expanded="false">About</button>
+      </nav>
     </header>
-
-    <section class="identity" aria-label="Point Clouds">
-      <p class="descriptor">Generative ambient / field recordings / rhythmic systems — preserving a moment by letting it move</p>
-    </section>
-
     <footer class="baseline">
-      <div class="scene-index"><b id="scene-number">01</b> / 04&nbsp;&nbsp; <span id="scene-name">PHASE PORTRAIT</span></div>
-      <div class="hint">Scroll to reform / drag to disturb</div>
-      <button class="audio action" id="audio-toggle" type="button" data-active="false" aria-pressed="false" aria-label="Start Kessho String Waves preset">
-        <span class="audio-state">Kessho / String Waves / <span id="audio-label">booting</span></span>
-        <span class="meter" aria-hidden="true">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-        </span>
+      <div class="concept">
+        <button class="text-button corner-label corner-control signature dimmable" id="concept-toggle" type="button" popovertarget="concept-popover" aria-controls="concept-popover" aria-expanded="false">Point Clouds</button>
+        <aside class="concept-popover" id="concept-popover" popover="auto" aria-labelledby="concept-title">
+          <h2 class="concept-title" id="concept-title">Point Clouds</h2>
+          <p class="concept-deck">Point Clouds is the musical moniker of Patrick Chang, exploring sound through field recordings, rhythm and guided randomness.</p>
+          <div class="concept-kessho">
+            <p class="concept-eyebrow">What you’re currently listening to is</p>
+            <h3 class="concept-subtitle">Kessho</h3>
+            <p class="concept-copy">Inspired by days of cloud gazing, where the visual landscape may feel familiar but is always changing, Kessho is his response to the idea of music as something concrete and cemented. What if music could be like air, like clouds, like memories—never the same twice, with subtle changes in detail?</p>
+            <p class="concept-copy">Kessho grew out of his background in data science and a curiosity for how structure and chance can create music that continuously evolves. He composes the rules and relationships that guide the sound, and randomness operates within musical boundaries, opening space for unexpected combinations unique to the moment.</p>
+          </div>
+        </aside>
+      </div>
+      <button class="audio corner-label corner-control" id="audio-toggle" type="button" data-active="false" aria-pressed="false" aria-label="Preparing audio" disabled>
+        <span id="audio-label" role="status">Preparing…</span>
       </button>
     </footer>
   </main>
 
-  <aside class="info" id="info" role="dialog" aria-modal="true" aria-labelledby="info-title">
-    <div id="info-backdrop"></div>
-    <div class="info-panel">
-      <header class="info-head">
-        <p class="info-kicker">Artist / system / organism</p>
-        <button class="close action" id="about-close" type="button">Close ×</button>
-      </header>
-      <div class="info-copy">
-        <h2 id="info-title">Sound as<br><i>weather.</i></h2>
-        <p class="lede">Point Clouds builds environments from generative ambient, recordings of lived places, and the elastic pulse of a jazz drummer. Data becomes form; form returns as sound.</p>
-      </div>
-      <div class="cv">
+  <dialog class="info" id="info" aria-labelledby="info-title">
+    <canvas class="info-frost" id="info-frost" aria-hidden="true"></canvas>
+    <header class="info-head">
+      <p>About</p>
+      <button class="close" id="about-close" type="button">Close <span aria-hidden="true">×</span></button>
+    </header>
+    <div class="info-body">
+      <div class="profile-opening">
         <div>
-          <h3>Current work</h3>
-          <p>Kessho — a generative instrument for music that never resolves the same way twice.</p>
+          <h2 class="info-title" id="info-title" tabindex="-1">Patrick Chang</h2>
+          <p class="info-alias">Point Clouds</p>
+          <section class="portfolio-section" aria-labelledby="portfolio-bio">
+            <h3 id="portfolio-bio">Short Bio</h3>
+            <p class="bio">Patrick Chang works with sound, field recordings and multisensory performance. A trained jazz drummer and data scientist, he explores how rhythm, place and guided randomness can shape listening. He is a co-founder of Nari Tea, where tea and sound become materials for gathering and shared attention.</p>
+          </section>
         </div>
-        <div>
-          <h3>Practice</h3>
-          <p>Composition<br>Field recording<br>Generative systems<br>Live performance</p>
-        </div>
+        <figure class="portrait">
+          <img src="./images/patrick-chang-performance-1000.jpg" srcset="./images/patrick-chang-performance-640.jpg 640w, ./images/patrick-chang-performance-1000.jpg 1000w" sizes="(max-width: 760px) 220px, 240px" width="1000" height="1500" alt="Patrick Chang performing with electronic instruments, surrounded by listeners in an intimate room." loading="lazy" decoding="async">
+          <figcaption>Patrick Chang · live performance</figcaption>
+        </figure>
       </div>
+      <section class="portfolio-section" aria-labelledby="portfolio-past">
+        <h3 id="portfolio-past">Past Works</h3>
+        <article class="work-entry">
+          <time class="work-date" datetime="2025-09-30">30 September–<br>1 October 2025</time>
+          <div>
+            <h4 class="work-title">Steeping Points</h4>
+            <p class="work-venue">POSITIONING Symposium · Amos Rex, Helsinki</p>
+            <p class="work-role">Amplified tea dripping · Rhythmic meditation</p>
+            <p class="work-credit">Commissioned by PUBLICS · Developed with Nari Tea</p>
+            <p class="work-copy">Co-developed a participatory tea performance for the POSITIONING Symposium. Brewing methods, duration and sensory cues invited participants to encounter tea through listening, smell, touch and bodily sensation, creating a space for shared attention within the symposium. Amplified sounds of dripping tea formed the basis for rhythmic meditation.</p>
+            <a class="work-link" href="https://positioningsymposium.com/speakers/nari-tea/" target="_blank" rel="noopener noreferrer">Programme <span aria-hidden="true">↗</span></a>
+          </div>
+        </article>
+        <article class="work-entry">
+          <time class="work-date" datetime="2024-11">November 2024</time>
+          <div>
+            <h4 class="work-title">Kakegawa Chaennale</h4>
+            <p class="work-venue">Kakegawa, Shizuoka, Japan</p>
+            <p class="work-role">Local tea production recordings · Live composition</p>
+            <p class="work-copy">Developed a multisensory tea ceremony in a former academy, bringing together local tea culture, live sound and Miyako Morishita’s paintings incorporating tea leaves. A live composition drawn from recordings of local tea production connected the ceremony with the building’s architecture and surrounding landscape.</p>
+            <a class="work-link" href="https://www.instagram.com/p/DCVsQCczlY1/?srtk=MzRlODBiNWFlZA==" target="_blank" rel="noopener noreferrer">Documentation <span aria-hidden="true">↗</span></a>
+          </div>
+        </article>
+        <article class="work-entry">
+          <time class="work-date" datetime="2024-08">August 2024</time>
+          <div>
+            <h4 class="work-title">Night of the Arts</h4>
+            <p class="work-venue">Nari Tea Lab, Helsinki</p>
+            <p class="work-role">Original field recordings · Live generative ambient music</p>
+            <p class="work-copy">Performed a live generative ambient set using personal field recordings gathered during visits to tea producers and agricultural sites. Presented alongside Nari Tea’s tea rituals, the performance connected sound and taste with the places and processes of tea production.</p>
+            <a class="work-link" href="https://www.instagram.com/p/C-pqYkngQEV/" target="_blank" rel="noopener noreferrer">Documentation <span aria-hidden="true">↗</span></a>
+          </div>
+        </article>
+        <article class="work-entry">
+          <time class="work-date" datetime="2021-08-28">28 August 2021</time>
+          <div>
+            <h4 class="work-title">RAW — Relational Art Week</h4>
+            <p class="work-venue">Myymälä2, Helsinki</p>
+            <p class="work-role">Live improvisation with guitarist Tasos Moulinos</p>
+            <p class="work-copy">Invited artist within Myymälä2’s RAW programme exploring relationships between artworks and their publics. The performance, in collaboration with guitarist Tasos Moulinos, took the form of an improvised electroacoustic soundscape, weaving together electronic textures with the energies of Chicago blues, New York jazz, Berkeley psychedelia, Cephalonia melodies and Taipei rhythms.</p>
+            <a class="work-link" href="https://www.myymala2.com/?page_id=6273" target="_blank" rel="noopener noreferrer">Programme <span aria-hidden="true">↗</span></a>
+          </div>
+        </article>
+      </section>
+      <footer class="profile-contact">
+        <p>Projects and collaborations</p>
+        <a href="https://naritea.com/" target="_blank" rel="noopener noreferrer">Contact through Nari Tea <span aria-hidden="true">↗</span></a>
+      </footer>
     </div>
-  </aside>
-
-  <div class="cursor" id="cursor" aria-hidden="true"></div>
+  </dialog>
 
   <noscript><div class="noscript">This field is alive in the browser.<br>Please enable JavaScript to enter.</div></noscript>
 
   <script>
   (() => {
     "use strict";
+
+    // Cache a small grain tile; only its composited position changes afterwards.
+    const grainTile = document.createElement("canvas");
+    grainTile.width = grainTile.height = 192;
+    const grainContext = grainTile.getContext("2d");
+    if (grainContext) {
+      const texture = grainContext.createImageData(192, 192);
+      let noiseSeed = 0x51f15e;
+      for (let i = 0; i < texture.data.length; i += 4) {
+        noiseSeed = (Math.imul(noiseSeed, 1664525) + 1013904223) | 0;
+        const value = noiseSeed >>> 24;
+        texture.data[i] = texture.data[i + 1] = texture.data[i + 2] = value;
+        texture.data[i + 3] = 255;
+      }
+      grainContext.putImageData(texture, 0, 0);
+      document.documentElement.style.setProperty("--grain-texture", `url("${grainTile.toDataURL()}")`);
+    }
+    const updateFilmVisibility = () => document.documentElement.classList.toggle("page-hidden", document.hidden);
+    document.addEventListener("visibilitychange", updateFilmVisibility);
+    updateFilmVisibility();
+
+    const info = document.getElementById("info");
+    const infoButton = document.getElementById("info-open");
+    const frame = document.getElementById("frame");
+    const concept = document.querySelector(".concept");
+    const conceptButton = document.getElementById("concept-toggle");
+    const conceptPopover = document.getElementById("concept-popover");
+    const hoverPointer = matchMedia("(hover: hover) and (pointer: fine)");
+    let conceptCloseTimer = 0;
+    let conceptPinned = false;
+    let idleTimer = 0;
+    let lastActivity = performance.now();
+    let listening = false;
+    let cornersIdle = false;
+
+    function setCornersIdle(idle) {
+      if (cornersIdle === idle) return;
+      cornersIdle = idle;
+      frame.classList.toggle("is-idle", idle);
+    }
+    function checkCornerIdle() {
+      idleTimer = 0;
+      if (!listening || document.hidden || info.open || conceptPopover.matches(":popover-open")
+        || document.querySelector(".corner-control:focus-visible")
+        || (hoverPointer.matches && document.querySelector(".corner-control:hover"))) return;
+      const remaining = 8000 - (performance.now() - lastActivity);
+      if (remaining > 0) idleTimer = setTimeout(checkCornerIdle, remaining);
+      else setCornersIdle(true);
+    }
+    function revealCorners() {
+      lastActivity = performance.now();
+      setCornersIdle(false);
+      if (listening && !document.hidden && !idleTimer) idleTimer = setTimeout(checkCornerIdle, 8000);
+    }
+    function setListeningState(active) {
+      if (listening === active) return;
+      listening = active;
+      clearTimeout(idleTimer);
+      idleTimer = 0;
+      revealCorners();
+    }
+    for (const type of ["pointermove", "pointerdown", "keydown", "focusin", "focusout"]) {
+      document.addEventListener(type, revealCorners, { passive: true });
+    }
+    document.querySelectorAll(".corner-control").forEach(control => control.addEventListener("pointerleave", revealCorners));
+    document.addEventListener("visibilitychange", () => {
+      clearTimeout(idleTimer);
+      idleTimer = 0;
+      revealCorners();
+    });
+
+    function closeConcept() {
+      clearTimeout(conceptCloseTimer);
+      conceptPinned = false;
+      if (conceptPopover.matches(":popover-open")) conceptPopover.hidePopover();
+    }
+    function openConcept() {
+      clearTimeout(conceptCloseTimer);
+      if (info.open) return;
+      conceptPopover.showPopover();
+      revealCorners();
+    }
+    concept.addEventListener("pointerenter", event => {
+      if (event.pointerType === "mouse" && hoverPointer.matches) openConcept();
+    });
+    concept.addEventListener("pointerleave", event => {
+      if (event.pointerType === "mouse" && !conceptPinned && !conceptButton.matches(":focus-visible")) {
+        conceptCloseTimer = setTimeout(closeConcept, 150);
+      }
+    });
+    conceptPopover.addEventListener("pointerenter", () => clearTimeout(conceptCloseTimer));
+    conceptButton.addEventListener("focus", () => {
+      if (conceptButton.matches(":focus-visible")) openConcept();
+    });
+    concept.addEventListener("focusout", event => {
+      if (!conceptPinned && !concept.contains(event.relatedTarget) && !concept.matches(":hover")) closeConcept();
+    });
+    conceptButton.addEventListener("click", event => {
+      clearTimeout(conceptCloseTimer);
+      if (conceptPopover.matches(":popover-open") && !conceptPinned) {
+        event.preventDefault();
+        conceptPinned = true;
+      } else {
+        conceptPinned = !conceptPopover.matches(":popover-open");
+      }
+    });
+    conceptPopover.addEventListener("beforetoggle", event => {
+      if (event.newState === "closed") {
+        conceptPinned = false;
+        clearTimeout(conceptCloseTimer);
+      }
+      conceptButton.setAttribute("aria-expanded", String(event.newState === "open"));
+      revealCorners();
+    });
+
+    let portfolioInvoker = null;
+    let infoClosing = false;
+    let infoCloseTimer = 0;
+    let onPortfolioChange = () => {};
+    function openInfo(invoker = document.activeElement) {
+      if (info.open) return;
+      closeConcept();
+      revealCorners();
+      portfolioInvoker = invoker;
+      info.showModal();
+      document.documentElement.classList.add("portfolio-open");
+      infoButton.setAttribute("aria-expanded", "true");
+      onPortfolioChange(true);
+      document.getElementById("info-title").focus({ preventScroll: true });
+      info.querySelector(".info-body").scrollTop = 0;
+      info.getBoundingClientRect();
+      info.classList.add("is-visible");
+    }
+    function closeInfo() {
+      if (!info.open || infoClosing) return;
+      infoClosing = true;
+      info.classList.add("is-closing");
+      info.classList.remove("is-visible");
+      if (document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) info.close();
+      else infoCloseTimer = setTimeout(() => info.close(), 240);
+    }
+    infoButton.addEventListener("click", () => openInfo(infoButton));
+    document.getElementById("about-close").addEventListener("click", closeInfo);
+    info.addEventListener("cancel", event => { event.preventDefault(); closeInfo(); });
+    info.addEventListener("keydown", event => {
+      if (event.key !== "Tab") return;
+      const controls = [...info.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]
+        .filter(element => element.getClientRects().length);
+      event.preventDefault();
+      const current = controls.indexOf(document.activeElement);
+      const next = event.shiftKey
+        ? (current <= 0 ? controls.length - 1 : current - 1)
+        : (current + 1) % controls.length;
+      controls[next]?.focus();
+    });
+    info.addEventListener("click", event => {
+      if (event.target !== info) return;
+      const bounds = info.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeInfo();
+    });
+    info.addEventListener("close", () => {
+      clearTimeout(infoCloseTimer);
+      infoCloseTimer = 0;
+      infoClosing = false;
+      info.classList.remove("is-visible", "is-closing");
+      document.documentElement.classList.remove("portfolio-open");
+      infoButton.setAttribute("aria-expanded", "false");
+      onPortfolioChange(false);
+      portfolioInvoker?.focus?.({ preventScroll: true });
+      revealCorners();
+    });
 
     const canvas = document.getElementById("field");
     const gl = canvas.getContext("webgl2", {
@@ -603,29 +588,30 @@
     });
 
     if (!gl) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        canvas.width = innerWidth;
-        canvas.height = innerHeight;
-        ctx.fillStyle = "#050505";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#e7e5de";
-        ctx.font = "11px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText("WEBGL 2 IS REQUIRED TO ENTER THIS FIELD", canvas.width / 2, canvas.height / 2);
-      }
+      info.classList.add("no-art");
+      canvas.hidden = true;
+      const message = document.createElement("p");
+      message.className = "artwork-unavailable";
+      message.textContent = "The interactive artwork requires WebGL 2. Open Info to explore the projects and biography.";
+      document.body.appendChild(message);
+      const audioButton = document.getElementById("audio-toggle");
+      audioButton.hidden = true;
       return;
     }
 
     const mobile = matchMedia("(max-width: 760px), (pointer: coarse)").matches;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const count = reduced ? 9000 : (mobile ? 15000 : 30000);
+    const count = reduced ? 9000 : (mobile ? 10000 : 30000);
     const sceneNames = ["PHASE PORTRAIT", "STRING / WAVE", "RHYTHM BODY", "SPATIAL INDEX"];
+    const INTRO_SEPARATION_START = 5.55;
+    const INTRO_PLAY_START = INTRO_SEPARATION_START + 2 + 3;
+    const INTRO_DURATION_SECONDS = INTRO_PLAY_START + 1.7;
+    const INTRO_DURATION_MS = INTRO_DURATION_SECONDS * 1000;
+    const INTRO_RELEASE_SECONDS = 1.7;
 
     const vertexSource = `#version 300 es
       precision highp float;
       in vec4 aSeed;
-      in vec2 aWordTarget;
       uniform vec2 uResolution;
       uniform vec2 uPointer;
       uniform float uTime;
@@ -706,85 +692,6 @@
         return vec3(p.x, p.y, (dust-.5)*.18);
       }
 
-      int glyphRow(int glyph, int row) {
-        if (glyph == 0) {
-          if (row == 0 || row == 6) return 14;
-          return 17;
-        }
-        if (glyph == 1) {
-          if (row == 0 || row == 6) return 31;
-          return 4;
-        }
-        if (glyph == 2) {
-          if (row == 0) return 17;
-          if (row == 1) return 25;
-          if (row == 2) return 21;
-          if (row == 3) return 19;
-          return 17;
-        }
-        if (glyph == 3) return row == 0 ? 31 : 4;
-        if (glyph == 4) return row == 6 ? 31 : 16;
-        if (glyph == 5) return row == 6 ? 14 : 17;
-        if (glyph == 6) {
-          if (row == 0 || row == 6) return 30;
-          return 17;
-        }
-        if (row == 0) return 15;
-        if (row == 1 || row == 2) return 16;
-        if (row == 3) return 14;
-        if (row == 4 || row == 5) return 1;
-        return 30;
-      }
-
-      bool glyphCell(int glyph, int cell) {
-        int row = cell / 5;
-        int col = cell - row * 5;
-        int bits = glyphRow(glyph, row);
-        return ((bits >> (4-col)) & 1) == 1;
-      }
-
-      vec3 glyphPoint(int glyph, float t, float lane, float dust) {
-        int total = 0;
-        for (int cell = 0; cell < 35; cell++) {
-          if (glyphCell(glyph, cell)) total++;
-        }
-        int target = min(total-1, int(floor(t*float(total))));
-        int selected = 0;
-        int seen = 0;
-        for (int cell = 0; cell < 35; cell++) {
-          if (glyphCell(glyph, cell)) {
-            if (seen == target) selected = cell;
-            seen++;
-          }
-        }
-        int row = selected / 5;
-        int col = selected - row * 5;
-        float local = fract(t*float(total));
-        return vec3(
-          (float(col)-2.0)*.060 + (local-.5)*.052,
-          (3.0-float(row))*.060 + (lane-.5)*.046,
-          (dust-.5)*.075
-        );
-      }
-
-      int wordGlyph(bool top, int index) {
-        if (top) {
-          if (index == 0) return 0;
-          if (index == 1) return 1;
-          if (index == 2) return 2;
-          return 3;
-        }
-        if (index == 0) return 4;
-        if (index == 1) return 0;
-        if (index == 2) return 5;
-        if (index == 3) return 6;
-        return 7;
-      }
-
-      vec3 wordLine(vec4 s, bool top) {
-        return vec3(aWordTarget, .50 + (s.z-.5)*.28);
-      }
-
       vec3 pMark(vec4 s) {
         float t = s.x;
         vec2 p;
@@ -829,21 +736,6 @@
         return cMark(s) + vec3(1.0, bottomY, 0.0);
       }
 
-      vec3 lockup(vec4 s, float expansion) {
-        float markX = mix(1.0, .65, expansion);
-        if (s.w < .22) {
-          vec3 mark = pMark(s) + vec3(markX, .08, 0.0);
-          float stemBaseline = -.15;
-          float compressedY = stemBaseline + (mark.y-stemBaseline)*.80;
-          mark.y = mix(mark.y, compressedY, expansion);
-          return mark;
-        }
-        if (s.w < .40) return cMark(s) + vec3(markX, .08, 0.0);
-        vec3 origin = stackedMark(s, 1.0);
-        vec3 word = wordLine(s, s.w < .68) + vec3(.65, 0.0, 0.0);
-        return mix(origin, word, expansion);
-      }
-
       vec3 playMark(vec4 s) {
         float root = sqrt(s.x);
         float b = s.y*root;
@@ -862,28 +754,16 @@
         return p;
       }
 
-      vec3 compactFinalTitle(vec3 p, float amount) {
-        // Preserve Z depth while concentrating the completed lockup in the frame.
-        p.xy *= mix(1.0, .80, clamp(amount, 0.0, 1.0));
-        return p;
-      }
-
       vec3 introShape(float time, vec4 s) {
         vec3 vertical = fitIntroTitle(compactMark(s));
-        if (time < 8.35) return vertical;
-        if (time < 10.35) {
-          float separation = smoothstep(0.0, 1.0, (time-8.35)/2.0);
-          return fitIntroTitle(stackedMark(s, separation));
-        }
-        if (time < 11.95) {
-          float expansion = smoothstep(0.0, 1.0, (time-10.35)/1.60);
-          return compactFinalTitle(fitIntroTitle(lockup(s, expansion)), expansion);
-        }
-        vec3 words = compactFinalTitle(fitIntroTitle(lockup(s, 1.0)), 1.0);
-        if (time < 14.95) return words;
-        if (time < 16.65) {
-          float reform = easeOut((time-14.95)/1.70);
-          return mix(words, playMark(s), reform);
+        if (time < ${INTRO_SEPARATION_START}) return vertical;
+        float separation = smoothstep(${INTRO_SEPARATION_START}, ${INTRO_SEPARATION_START + 2}, time);
+        vec3 initials = fitIntroTitle(stackedMark(s, separation));
+        initials.z -= separation;
+        if (time < ${INTRO_PLAY_START}) return initials;
+        if (time < ${INTRO_DURATION_SECONDS}) {
+          float reform = easeOut((time-${INTRO_PLAY_START})/1.70);
+          return mix(initials, playMark(s), reform);
         }
         return playMark(s);
       }
@@ -933,8 +813,8 @@
         vec3 to = shape(uTo, aSeed);
         float e = uMorph*uMorph*(3.0-2.0*uMorph);
         vec3 field = mix(from, to, e);
-        vec3 intro = introShape(min(uIntroTime, 17.4), aSeed);
-        float release = uIntroRelease > .5 ? smoothstep(17.4, 18.95, uIntroTime) : 0.0;
+        vec3 intro = introShape(min(uIntroTime, ${INTRO_DURATION_SECONDS}), aSeed);
+        float release = uIntroRelease > .5 ? smoothstep(${INTRO_DURATION_SECONDS}, ${INTRO_DURATION_SECONDS + 1.55}, uIntroTime) : 0.0;
         vec3 p = mix(intro, field, release);
         float burst = sin(release*3.14159265) * (.18 + aSeed.z*.32);
         p += normalize(intro + vec3(.001))*burst;
@@ -954,12 +834,13 @@
         p.xy += normalize(delta + .0001) * proximity * (.10 + uImpact*.28);
         p.z += proximity * (.28 + uAudio*.85);
 
-        float titleToPlay = smoothstep(14.95, 16.65, uIntroTime);
+        float titleToPlay = smoothstep(${INTRO_PLAY_START}, ${INTRO_DURATION_SECONDS}, uIntroTime);
+        float separation = smoothstep(${INTRO_SEPARATION_START}, ${INTRO_SEPARATION_START + 2}, uIntroTime);
         float introPresence = 1.0 - release;
         vec3 rotationPivot = vec3(
           0.0,
           sin(uTime*.74) * .025 * introPresence,
-          .50 * (1.0-titleToPlay) * introPresence
+          (.50-separation) * (1.0-titleToPlay) * introPresence
         );
         float angularSpeed = min(length(uWorldVelocity), 8.0);
         vec3 angularAxis = normalize(uWorldVelocity + vec3(.0001, .0002, .0003));
@@ -1051,71 +932,6 @@
     gl.enableVertexAttribArray(seedLoc);
     gl.vertexAttribPointer(seedLoc, 4, gl.FLOAT, false, 0, 0);
 
-    const wordTargets = new Float32Array(count * 2);
-    const wordBuffer = gl.createBuffer();
-    const wordLoc = gl.getAttribLocation(program, "aWordTarget");
-
-    function sampleWord(text, maxWidth, targetHeight, centerY) {
-      const surface = document.createElement("canvas");
-      surface.width = 1200;
-      surface.height = 280;
-      const context = surface.getContext("2d", { willReadFrequently: true });
-      context.clearRect(0, 0, surface.width, surface.height);
-      context.fillStyle = "#fff";
-      context.font = '400 190px "Poiret One", sans-serif';
-      context.textBaseline = "alphabetic";
-      context.fillText(text, 20, 215);
-      const pixels = context.getImageData(0, 0, surface.width, surface.height);
-      const sampled = [];
-      let minX = surface.width, maxX = 0, minY = surface.height, maxY = 0;
-      for (let y = 0; y < surface.height; y += 2) {
-        for (let x = 0; x < surface.width; x += 2) {
-          if (pixels.data[(y * surface.width + x) * 4 + 3] < 72) continue;
-          sampled.push([x, y]);
-          minX = Math.min(minX, x);
-          maxX = Math.max(maxX, x);
-          minY = Math.min(minY, y);
-          maxY = Math.max(maxY, y);
-        }
-      }
-      const sourceWidth = Math.max(1, maxX - minX);
-      const sourceHeight = Math.max(1, maxY - minY);
-      const scale = Math.min(maxWidth / sourceWidth, targetHeight / sourceHeight);
-      const renderedHeight = sourceHeight * scale;
-      return sampled.map(([x, y]) => [
-        -.77 + (x - minX) * scale,
-        centerY + renderedHeight*.5 - (y - minY) * scale,
-      ]);
-    }
-
-    function rebuildWordTargets() {
-      const top = sampleWord("oint", 1.18, .32, .03);
-      const bottom = sampleWord("louds", 1.44, .32, -.61);
-      let topIndex = 0;
-      let bottomIndex = 0;
-      for (let i = 0; i < count; i++) {
-        const group = seeds[i * 4 + 3];
-        let target = [0, 0];
-        if (group >= .40 && group < .68 && top.length) {
-          target = top[(topIndex * 131) % top.length];
-          topIndex++;
-        } else if (group >= .68 && bottom.length) {
-          target = bottom[(bottomIndex * 131) % bottom.length];
-          bottomIndex++;
-        }
-        wordTargets[i * 2] = target[0];
-        wordTargets[i * 2 + 1] = target[1];
-      }
-      gl.bindBuffer(gl.ARRAY_BUFFER, wordBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, wordTargets, gl.STATIC_DRAW);
-      gl.enableVertexAttribArray(wordLoc);
-      gl.vertexAttribPointer(wordLoc, 2, gl.FLOAT, false, 0, 0);
-      document.documentElement.dataset.poiretFont = document.fonts?.check('400 72px "Poiret One"') ? "available" : "missing";
-    }
-
-    rebuildWordTargets();
-    document.fonts?.ready.then(rebuildWordTargets).catch(() => {});
-
     const uniforms = {};
     ["uResolution","uPointer","uTime","uFrom","uTo","uMorph","uImpact","uAudio","uIntroTime","uIntroRelease","uWorldRotation","uWorldVelocity"].forEach(name => {
       uniforms[name] = gl.getUniformLocation(program, name);
@@ -1201,7 +1017,7 @@
           stiffness = 10;
           damping = 5.2;
           pointerTorque = .16;
-        } else if (!isLive && time < 5.55) {
+        } else if (!isLive && time < INTRO_SEPARATION_START) {
           const q = Math.max(0, Math.min(1, (time - 3.05) / 2.5));
           const arc = Math.sin(q * Math.PI);
           const tilt = Math.pow(arc, .82);
@@ -1256,24 +1072,37 @@
     window.pointCloudsSpatialPhysics = spatialPhysics;
     const pointer = { x: .5, y: .5, tx: .5, ty: .5 };
     const drag = { active: false, id: null, x: 0, y: 0 };
-    let scene = 0;
-    let fromScene = 0;
+    let scene = Math.floor(Math.random() * sceneNames.length);
+    let fromScene = scene;
     let morphStart = 0;
+    const SCENE_INTERVAL_MS = 15000;
+    const SCENE_MORPH_MS = 15000;
+    let nextSceneAt = Infinity;
     let impact = 0;
     let wheelSum = 0;
     let lastFrame = performance.now();
+    let visualNow = lastFrame;
+    let lastDrawTime = -Infinity;
+    let forceDraw = true;
+    let capturePending = false;
+    let needsResize = true;
+    const snapshotCanvas = document.getElementById("field-snapshot");
+    const snapshotContext = snapshotCanvas.getContext("2d");
+    const infoFrost = document.getElementById("info-frost");
+    const infoFrostContext = infoFrost.getContext("2d");
+    const frostSource = document.createElement("canvas");
+    const frostContext = frostSource.getContext("2d", { willReadFrequently: true });
+    let frostScratch = new Uint8ClampedArray(0);
+    let frostBuilds = 0;
+    const frameInterval = 1000 / (mobile ? 30 : 60);
     let startTime = lastFrame;
     let frameRequest = 0;
     let introComplete = false;
     let introReady = false;
     let introStarted = lastFrame;
     let introReleaseStarted = 0;
-    let visible = true;
-    const INTRO_DURATION_SECONDS = 17.4;
-    const INTRO_DURATION_MS = INTRO_DURATION_SECONDS * 1000;
-    const INTRO_RELEASE_SECONDS = 1.7;
+    let visible = !document.hidden;
     const introPlay = document.getElementById("intro-play");
-    const frame = document.getElementById("frame");
 
     function showIntroPlay() {
       if (introReady || introReleaseStarted) return;
@@ -1284,7 +1113,8 @@
 
     function skipIntro() {
       if (introReady || introReleaseStarted) return;
-      introStarted = performance.now() - INTRO_DURATION_MS;
+      introStarted = visualNow - INTRO_DURATION_MS;
+      requestRender(true);
       showIntroPlay();
     }
 
@@ -1294,18 +1124,22 @@
         skipIntro();
         return;
       }
-      introReleaseStarted = performance.now();
+      introReleaseStarted = visualNow;
       introPlay.disabled = true;
       introPlay.classList.remove("is-ready");
-      window.setTimeout(() => {
-        introComplete = true;
-        document.body.classList.add("is-live");
-        frame.classList.add("is-live");
-      }, reduced ? 20 : 1250);
+      if (reduced) finishIntroRelease();
+      requestRender(true);
+    }
+
+    function finishIntroRelease() {
+      introComplete = true;
+      nextSceneAt = visualNow + SCENE_INTERVAL_MS;
+      document.body.classList.add("is-live");
+      frame.classList.add("is-live");
     }
 
     function resize() {
-      const dpr = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.6);
+      const dpr = Math.min(devicePixelRatio || 1, mobile ? 1.0 : 1.6);
       const width = Math.max(1, Math.floor(innerWidth * dpr));
       const height = Math.max(1, Math.floor(innerHeight * dpr));
       if (canvas.width !== width || canvas.height !== height) {
@@ -1322,39 +1156,126 @@
       if (normalized === scene) return;
       fromScene = scene;
       scene = normalized;
-      morphStart = performance.now();
+      morphStart = visualNow;
+      nextSceneAt = visualNow + SCENE_INTERVAL_MS;
       impact = Math.min(1.4, impact + .58);
       spatialPhysics.impulse(direction * .12, direction * .2, direction * .34);
-      document.getElementById("scene-number").textContent = String(scene + 1).padStart(2, "0");
-      document.getElementById("scene-name").textContent = sceneNames[scene];
-      document.getElementById("scene-name").animate(
-        [
-          { opacity: 0, transform: `translateY(${direction * 8}px)` },
-          { opacity: 1, transform: "translateY(0)" }
-        ],
-        { duration: 520, easing: "cubic-bezier(.16,1,.3,1)" }
-      );
+      if (reduced) fromScene = scene;
+      requestRender(true);
+    }
+
+    function requestRender(force = false) {
+      forceDraw ||= force;
+      if (!visible || frameRequest || (info.open && !capturePending)) return;
+      frameRequest = requestAnimationFrame(render);
+    }
+
+    onPortfolioChange = open => {
+      if (open) {
+        if (drag.id !== null && canvas.hasPointerCapture?.(drag.id)) canvas.releasePointerCapture(drag.id);
+        drag.active = false;
+        drag.id = null;
+        spatialPhysics.endDrag();
+        capturePending = true;
+      } else {
+        capturePending = false;
+        lastFrame = performance.now();
+      }
+      requestRender(true);
+    };
+
+    function cachePortfolioFrost() {
+      const started = performance.now();
+      const scale = Math.min(1 / 4, 512 / Math.max(innerWidth, innerHeight));
+      const width = Math.max(1, Math.ceil(innerWidth * scale));
+      const height = Math.max(1, Math.ceil(innerHeight * scale));
+      if (frostSource.width !== width || frostSource.height !== height || frostScratch.length !== width * height * 4) {
+        frostSource.width = width;
+        frostSource.height = height;
+        frostScratch = new Uint8ClampedArray(width * height * 4);
+      }
+      frostContext.drawImage(snapshotCanvas, 0, 0, width, height);
+      const image = frostContext.getImageData(0, 0, width, height);
+      const pixels = image.data;
+      const radius = Math.max(1, Math.round(14 * scale - .5));
+      const divisor = radius * 2 + 1;
+      // Three sliding box passes approximate Gaussian blur without WebKit's missing canvas filter API.
+      for (let pass = 0; pass < 3; pass++) {
+        for (let axis = 0; axis < 2; axis++) {
+          const source = axis ? frostScratch : pixels;
+          const target = axis ? pixels : frostScratch;
+          const length = axis ? height : width;
+          const lines = axis ? width : height;
+          const step = axis ? width * 4 : 4;
+          for (let line = 0; line < lines; line++) {
+            const offset = axis ? line * 4 : line * width * 4;
+            let red = 0, green = 0, blue = 0;
+            for (let k = -radius; k <= radius; k++) {
+              const index = offset + Math.max(0, Math.min(length - 1, k)) * step;
+              red += source[index]; green += source[index + 1]; blue += source[index + 2];
+            }
+            for (let position = 0; position < length; position++) {
+              const index = offset + position * step;
+              target[index] = red / divisor;
+              target[index + 1] = green / divisor;
+              target[index + 2] = blue / divisor;
+              target[index + 3] = 255;
+              const remove = offset + Math.max(0, position - radius) * step;
+              const add = offset + Math.min(length - 1, position + radius + 1) * step;
+              red += source[add] - source[remove];
+              green += source[add + 1] - source[remove + 1];
+              blue += source[add + 2] - source[remove + 2];
+            }
+          }
+        }
+      }
+      frostContext.putImageData(image, 0, 0);
+      const bounds = info.getBoundingClientRect();
+      infoFrost.width = Math.max(1, Math.ceil(info.clientWidth * scale));
+      infoFrost.height = Math.max(1, Math.ceil(info.clientHeight * scale));
+      infoFrostContext.drawImage(frostSource,
+        (bounds.left + info.clientLeft) * width / innerWidth,
+        (bounds.top + info.clientTop) * height / innerHeight,
+        info.clientWidth * width / innerWidth, info.clientHeight * height / innerHeight,
+        0, 0, infoFrost.width, infoFrost.height);
+      infoFrost.dataset.builds = String(++frostBuilds);
+      infoFrost.dataset.blurMs = (performance.now() - started).toFixed(2);
     }
 
     function render(now) {
-      if (!visible) return;
-      const dt = Math.min(.05, (now - lastFrame) / 1000);
+      frameRequest = 0;
+      if (!visible || (info.open && !capturePending)) return;
+      if (!forceDraw && now - lastDrawTime < frameInterval - .5) {
+        requestRender();
+        return;
+      }
+      forceDraw = false;
+      lastDrawTime = now;
+      const wallDt = Math.max(0, (now - lastFrame) / 1000);
+      const dt = info.open || reduced ? 0 : Math.min(.05, wallDt);
+      if (!info.open) visualNow += wallDt * 1000;
       lastFrame = now;
-      resize();
+      if (needsResize) { resize(); needsResize = false; }
       pointer.x += (pointer.tx - pointer.x) * Math.min(1, dt * 5.5);
       pointer.y += (pointer.ty - pointer.y) * Math.min(1, dt * 5.5);
       impact *= Math.pow(.055, dt);
 
-      const elapsed = (now - startTime) / 1000;
-      const morph = Math.min(1, (now - morphStart) / 1450);
-      const audioLevel = readAudio();
+      if (introComplete && !reduced && !info.open && visualNow >= nextSceneAt) {
+        const offset = 1 + Math.floor(Math.random() * (sceneNames.length - 1));
+        setScene(scene + offset, Math.random() < .5 ? -1 : 1);
+      }
+      const elapsed = reduced ? 0 : (visualNow - startTime) / 1000;
+      const morph = reduced ? 1 : Math.min(1, (visualNow - morphStart) / SCENE_MORPH_MS);
+      const audioLevel = reduced ? 0 : readAudio(dt);
       const introTime = introReleaseStarted
-        ? INTRO_DURATION_SECONDS + Math.min(INTRO_RELEASE_SECONDS, (now - introReleaseStarted) / 1000)
-        : Math.min(INTRO_DURATION_SECONDS, reduced ? INTRO_DURATION_SECONDS : (now - introStarted) / 1000);
+        ? INTRO_DURATION_SECONDS + Math.min(INTRO_RELEASE_SECONDS, (visualNow - introReleaseStarted) / 1000)
+        : Math.min(INTRO_DURATION_SECONDS, reduced ? INTRO_DURATION_SECONDS : (visualNow - introStarted) / 1000);
       if (!introReady && !introReleaseStarted && introTime >= INTRO_DURATION_SECONDS) showIntroPlay();
-      spatialPhysics.advance(dt, introTime, introComplete, pointer);
+      if (introReleaseStarted && !introComplete && visualNow - introReleaseStarted >= 1250) finishIntroRelease();
+      const substeps = Math.max(1, Math.ceil(dt * 60));
+      for (let step = 0; step < substeps; step++) spatialPhysics.advance(dt / substeps, introTime, introComplete, pointer);
 
-      gl.clearColor(.018, .018, .018, 1);
+      gl.clearColor(.035, .039, .043, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
       gl.uniform2f(uniforms.uPointer, pointer.x, 1 - pointer.y);
@@ -1364,24 +1285,27 @@
       gl.uniform1f(uniforms.uMorph, morph);
       gl.uniform1f(uniforms.uImpact, impact);
       gl.uniform1f(uniforms.uAudio, audioLevel);
-      gl.uniform1f(uniforms.uIntroTime, introComplete ? 19.1 : introTime);
+      gl.uniform1f(uniforms.uIntroTime, introComplete ? INTRO_DURATION_SECONDS + INTRO_RELEASE_SECONDS : introTime);
       gl.uniform1f(uniforms.uIntroRelease, introReleaseStarted ? 1 : 0);
       gl.uniform3f(uniforms.uWorldRotation, spatialPhysics.rotation.x, spatialPhysics.rotation.y, spatialPhysics.rotation.z);
       gl.uniform3f(uniforms.uWorldVelocity, spatialPhysics.velocity.x, spatialPhysics.velocity.y, spatialPhysics.velocity.z);
       gl.drawArrays(gl.POINTS, 0, count);
 
-      frameRequest = requestAnimationFrame(render);
+      if (info.open && capturePending) {
+        // Copy in the draw callback: the WebGL buffer is not preserved between frames.
+        snapshotCanvas.width = canvas.width;
+        snapshotCanvas.height = canvas.height;
+        snapshotContext.drawImage(canvas, 0, 0);
+        cachePortfolioFrost();
+        snapshotCanvas.hidden = false;
+        canvas.style.visibility = "hidden";
+        capturePending = false;
+      } else if (!info.open) {
+        canvas.style.visibility = "";
+        snapshotCanvas.hidden = true;
+      }
+      if (!reduced && !info.open) requestRender();
     }
-
-    const cursor = document.getElementById("cursor");
-    let cursorX = -50, cursorY = -50, cursorTX = -50, cursorTY = -50;
-    function animateCursor() {
-      cursorX += (cursorTX - cursorX) * .19;
-      cursorY += (cursorTY - cursorY) * .19;
-      cursor.style.transform = `translate3d(${cursorX}px,${cursorY}px,0)`;
-      requestAnimationFrame(animateCursor);
-    }
-    animateCursor();
 
     function updatePointer(clientX, clientY) {
       const nextX = Math.max(0, Math.min(1, clientX / innerWidth));
@@ -1389,15 +1313,10 @@
       spatialPhysics.notePointer(nextX, nextY);
       pointer.tx = nextX;
       pointer.ty = nextY;
-      cursorTX = clientX;
-      cursorTY = clientY;
-      document.documentElement.style.setProperty("--mx", clientX + "px");
-      document.documentElement.style.setProperty("--my", clientY + "px");
-      document.getElementById("coord-x").textContent = (59.7 + pointer.tx * .94).toFixed(4) + "° N";
-      document.getElementById("coord-y").textContent = (24.1 + (1-pointer.ty) * 1.68).toFixed(4) + "° E";
     }
 
     addEventListener("pointermove", event => {
+      if (info.open || reduced) return;
       updatePointer(event.clientX, event.clientY);
       if (!drag.active || (drag.id !== null && drag.id !== event.pointerId)) return;
       const deltaX = (event.clientX - drag.x) / Math.max(1, innerWidth);
@@ -1408,6 +1327,7 @@
       impact = Math.min(1.4, impact + Math.hypot(deltaX, deltaY) * 4.5);
     }, { passive: true });
     canvas.addEventListener("pointerdown", event => {
+      if (info.open || reduced) return;
       updatePointer(event.clientX, event.clientY);
       drag.active = true;
       drag.id = event.pointerId;
@@ -1430,6 +1350,7 @@
     canvas.addEventListener("pointercancel", releaseCanvasPointer, { passive: true });
 
     addEventListener("wheel", event => {
+      if (info.open || conceptPopover.matches(":popover-open")) return;
       event.preventDefault();
       if (!introComplete) return;
       wheelSum += event.deltaY;
@@ -1443,6 +1364,7 @@
     }, { passive: false });
 
     addEventListener("keydown", event => {
+      if (info.open || conceptPopover.matches(":popover-open") || event.target.closest?.("a, button, input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
       if (event.key === " ") {
         event.preventDefault();
         if (event.repeat) return;
@@ -1467,30 +1389,10 @@
       if (event.key === "Escape") closeInfo();
     });
 
-    document.querySelectorAll(".action").forEach(item => {
-      item.addEventListener("mouseenter", () => cursor.classList.add("is-action"));
-      item.addEventListener("mouseleave", () => cursor.classList.remove("is-action"));
-    });
-
-    const info = document.getElementById("info");
-    const aboutOpen = document.getElementById("about-open");
-    const aboutClose = document.getElementById("about-close");
-    function openInfo() {
-      info.classList.add("is-open");
-      aboutOpen.setAttribute("aria-expanded", "true");
-      setTimeout(() => aboutClose.focus(), 300);
-    }
-    function closeInfo() {
-      info.classList.remove("is-open");
-      aboutOpen.setAttribute("aria-expanded", "false");
-      aboutOpen.focus();
-    }
-    aboutOpen.addEventListener("click", openInfo);
-    aboutClose.addEventListener("click", closeInfo);
-    document.getElementById("info-backdrop").addEventListener("click", closeInfo);
-
     let audioActive = false;
     let engineReady = false;
+    let audioBusy = false;
+    let audioPhase = "booting";
     let audioLevel = 0;
     let audioTarget = 0;
     let lastTelemetryRead = 0;
@@ -1501,16 +1403,26 @@
     const audioToggle = document.getElementById("audio-toggle");
     const audioLabel = document.getElementById("audio-label");
     const engineFrame = document.getElementById("kessho-engine");
-    const meterBars = [...document.querySelectorAll(".meter i")];
+    function setAudioPhase(phase) {
+      audioPhase = phase;
+      const labels = {
+        booting: "Preparing…", ready: "Listen", loading: "Starting…",
+        playing: "Stop", stopping: "Stopping…", failed: "Retry audio"
+      };
+      audioLabel.textContent = labels[phase] || labels.booting;
+      audioToggle.disabled = audioBusy || phase === "booting" || phase === "loading" || phase === "stopping";
+      audioToggle.dataset.active = String(audioActive);
+      audioToggle.setAttribute("aria-pressed", String(audioActive));
+      audioToggle.setAttribute("aria-label", phase === "playing" ? "Stop Kessho String Waves preset" : phase === "failed" ? "Retry Kessho audio engine" : labels[phase] || labels.booting);
+      setListeningState(phase === "playing");
+    }
 
     function markEngineReady() {
       if (!controller) return false;
       engineReady = true;
       clearTimeout(engineDeadline);
       bridgeInitDeadline = 0;
-      if (!audioActive) audioLabel.textContent = "ready";
-      audioToggle.disabled = false;
-      audioToggle.setAttribute("aria-label", "Start Kessho String Waves preset");
+      if (audioPhase === "booting" || audioPhase === "ready") setAudioPhase("ready");
       return true;
     }
 
@@ -1521,10 +1433,10 @@
     function setEngineFailure(error) {
       engineReady = false;
       clearTimeout(engineDeadline);
-      audioToggle.disabled = false;
-      audioLabel.textContent = "failed";
+      audioActive = false;
+      audioBusy = false;
       audioToggle.dataset.error = readableError(error);
-      audioToggle.setAttribute("aria-label", "Retry Kessho audio engine");
+      setAudioPhase("failed");
       console.error("Kessho Product Core failed to boot:", error);
     }
 
@@ -1537,14 +1449,15 @@
       if (phase === "ready" || phase === "loading" || phase === "playing" || phase === "stopping") {
         markEngineReady();
       }
-      if (!audioActive && phase === "ready") audioLabel.textContent = "ready";
+      if (phase === "playing") audioActive = true;
+      if (phase === "ready") audioActive = false;
+      setAudioPhase(phase);
     }
 
     function bootEngine(forceReload = false) {
       clearTimeout(engineDeadline);
       engineReady = false;
-      audioToggle.disabled = true;
-      audioLabel.textContent = "booting";
+      setAudioPhase("booting");
 
       if (forceReload && controller) {
         controller.destroy?.();
@@ -1589,7 +1502,7 @@
 
     bootEngine();
 
-    function readAudio() {
+    function readAudio(dt) {
       const now = performance.now();
       if (audioActive && now - lastTelemetryRead > 80) {
         lastTelemetryRead = now;
@@ -1619,72 +1532,62 @@
         audioTarget = Math.min(1, Math.sqrt(Math.max(0, rms)) * 2.6 + Math.max(0, peak) * .24);
       }
       if (!audioActive) audioTarget = 0;
-      audioLevel += (audioTarget - audioLevel) * .16;
-      meterBars.forEach((bar, i) => {
-        const spectralShape = .34 + .66 * Math.abs(Math.sin(now * .0018 + i * .82));
-        bar.style.setProperty("--level", Math.max(.08, audioLevel * spectralShape).toFixed(3));
-      });
+      audioLevel += (audioTarget - audioLevel) * (1 - Math.exp(-dt / .096));
       return audioLevel;
     }
 
     audioToggle.addEventListener("click", async () => {
+      if (audioBusy) return;
       delete audioToggle.dataset.error;
-      if (!controller) {
+      if (!controller || !engineReady) {
         bootEngine(true);
         return;
       }
-
-      if (audioActive) {
-        audioActive = false;
-        try {
+      audioBusy = true;
+      const stopping = audioActive;
+      setAudioPhase(stopping ? "stopping" : "loading");
+      try {
+        if (stopping) {
           await controller.stop();
-        } catch (error) {
-          setEngineFailure(error);
-          return;
-        }
-      } else {
-        audioActive = true;
-        audioLabel.textContent = "loading";
-        impact = 1;
-        try {
-          await controller.start();
-        } catch (error) {
           audioActive = false;
-          audioToggle.dataset.active = "false";
-          audioToggle.dataset.error = readableError(error);
-          audioToggle.setAttribute("aria-pressed", "false");
-          audioToggle.setAttribute("aria-label", "Kessho String Waves preset failed to load");
-          audioLabel.textContent = "failed";
-          console.error("Kessho String Waves failed to load:", error);
-          return;
+        } else {
+          if (!introReleaseStarted) {
+            if (!introReady) skipIntro();
+            releaseIntro();
+          }
+          impact = 1;
+          // The call stays within the user's gesture for browser audio activation.
+          await controller.start();
+          audioActive = true;
         }
+        audioBusy = false;
+        setAudioPhase(audioActive ? "playing" : "ready");
+        requestRender(true);
+      } catch (error) {
+        setEngineFailure(error);
       }
-
-      audioToggle.dataset.active = String(audioActive);
-      audioToggle.setAttribute("aria-pressed", String(audioActive));
-      audioToggle.setAttribute("aria-label", audioActive ? "Stop Kessho String Waves preset" : "Start Kessho String Waves preset");
-      audioLabel.textContent = audioActive ? "live" : (engineReady ? "ready" : "booting");
     });
 
     introPlay.addEventListener("click", () => {
-      if (!introReady || introReleaseStarted) return;
-      releaseIntro();
+      if (!introReady || introReleaseStarted || audioBusy || !engineReady) return;
       audioToggle.click();
     });
 
     document.addEventListener("visibilitychange", () => {
       visible = !document.hidden;
-      if (visible) {
-        lastFrame = performance.now();
-        cancelAnimationFrame(frameRequest);
-        frameRequest = requestAnimationFrame(render);
-      } else {
-        cancelAnimationFrame(frameRequest);
-      }
+      cancelAnimationFrame(frameRequest);
+      frameRequest = 0;
+      lastFrame = performance.now();
+      if (visible && !info.open) requestRender(true);
+      else if (visible && capturePending) requestRender(true);
+    });
+    addEventListener("resize", () => {
+      needsResize = true;
+      if (info.open) capturePending = true;
+      requestRender(true);
     });
 
-    resize();
-    requestAnimationFrame(render);
+    requestRender(true);
   })();
   </script>
 </body>

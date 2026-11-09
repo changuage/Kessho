@@ -1,9 +1,11 @@
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { isAtEndpoint0, isAtEndpoint1 } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
-import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
+import { dualSliderConfigsEqual, type DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import type { ProductRuntimeParamUpdateOptions } from './useProductRuntimePresetSurface';
 import type { SliderMode, SliderState } from './state';
+import { collectMorphEndpointStates } from './morphEndpointAssets';
+import { prepareSpectralFreezeCaptureForMorph } from './spectralFreezeGesture';
 import { USER_PREFERENCE_KEYS } from './presetUtils';
 
 type JourneyMorphCoFViz = {
@@ -58,13 +60,15 @@ type UseJourneyMorphRuntimeSurfaceOptions<TPreset extends JourneyMorphPreset> = 
       forceApply: boolean;
       morphPositionOverride: number;
       skipJourneyOverridePrompt: boolean;
+      isCurrent?: () => boolean;
     },
   ) => Promise<boolean>;
   lastAppliedPresetLoadRef: MutableRefObject<{
     preset: TPreset;
     state: SliderState;
   } | null>;
-  startJourneyPlayback: (state: SliderState, title: string) => Promise<void>;
+  prepareMorphSceneAssets: (states: readonly Record<string, unknown>[]) => Promise<void>;
+  startJourneyPlayback: (state: SliderState, title: string, isCurrent?: () => boolean) => Promise<void>;
   lerpPresets: (
     presetA: TPreset,
     presetB: TPreset,
@@ -89,8 +93,8 @@ type JourneyMorphRuntimeSurface = {
   ) => void;
   commitJourneyRuntimeState: () => void;
   stopJourneyMorphPlayback: (commitRuntimeState?: boolean) => void;
-  handleJourneyLoadPreset: (presetName: string) => Promise<void>;
-  handleJourneyMorphTo: (targetPresetName: string, durationPhrases: number) => void;
+  handleJourneyLoadPreset: (presetName: string, isCurrent: () => boolean) => Promise<void>;
+  handleJourneyMorphTo: (targetPresetName: string, durationPhrases: number, durationMs: number, getProgress: () => number) => Promise<void>;
 };
 
 export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset>({
@@ -119,6 +123,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   resolveSavedPresetByName,
   handleLoadPresetFromList,
   lastAppliedPresetLoadRef,
+  prepareMorphSceneAssets,
   startJourneyPlayback,
   lerpPresets,
   resetCofDrift,
@@ -128,18 +133,29 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   setIsJourneyPlaying,
   onPresetPoolLoad,
 }: UseJourneyMorphRuntimeSurfaceOptions<TPreset>): JourneyMorphRuntimeSurface {
+  const morphGenerationRef = useRef(0);
+  useEffect(() => () => {
+    morphGenerationRef.current += 1;
+    stopJourneyMorphClock();
+  }, [stopJourneyMorphClock]);
+  const dualConfigsRef = useRef(dualConfigs);
+  dualConfigsRef.current = dualConfigs;
   const applyJourneyDualSnapshot = useCallback((
     nextDualModes: Record<string, SliderMode>,
     _nextDualRanges: Partial<Record<keyof SliderState, DualSliderRange>>,
     nextDualConfigs: Record<string, DualSliderConfig>,
   ) => {
     const next: Record<string, DualSliderConfig> = {};
-    for (const [key, config] of Object.entries(dualConfigs)) {
+    for (const [key, config] of Object.entries(dualConfigsRef.current)) {
       if (config && !(key in nextDualModes)) next[key] = config;
     }
     Object.assign(next, nextDualConfigs);
+    const previous = dualConfigsRef.current;
+    if (Object.keys(previous).length === Object.keys(next).length &&
+        Object.entries(next).every(([key, config]) => dualSliderConfigsEqual(previous[key], config))) return;
+    dualConfigsRef.current = next;
     setDualSliderConfigs(next);
-  }, [dualConfigs, setDualSliderConfigs]);
+  }, [setDualSliderConfigs]);
 
   const commitJourneyRuntimeState = useCallback(() => {
     const nextState = journeyLastAppliedStateRef.current;
@@ -170,6 +186,7 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
 
   const stopJourneyMorphPlayback = useCallback(
     (commitRuntimeState = false) => {
+      morphGenerationRef.current += 1;
       stopJourneyMorphClock();
       if (commitRuntimeState) {
         commitJourneyRuntimeState();
@@ -179,16 +196,12 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   );
 
   const handleJourneyLoadPreset = useCallback(
-    async (presetName: string) => {
+    async (presetName: string, isCurrent: () => boolean) => {
       const preset = await resolveSavedPresetByName(presetName);
-      if (!preset) {
-        console.warn('[Journey] Preset not found:', presetName);
-        return;
-      }
+      if (!isCurrent()) return;
+      if (!preset) throw new Error(`Journey preset not found: ${presetName}`);
 
       console.log('[Journey] Loading preset:', presetName);
-
-      setIsJourneyPlaying(true);
 
       setMorphPosition(0);
       setMorphPresetB(null);
@@ -199,11 +212,10 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
         forceApply: true,
         morphPositionOverride: 0,
         skipJourneyOverridePrompt: true,
+        isCurrent,
       });
-      if (!loaded) {
-        setIsJourneyPlaying(false);
-        return;
-      }
+      if (!isCurrent()) return;
+      if (!loaded) throw new Error(`Journey preset could not load: ${presetName}`);
       const appliedPresetLoad = lastAppliedPresetLoadRef.current;
       const startPreset = appliedPresetLoad?.preset ?? preset;
       const startState = appliedPresetLoad?.state ?? stateRef.current;
@@ -218,7 +230,11 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
       journeyLastMorphPositionRef.current = 0;
       journeyLastMorphCoFVizRef.current = null;
 
-      await startJourneyPlayback(startState, startPreset.name);
+      await startJourneyPlayback(startState, startPreset.name, isCurrent);
+      if (isCurrent()) {
+        journeyLastAppliedStateRef.current = stateRef.current;
+        setIsJourneyPlaying(true);
+      }
     },
     [
       handleLoadPresetFromList,
@@ -244,22 +260,18 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
   );
 
   const handleJourneyMorphTo = useCallback(
-    (targetPresetName: string, durationPhrases: number) => {
-      void (async () => {
+    async (targetPresetName: string, durationPhrases: number, durationMs: number, getProgress: () => number) => {
+      stopJourneyMorphPlayback(false);
+      const generation = morphGenerationRef.current;
+      try {
         const preset = await resolveSavedPresetByName(targetPresetName);
-        if (!preset) {
-          console.warn('[Journey] Target preset not found:', targetPresetName);
-          return;
-        }
+        if (!preset) throw new Error(`Journey target preset not found: ${targetPresetName}`);
 
+        if (generation !== morphGenerationRef.current) return;
+        await prepareMorphSceneAssets(collectMorphEndpointStates(preset, journeyMorphDirectionRef.current === 'toB' ? journeyPresetARef.current : journeyPresetBRef.current));
+        if (generation !== morphGenerationRef.current) return;
         const direction = journeyMorphDirectionRef.current;
         console.log('[Journey] Morphing to:', targetPresetName, 'over', durationPhrases, 'phrases', 'direction:', direction);
-
-        stopJourneyMorphPlayback(false);
-
-        // Calculate duration in milliseconds using phrase-based timing.
-        const msPerPhrase = (phraseLength ?? 16) * 1000;
-        const durationMs = durationPhrases * msPerPhrase;
 
         console.log('[Journey] Morph duration:', durationMs, 'ms (', durationPhrases, 'phrases x', phraseLength ?? 16, 's)');
 
@@ -285,16 +297,22 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
           return;
         }
 
-        const startTime = performance.now();
         let lastUIUpdate = 0;
+        let lastRuntimeUpdate = -Infinity;
+        let lastPosition: number | null = null;
 
         const animateMorph = (now: number) => {
-          const elapsed = now - startTime;
-          const progress = Math.min(1, elapsed / durationMs);
+          if (generation !== morphGenerationRef.current) return;
+          const progress = Math.max(0, Math.min(1, getProgress()));
 
           const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
           const rawPosition = startPosition + (endPosition - startPosition) * eased;
           const newPosition = Math.round(rawPosition * 10) / 10;
+
+          if (now - lastRuntimeUpdate < 33 && progress < 1) return;
+          if (newPosition === lastPosition && progress < 1) return;
+          lastRuntimeUpdate = now;
+          lastPosition = newPosition;
 
           const morphResult = lerpPresets(
             animPresetA,
@@ -305,10 +323,10 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
             direction,
           );
 
-          const stateWithPrefs = { ...morphResult.state };
+          const stateWithPrefs = prepareSpectralFreezeCaptureForMorph(morphResult.state, journeyLastAppliedStateRef.current ?? stateRef.current);
           const currentState = stateRef.current;
           for (const key of USER_PREFERENCE_KEYS) {
-            (stateWithPrefs as Record<string, unknown>)[key] = currentState[key];
+            (stateWithPrefs as unknown as Record<string, unknown>)[key] = currentState[key];
           }
 
           const atEndpoint = isAtEndpoint0(newPosition, true) || isAtEndpoint1(newPosition, true);
@@ -326,6 +344,8 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
           const shouldUpdateUI = isVisible && (now - lastUIUpdate >= 66 || progress >= 1);
           if (shouldUpdateUI) {
             lastUIUpdate = now;
+            setState(stateWithPrefs);
+            applyJourneyDualSnapshot(morphResult.dualModes, morphResult.dualRanges, morphResult.dualConfigs);
             setMorphPosition(newPosition);
             setMorphCoFViz(nextMorphCoFViz);
             if (atEndpoint) {
@@ -343,9 +363,18 @@ export function useJourneyMorphRuntimeSurface<TPreset extends JourneyMorphPreset
         };
 
         startJourneyMorphClock(animateMorph);
-      })();
+      } catch (error) {
+        if (generation !== morphGenerationRef.current) return;
+        console.error('[Journey] Morph failed:', error);
+        stopJourneyMorphPlayback(true);
+        setIsJourneyPlaying(false);
+        throw error;
+      }
     },
     [
+      applyJourneyDualSnapshot,
+      prepareMorphSceneAssets,
+      setIsJourneyPlaying,
       commitJourneyRuntimeState,
       currentCofStep,
       journeyLastAppliedStateRef,

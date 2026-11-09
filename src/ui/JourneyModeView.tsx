@@ -344,11 +344,13 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
       const hours = Math.floor(minutes / 60);
       return `Background ready · ${hours}h ${minutes % 60}m · ${Math.round(state.assetBytes / MiB)} / 160 MiB`;
     }
+    if (state.status === 'starting') return 'Loading Journey audio…';
     if (state.status === 'planning') return 'Planning background route';
     if (state.status === 'preparing') return `Preparing audio · ${state.uploadedEvents} of ${state.totalEvents}`;
     if (state.status === 'optimizable') return `Background route available · ${state.sceneCount} of ${state.totalSceneCount} scenes · ${Math.round(state.assetBytes / MiB)} / 160 MiB`;
     if (state.status === 'stale') return 'Journey changed · prepare again';
     if (state.status === 'unavailable') {
+      if (state.reason === 'modulation-ranges-unsupported') return 'Use foreground playback for this Journey’s changing parameter ranges';
       if (state.reason === 'asset-soft-budget') return `Background unavailable · ${Math.round((state.assetBytes ?? 0) / MiB)} / 160 MiB`;
       return `Background unavailable · ${state.reason.split('-').join(' ')}`;
     }
@@ -377,17 +379,24 @@ export const JourneyModeView: React.FC<JourneyModeViewProps> = ({
             {backgroundJourney.state.status === 'optimizable' && (
               <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onForegroundOnly}>Foreground only</button>
             )}
-            {(backgroundJourney.state.status === 'planning' || backgroundJourney.state.status === 'preparing') && (
+            {(backgroundJourney.state.status === 'planning' || backgroundJourney.state.status === 'preparing' || backgroundJourney.state.status === 'starting') && (
               <button type="button" style={styles.backgroundButton} onClick={backgroundJourney.onCancel}>Cancel</button>
             )}
           </span>
         </div>
+        {journey.isStarting && (
+          <div role="status" style={{ padding: '8px 0' }}>
+            Loading Journey audio… <button type="button" onClick={handleStop}>Cancel</button>
+          </div>
+        )}
+        {journey.startupError && <div role="alert">{journey.startupError}</div>}
         <DiamondJourneyUI
           config={journey.config}
           state={journey.state}
           presets={presets}
           onConfigChange={journey.setConfig}
           onPlay={() => {
+            if (journey.isStarting || backgroundJourney.state.status === 'starting') return;
             if (!journeyValidation.playable) {
               alert(`Journey cannot play yet:\n\n${journeyValidation.issues.join('\n')}`);
               return;

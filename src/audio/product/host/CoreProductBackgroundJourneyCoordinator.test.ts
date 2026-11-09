@@ -63,6 +63,7 @@ function coordinatorWith(options: {
   onTelemetryRequest?: () => void;
   onPost?: (event: { value?: number }) => void;
   onUpload?: () => void;
+  onRuntimeStart?: () => void;
   telemetry?: () => CoreProductTelemetrySnapshot | null;
 }) {
   const assets = {
@@ -80,6 +81,7 @@ function coordinatorWith(options: {
   } as unknown as CoreProductAssetRegistrar;
   const runtime = {
     audioContext: { sampleRate: 48_000 },
+    ensureStarted: async () => options.onRuntimeStart?.(),
     postEvents: () => options.onUpload?.(),
     requestTelemetryOnce: () => options.onTelemetryRequest?.(),
   } as unknown as CoreProductRuntime;
@@ -93,6 +95,39 @@ function coordinatorWith(options: {
     stopLegacyMorphClock: () => {},
   });
 }
+
+test('cold stop and discard do not post before the worklet exists', () => {
+  let postCount = 0;
+  let clearCount = 0;
+  const coordinator = coordinatorWith({
+    ensure: async () => ({ status: 'ready' }),
+    onClear: () => { clearCount += 1; },
+    onPost: () => { postCount += 1; },
+  });
+
+  coordinator.stop();
+  coordinator.discard();
+
+  assert.equal(postCount, 0);
+  assert.equal(clearCount, 1);
+  assert.deepEqual(coordinator.getReadiness(), { status: 'idle' });
+});
+
+test('journey preparation initializes the runtime before asset admission', async () => {
+  const calls: string[] = [];
+  const coordinator = coordinatorWith({
+    ensure: async () => { calls.push('assets'); return { status: 'ready' }; },
+    onClear: () => {},
+    onRuntimeStart: () => { calls.push('runtime'); },
+    telemetry: () => ({
+      journeyScheduleRevision: plan.revision,
+      journeyPreparedTotalFrames: Number(plan.totalFrames),
+    } as CoreProductTelemetrySnapshot),
+  });
+
+  assert.equal((await coordinator.prepare(plan, [{}])).status, 'ready');
+  assert.deepEqual(calls.slice(0, 2), ['runtime', 'assets']);
+});
 
 test('preserves asset admission diagnostics and releases failed scene closure', async () => {
   let clearCount = 0;

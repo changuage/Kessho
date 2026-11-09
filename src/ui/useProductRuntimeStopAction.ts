@@ -27,11 +27,9 @@ export function useProductRuntimeStopAction({
       drumEuclidMasterEnabled: false,
       synthEuclideanMasterEnabled: false,
     }));
-    if (isJourneyPlaying) {
-      stopJourney();
-      stopJourneyMorphPlayback(true);
-      setIsJourneyPlaying(false);
-    }
+    stopJourney();
+    stopJourneyMorphPlayback(isJourneyPlaying);
+    setIsJourneyPlaying(false);
     resetPlaybackTimer();
   }, [
     isJourneyPlaying,

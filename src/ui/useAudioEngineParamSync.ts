@@ -8,6 +8,7 @@ import { isTransportClockStateKey } from './transportTimingPolicy';
 import {
   createSpectralFreezeGestureEvents,
   isSpectralFreezeGesturePatch,
+  isOnlySpectralFreezeGesturePatch,
 } from './spectralFreezeGesture';
 
 const CORE_PRODUCT_PARAM_UPDATE_INTERVAL_MS = 33;
@@ -294,7 +295,7 @@ export function useAudioEngineParamSync(): ((
         reason,
         triggerCritical,
         forceFullSnapshot,
-        ...(spectralFreezeGesture
+        ...(spectralFreezeGesture && isOnlySpectralFreezeGesturePatch(patch) && !forceFullSnapshot
           ? {
               applyMode: 'event' as const,
               productEvents: createSpectralFreezeGestureEvents(nextState, patch),

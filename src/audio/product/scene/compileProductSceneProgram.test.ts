@@ -122,3 +122,34 @@ test('matches the production morph oracle at seven boundary-focused positions', 
     );
   }
 });
+
+test('prepared Journey keeps Freeze active while its return fades and does not interpolate capture commands', () => {
+  const endpointA = createCoreProductSnapshot({ spectralFreezeEnabled: false, spectralFreezeActive: true, spectralFreezeMix: 1, spectralFreezeCaptureSerial: 4 });
+  const endpointB = createCoreProductSnapshot({ spectralFreezeEnabled: true, spectralFreezeActive: true, spectralFreezeMix: 0.8, spectralFreezeCaptureSerial: 9 });
+  const program = compileProductSceneProgram(endpointA, endpointB);
+  assert.deepEqual(program.unsupportedKeys, []);
+  const active = program.entries.find((entry) => entry.paramId === KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeActive)!;
+  const mix = program.entries.find((entry) => entry.paramId === KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeMix)!;
+  assert.ok(active && mix);
+  assert.equal(active.interpolation, 'enable-gate');
+  assert.equal(evaluateProductSceneEntry(active, 0), 0);
+  assert.equal(evaluateProductSceneEntry(active, 0.01), 1);
+  assert.equal(evaluateProductSceneEntry(mix, 0), 0);
+  assert.ok(Math.abs(evaluateProductSceneEntry(mix, 0.5) - 0.4) < 1e-6);
+  assert.equal(program.entries.some((entry) => entry.paramId === KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeCaptureSerial), false);
+  assert.equal(program.boundaryCommands.some(({ event }) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.FxSpectralFreezeCaptureSerial), false);
+});
+
+test('prepared Journey enables compatible FX routes for continuous fades and rejects a cyclic union', () => {
+  const activeFx = { granularEnabled: true, reverbEnabled: true };
+  const empty = createCoreProductSnapshot({ ...activeFx, fxRoutingGraph: { version: 1, edges: [] } });
+  const forward = createCoreProductSnapshot({ ...activeFx, fxRoutingGraph: { version: 1, edges: [{ from: 'granular', to: 'reverb', amount: 1 }] } });
+  const reverse = createCoreProductSnapshot({ ...activeFx, fxRoutingGraph: { version: 1, edges: [{ from: 'reverb', to: 'granular', amount: 1 }] } });
+  const program = compileProductSceneProgram(empty, forward);
+  assert.deepEqual(program.unsupportedKeys, []);
+  const enabled = program.entries.find((entry) => entry.paramId === KESSHO_PRODUCT_PARAM_IDS.RoutingFxRouteEnabled)!;
+  assert.ok(enabled);
+  assert.equal(evaluateProductSceneEntry(enabled, 0.01), 1);
+  assert.equal(evaluateProductSceneEntry(enabled, 0), 0);
+  assert.ok(compileProductSceneProgram(forward, reverse).unsupportedKeys.includes('fx-route-union-cycle'));
+});

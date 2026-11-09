@@ -136,3 +136,59 @@ test('same-name drafts interpolate and preparation keys use endpoint content ref
   preparer.get(currentA, currentB);
   assert.equal(preparationCount, 9, 'B-side config replacement invalidates preparation');
 });
+
+test('Freeze controls interpolate, fade the return when inactive, and keep exact endpoints', () => {
+  const a = makePreset({ spectralFreezeEnabled: true, spectralFreezeActive: true,
+    spectralFreezeTone: -1, spectralFreezeStretchSpeed: 0, spectralFreezeMix: 0.8 });
+  const b = makePreset({ spectralFreezeEnabled: true, spectralFreezeActive: true,
+    spectralFreezeTone: 1, spectralFreezeStretchSpeed: 1, spectralFreezeMix: 0.4 });
+  const pair = prepareMorphPair(a, b);
+  const middle = evaluatePreparedMorphPair(pair, 50).state;
+  assert.equal(middle.spectralFreezeTone, 0);
+  assert.equal(middle.spectralFreezeStretchSpeed, 0.5);
+  assert.ok(Math.abs(middle.spectralFreezeMix - 0.6) < 1e-10);
+  assert.deepEqual(evaluatePreparedMorphPair(pair, 0).state, pair.stateA);
+  assert.deepEqual(evaluatePreparedMorphPair(pair, 100).state, pair.stateB);
+  const off = makePreset({ spectralFreezeEnabled: false, spectralFreezeActive: false });
+  const fading = prepareMorphPair(a, off);
+  assert.equal(evaluatePreparedMorphPair(fading, 50).state.spectralFreezeMix, 0.4);
+  assert.equal(evaluatePreparedMorphPair(fading, 99).state.spectralFreezeActive, true);
+  assert.equal(evaluatePreparedMorphPair(fading, 100).state.spectralFreezeActive, false);
+});
+
+test('FX graph amounts and ranges morph continuously without introducing cyclic routes', () => {
+  const a = makePreset({ fxRoutingGraph: { version: 1, edges: [
+    { from: 'granular', to: 'reverb', amount: 0.2, mode: 'walk', min: 0.1, max: 0.3 },
+    { from: 'delayA', to: 'reverb', amount: 0.5 },
+  ] } });
+  const b = makePreset({ fxRoutingGraph: { version: 1, edges: [
+    { from: 'granular', to: 'reverb', amount: 0.8, mode: 'walk', min: 0.5, max: 0.9 },
+    { from: 'delayB', to: 'reverb', amount: 0.7 },
+  ] } });
+  const pair = prepareMorphPair(a, b);
+  const middle = evaluatePreparedMorphPair(pair, 50).state.fxRoutingGraph;
+  const route = middle.edges.find((edge) => edge.from === 'granular')!;
+  assert.equal(route.amount, 0.5);
+  assert.ok(Math.abs(route.min! - 0.3) < 1e-10);
+  assert.ok(Math.abs(route.max! - 0.6) < 1e-10);
+  assert.equal(middle.edges.find((edge) => edge.from === 'delayA')!.amount, 0.25);
+  assert.equal(middle.edges.find((edge) => edge.from === 'delayB')!.amount, 0.35);
+  assert.deepEqual(evaluatePreparedMorphPair(pair, 0).state.fxRoutingGraph, pair.stateA.fxRoutingGraph);
+  assert.deepEqual(evaluatePreparedMorphPair(pair, 100).state.fxRoutingGraph, pair.stateB.fxRoutingGraph);
+  const opposite = prepareMorphPair(
+    makePreset({ fxRoutingGraph: { version: 1, edges: [{ from: 'granular', to: 'reverb', amount: 1 }] } }),
+    makePreset({ fxRoutingGraph: { version: 1, edges: [{ from: 'reverb', to: 'granular', amount: 1 }] } }),
+  );
+  assert.equal(opposite.fxUnionCompatible, false);
+  assert.equal(evaluatePreparedMorphPair(opposite, 25).state.fxRoutingGraph.edges[0]!.amount, 0.5);
+  assert.equal(evaluatePreparedMorphPair(opposite, 50).state.fxRoutingGraph.edges[0]!.amount, 0);
+  assert.equal(evaluatePreparedMorphPair(opposite, 75).state.fxRoutingGraph.edges[0]!.amount, 0.5);
+});
+
+test('morphing to a single slider removes its previous modulation assignment', () => {
+  const a = makePreset({}, { dualSliderConfigs: { nature1FilterCutoff: { source: 'a', range: [100, 1000] } } });
+  const b = makePreset({}, { sliderModes: { nature1FilterCutoff: 'single' } });
+  const result = evaluatePreparedMorphPair(prepareMorphPair(a, b), 75);
+  assert.equal(result.dualModes.nature1FilterCutoff, 'single');
+  assert.equal(result.dualConfigs.nature1FilterCutoff, undefined);
+});

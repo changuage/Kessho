@@ -16,10 +16,10 @@ type PresetLoadFadeOptions = Parameters<typeof useProductRuntimePresetLoadFade>[
 type ProductRuntimePlaybackSurfaceOptions =
   PlaybackStartStateOptions &
   Omit<StartActionOptions, 'preparePlaybackStartState' | 'startProductPlayback'> &
-  Omit<JourneyPlaybackActionOptions, 'startProductPlayback'> &
+  Omit<JourneyPlaybackActionOptions, 'startProductPlayback' | 'preparePlaybackStartState'> &
   Omit<StopActionOptions, 'stopJourneyMorphPlayback' | 'stopProductPlayback'> &
   Omit<PlaybackUiOptions, 'startProductPlayback' | 'stopProductPlayback'> &
-  Omit<PresetLoadFadeOptions, 'stopProductPlayback' | 'fadeProductRuntimeOutput'> & {
+  Omit<PresetLoadFadeOptions, 'stopProductPlayback' | 'stopAudioForJourneyPresetLoad' | 'fadeProductRuntimeOutput'> & {
     startProductPlayback: StartActionOptions['startProductPlayback'];
     stopProductPlayback: StopActionOptions['stopProductPlayback'];
     fadeProductRuntimeOutput: PresetLoadFadeOptions['fadeProductRuntimeOutput'];
@@ -36,6 +36,7 @@ export function useProductRuntimePlaybackSurface(options: ProductRuntimePlayback
     title: options.title,
   });
   const startJourneyPlayback = useProductRuntimeJourneyPlaybackAction({
+    preparePlaybackStartState: prepareProductPlaybackStartState,
     startProductPlayback: options.startProductPlayback,
     dualRanges: options.dualRanges,
   });
@@ -68,6 +69,7 @@ export function useProductRuntimePlaybackSurface(options: ProductRuntimePlayback
     isJourneyPlaying: options.isJourneyPlaying,
     fadeProductRuntimeOutput: options.fadeProductRuntimeOutput,
     stopProductPlayback: handleStop,
+    stopAudioForJourneyPresetLoad: options.stopProductPlayback,
   });
 
   return {

@@ -15,6 +15,7 @@ type LoadPresetOptions = {
   morphPositionOverride?: number;
   skipFade?: boolean;
   skipJourneyOverridePrompt?: boolean;
+  isCurrent?: () => boolean;
 };
 
 type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
@@ -38,7 +39,7 @@ type UseSavedPresetLoadRuntimeSurfaceOptions<TPreset extends SavedPreset> = {
   setState: Dispatch<SetStateAction<SliderState>>;
   setStatePresetName: Dispatch<SetStateAction<string>>;
   resolveSavedPresetForLoad: (preset: TPreset) => Promise<TPreset | null>;
-  fadeOutAndStopForPresetLoad: () => Promise<void>;
+  fadeOutAndStopForPresetLoad: (preserveJourney?: boolean, isCurrent?: () => boolean) => Promise<void>;
   confirmOverrideArmedJourneyForStatePreset: (presetName: string) => Promise<boolean>;
   checkPresetCompatibility: (preset: TPreset) => string[];
   presetEngineUpdateOptions: PresetEngineUpdateOptions;
@@ -126,15 +127,18 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
         return false;
       }
 
+      if (options?.isCurrent && !options.isCurrent()) return false;
       if (!options?.skipFade) {
-        await fadeOutAndStopForPresetLoad();
+        await fadeOutAndStopForPresetLoad(Boolean(options?.isCurrent), options?.isCurrent);
+        if (options?.isCurrent && !options.isCurrent()) return false;
       }
 
       lastAppliedPresetLoadRef.current = null;
       const resolvedPreset = await resolveSavedPresetForLoad(preset);
-      if (!resolvedPreset) return false;
+      if (!resolvedPreset || (options?.isCurrent && !options.isCurrent())) return false;
 
-      await prepareMorphSceneAssets?.(collectMorphEndpointStates(resolvedPreset, morphPresetB));
+      await prepareMorphSceneAssets?.(collectMorphEndpointStates(resolvedPreset, options?.isCurrent ? null : morphPresetB));
+      if (options?.isCurrent && !options.isCurrent()) return false;
       invalidateMorphInputs();
 
       if (!snowflakeActivated) setSnowflakeActivated(true);
@@ -160,6 +164,7 @@ export function useSavedPresetLoadRuntimeSurface<TPreset extends SavedPreset>({
           resetCofDrift: false,
         });
         await syncCoreProductAppliedPreset(result.state);
+        if (options?.isCurrent && !options.isCurrent()) return false;
         skipNextPresetLoadEngineSync();
         setMorphPresetA(result.preset as TPreset);
         lastAppliedPresetLoadRef.current = {

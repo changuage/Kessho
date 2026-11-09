@@ -77,6 +77,7 @@ export type BackgroundJourneyPlanReason =
   | 'no-reachable-cycle'
   | 'natural-route-too-short'
   | 'schedule-capacity'
+  | 'modulation-ranges-unsupported'
   | 'scene-program-unsupported';
 
 export type BackgroundJourneyPlanResult =
@@ -86,6 +87,7 @@ export type BackgroundJourneyPlanResult =
 export type ResolvedBackgroundJourneyNode = {
   snapshot: CoreProductSnapshot;
   phraseSeconds: number;
+  modulationKeys?: readonly string[];
 };
 
 export type CompileBackgroundJourneyPlanOptions = {
@@ -212,6 +214,10 @@ export function compileBackgroundJourneyPlan(options: CompileBackgroundJourneyPl
   for (const node of playableNodes) {
     const resolved = resolvedNodes.get(node.id);
     if (!resolved) return { status: 'not-ready', reason: 'missing-preset', detail: node.presetName };
+    // shortcut: scene programs cannot carry modulation ranges; use foreground playback until they can.
+    if (resolved.modulationKeys?.length) {
+      return { status: 'not-ready', reason: 'modulation-ranges-unsupported', detail: node.presetName };
+    }
     if (!Number.isFinite(resolved.phraseSeconds) || !(resolved.phraseSeconds > 0) ||
         !Number.isFinite(node.phraseLength) || !(node.phraseLength > 0) ||
         (node.phraseLengthMax !== undefined && (!Number.isFinite(node.phraseLengthMax) || node.phraseLengthMax < node.phraseLength))) {

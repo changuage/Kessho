@@ -24,7 +24,7 @@ public:
       int frames) noexcept;
 
   void setParams(const SpectralFreezeParams& params) noexcept;
-  void requestCapture(uint32_t capture_serial) noexcept;
+  void requestCapture(uint32_t capture_serial, bool force = false) noexcept;
   void requestRelease() noexcept;
 
   [[nodiscard]] SpectralFreezeRuntimeState runtimeState() const noexcept { return runtime_state_; }
@@ -120,6 +120,7 @@ private:
   uint64_t capture_generation_ = 0;
   uint32_t last_capture_serial_ = 0;
   bool pending_capture_ = false;
+  bool capture_input_started_ = false;
   bool source_phase_valid_ = false;
   double active_crossfade_ = 0.0;
   double crossfade_step_ = 1.0;

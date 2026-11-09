@@ -47,3 +47,17 @@ test('an armed L4 freeze requests one new capture at each playback start', () =>
   assert.equal(secondStart.spectralFreezeCaptureSerial, 43);
   assert.equal(prepareSpectralFreezeCaptureForPlayback(DEFAULT_STATE), DEFAULT_STATE);
 });
+
+test('morph capture serials stay live and trigger once when Freeze becomes active', async () => {
+  const { prepareSpectralFreezeCaptureForMorph, isOnlySpectralFreezeGesturePatch } = await import('./spectralFreezeGesture');
+  const previous = { ...DEFAULT_STATE, spectralFreezeCaptureSerial: 41 };
+  const endpoint = { ...DEFAULT_STATE, spectralFreezeEnabled: true, spectralFreezeActive: true, spectralFreezeCaptureSerial: 0 };
+  const active = prepareSpectralFreezeCaptureForMorph(endpoint, previous);
+  assert.equal(active.spectralFreezeCaptureSerial, 42);
+  assert.equal(prepareSpectralFreezeCaptureForMorph(endpoint, active).spectralFreezeCaptureSerial, 42);
+  const release = prepareSpectralFreezeCaptureForMorph(DEFAULT_STATE, active);
+  assert.equal(release.spectralFreezeCaptureSerial, 42);
+  assert.equal(prepareSpectralFreezeCaptureForMorph(endpoint, release).spectralFreezeCaptureSerial, 43);
+  assert.equal(isOnlySpectralFreezeGesturePatch({ spectralFreezeActive: true }), true);
+  assert.equal(isOnlySpectralFreezeGesturePatch({ spectralFreezeActive: true, spectralFreezeTone: 0.5 }), false);
+});

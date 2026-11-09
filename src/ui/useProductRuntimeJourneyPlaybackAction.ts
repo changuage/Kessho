@@ -12,18 +12,17 @@ type StartProductPlayback = (options: {
 export type ProductRuntimeJourneyPlaybackActionOptions = {
   startProductPlayback: StartProductPlayback;
   dualRanges: ProductRuntimeDualRanges;
+  preparePlaybackStartState: (state: SliderState) => Promise<SliderState>;
 };
 
 export function useProductRuntimeJourneyPlaybackAction({
   startProductPlayback,
   dualRanges,
+  preparePlaybackStartState,
 }: ProductRuntimeJourneyPlaybackActionOptions) {
-  return useCallback(async (state: SliderState, title: string): Promise<void> => {
-    console.log('[Journey] Starting audio engine');
-    try {
-      await startProductPlayback({ state, dualRanges, title });
-    } catch (err) {
-      console.error('[Journey] Failed to start audio:', err);
-    }
-  }, [dualRanges, startProductPlayback]);
+  return useCallback(async (state: SliderState, title: string, isCurrent: () => boolean = () => true): Promise<void> => {
+    const preparedState = await preparePlaybackStartState(state);
+    if (!isCurrent()) return;
+    await startProductPlayback({ state: preparedState, dualRanges, title });
+  }, [dualRanges, preparePlaybackStartState, startProductPlayback]);
 }

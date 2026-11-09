@@ -7,9 +7,31 @@ import {
   projectBackgroundJourneyMorph,
   projectBackgroundJourneyTelemetry,
   requestAndReadBackgroundJourneyTelemetry,
+  resolveBackgroundJourneyNode,
   shouldRefreshBackgroundJourneyTelemetry,
 } from './backgroundJourneyRuntimeCoordinator';
 import type { SavedPreset } from './state';
+import { DEFAULT_STATE } from './state';
+import { compileBackgroundJourneyPlan } from '../audio/product/journey/compileBackgroundJourneyPlan';
+import { createSimpleJourney } from '../audio/journeyTypes';
+
+test('prepared Journeys reject canonical and legacy ranges so foreground playback preserves them', () => {
+  const plain = { name: 'A', timestamp: '', state: DEFAULT_STATE };
+  for (const behavior of [
+    { dualSliderConfigs: { nature1FilterCutoff: { source: 'a' as const, range: [100, 1000] as const } } },
+    { dualRanges: { nature1FilterCutoff: { min: 2000, max: 4000 } }, sliderModes: { nature1FilterCutoff: 'walk' as const } },
+    { dualRanges: { nature1FilterCutoff: { min: 2000, max: 4000 } } },
+  ]) {
+    const modulated = { ...plain, name: 'B', ...behavior };
+    const config = createSimpleJourney(plain, modulated);
+    const nodes = config.nodes.filter((node) => node.position !== 'center');
+    const resolvedNodes = new Map(nodes.map((node) => [node.id, resolveBackgroundJourneyNode(node.presetName === 'A' ? plain : modulated)]));
+    const result = compileBackgroundJourneyPlan({ config, resolvedNodes, productSeed: 1, revision: 1, sampleRate: 48000, targetSeconds: 10 });
+    assert.equal(result.status, 'not-ready');
+    if (result.status === 'not-ready') assert.equal(result.reason, 'modulation-ranges-unsupported');
+  }
+  assert.deepEqual(resolveBackgroundJourneyNode(plain).modulationKeys, []);
+});
 
 const playableNodes = [
   { id: 'node-a' },

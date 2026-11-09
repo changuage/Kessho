@@ -617,13 +617,16 @@ const App: React.FC = () => {
 
   const journeyMorphDirectionRef = useRef<'toB' | 'toA'>('toB');
 
-  const journeyLoadPresetRef = useRef<(presetName: string) => void>(() => {});
-  const journeyMorphToRef = useRef<(presetName: string, duration: number) => void>(() => {});
+  const journeyLoadPresetRef = useRef<(presetName: string, isCurrent: () => boolean) => Promise<void>>(async () => {});
+  const journeyMorphToRef = useRef<(presetName: string, duration: number, durationMs: number, getProgress: () => number) => Promise<void>>(async () => {});
 
   const journey = useJourney(
     state.phraseLength ?? 16,
-    (presetName, duration) => journeyMorphToRef.current(presetName, duration),
-    (presetName) => journeyLoadPresetRef.current(presetName),
+    (presetName, duration, durationMs, getProgress) => journeyMorphToRef.current(presetName, duration, durationMs, getProgress),
+    (presetName, isCurrent) => {
+      primeProductRuntimeAudio();
+      return journeyLoadPresetRef.current(presetName, isCurrent);
+    },
   );
   const journeyPresets = useJourneyPresets();
   const {
@@ -943,6 +946,9 @@ const App: React.FC = () => {
     journey,
     resolveSavedPresetByName,
     startProductPlayback,
+    primeProductRuntimeAudio,
+    stopProductPlayback,
+    clearPresetModulation: applyDualRangesFromPreset,
     setIsJourneyPlaying,
   });
   const projectedMorphPresetA = backgroundJourney.morphProjection?.presetA ?? morphPresetA;
@@ -1784,6 +1790,7 @@ const App: React.FC = () => {
       activeJourneyPresetName,
       config: journey.config,
       play: handleJourneyPlay,
+      isStarting: journey.isStarting || backgroundJourney.uiState.status === 'starting',
       validation: activeJourneyValidation,
     },
     fadeProductRuntimeOutput,
@@ -2169,6 +2176,7 @@ const App: React.FC = () => {
     resolveSavedPresetByName,
     handleLoadPresetFromList,
     lastAppliedPresetLoadRef,
+    prepareMorphSceneAssets,
     startJourneyPlayback,
     lerpPresets,
     resetCofDrift,
@@ -2368,7 +2376,7 @@ const App: React.FC = () => {
     </PresetPoolProvider>
   );
   const journeyStatusPill = isJourneyPlaying && journey.state && journey.config
-    ? <JourneyStatusPill state={journey.state} config={journey.config} />
+    ? <JourneyStatusPill state={journey.state} config={journey.config} morphPosition={backgroundJourney.morphProjection?.position ?? morphPosition} />
     : null;
 
   if (POINT_CLOUDS_ENGINE_MODE) return <div aria-hidden="true" style={{ width: 1, height: 1, overflow: 'hidden' }} />;

@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:point-clouds": "node scripts/build-point-clouds.mjs",
+    "preview:point-clouds": "vite preview --outDir dist-point-clouds --host 127.0.0.1 --port 5176 --strictPort",
     "test:ambient-fx-cpu": "node scripts/test-ambient-fx-cpu.mjs",
     "build": "npm run core:pad:wasm && npm run core:product:wasm && tsc && vite build",
     "point-clouds:embedded:generate": "node scripts/generate-point-clouds-embedded-engine.mjs",
