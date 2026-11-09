@@ -89,7 +89,7 @@ on:
 
 jobs:
   product-core:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       # The page CPU gate must compare against the PR base (or the previous
       # pushed commit), never whichever commit happens to be HEAD^ in a

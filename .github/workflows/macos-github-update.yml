@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
     steps:
