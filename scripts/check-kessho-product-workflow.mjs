@@ -126,8 +126,8 @@ for (const token of [
 }
 
 assert(
-  /runs-on:\s+macos-14/.test(workflow),
-  'Product Core workflow must run on macOS for local Emscripten/Homebrew parity with developer machines',
+  /runs-on:\s+macos-15/.test(workflow),
+  'Product Core workflow must run on macOS 15 for local Emscripten/Homebrew parity with developer machines',
 );
 assert(
   /actions\/checkout@v[56]/.test(workflow) &&

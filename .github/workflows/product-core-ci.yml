@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload Product CPU gate reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: product-core-cpu-gate-reports
           if-no-files-found: warn
@@ -132,7 +132,7 @@ jobs:
 
       - name: Upload Product level calibration reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: product-core-level-calibration-reports
           if-no-files-found: warn
