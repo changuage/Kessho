@@ -331,10 +331,11 @@ check(
   'preset load must be a trigger-critical full-snapshot resolved transaction',
 );
 check(
-  'morph-position-trigger-critical',
+  'morph-position-update-policy',
   count(files.morphPosition, "reason: 'morph-control-change'") >= 3 &&
-    count(files.morphPosition, 'triggerCritical: true') >= 3,
-  'manual and auto morph position paths must be trigger-critical',
+    count(files.morphPosition, 'triggerCritical: true') >= 2 &&
+    files.morphPosition.includes('...(isFlush ? { immediate: true } : {})'),
+  'manual morph scrubbing must stay coalesced while auto and endpoint updates remain trigger-critical',
 );
 check(
   'morph-slot-midpoint-atomic',

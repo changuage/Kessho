@@ -334,6 +334,7 @@ export function loadCoreProductHostHarness(options = {}) {
       this.visualTelemetryCallback = null;
       this.visualTelemetryActive = false;
       this.ensureStartedCount = 0;
+      this.outputGainChanges = [];
       this.variationBankCommits = [];
       runtimeInstances.push(this);
     }
@@ -354,6 +355,10 @@ export function loadCoreProductHostHarness(options = {}) {
     async resume() {}
     async suspend() {}
     dispose() {}
+
+    setOutputGain(target, durationSeconds = 0) {
+      this.outputGainChanges.push({ target, durationSeconds });
+    }
 
     postEvent(runtimeEvent) {
       this.events.push(runtimeEvent);
