@@ -4,10 +4,11 @@ import {
   ProductBrowserAudioSession,
   type BrowserAudioSession,
   type BrowserAudioSessionState,
+  type BrowserAudioSessionType,
 } from './ProductBrowserAudioSession';
 
 class FakeAudioSession extends EventTarget implements BrowserAudioSession {
-  type: 'auto' | 'playback' = 'auto';
+  type: BrowserAudioSessionType = 'auto';
   state: BrowserAudioSessionState = 'inactive';
 
   transitionTo(state: BrowserAudioSessionState): void {
@@ -33,6 +34,22 @@ test('requests playback only while browser playback is active', () => {
   assert.equal(audioSession.type, 'auto');
   controller.dispose();
   assert.equal(audioSession.type, 'auto');
+});
+
+test('does not steal an active play-and-record capture session', () => {
+  const audioSession = new FakeAudioSession();
+  audioSession.type = 'play-and-record';
+  const controller = new ProductBrowserAudioSession(() => undefined, {
+    navigator: fakeNavigator(audioSession),
+    nativeShell: false,
+  });
+
+  controller.setPlaybackRequested(true);
+  assert.equal(audioSession.type, 'play-and-record');
+  controller.setPlaybackRequested(false);
+  assert.equal(audioSession.type, 'play-and-record');
+  controller.dispose();
+  assert.equal(audioSession.type, 'play-and-record');
 });
 
 test('resumes once for one interrupted-to-active transition when playback is requested', () => {
