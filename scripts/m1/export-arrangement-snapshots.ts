@@ -7,6 +7,19 @@ import { resolve } from 'node:path';
 // Asset URL resolution touches window.location; the soundscape source is not
 // relevant to arrangement statistics, so a minimal stub is enough under Node.
 (globalThis as { window?: unknown }).window ??= { location: { origin: 'http://localhost' } };
+// Snapshot seeds include the current UTC hour or day (getUtcBucket), so pin the
+// clock to the hour the fixture was recorded in to keep the snapshots stable.
+const FIXTURE_CLOCK_MS = Date.parse('2026-11-24T16:30:00Z');
+const RealDate = Date;
+globalThis.Date = class extends RealDate {
+  constructor(...args: ConstructorParameters<DateConstructor> | []) {
+    if (args.length === 0) super(FIXTURE_CLOCK_MS);
+    else super(...(args as ConstructorParameters<DateConstructor>));
+  }
+  static now(): number {
+    return FIXTURE_CLOCK_MS;
+  }
+} as DateConstructor;
 const { completeCanonicalPresetState } = await import('../../src/presets/presetStateCompatibility');
 const { createCoreProductSnapshot } = await import('../../src/audio/coreProductSnapshot');
 const { encodeCoreProductSnapshot } = await import('../../src/audio/coreProductSnapshotEncoder');
