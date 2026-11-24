@@ -22,8 +22,8 @@ The Harmony redesign established an interaction language. This proposal applies 
 
 **Proposal.**
 
-- **Parts:** drum voices become parts in the same Part / Overview shell as Synth, with the same lane model, variation rail, mute / solo, chain and Print / Record capture.
-- **Scatter:** it becomes a player type beside Steps, Walker and Orbit, because it generates events rather than being a way of looking at a pattern.
+- **Parts:** a drum part is a kit in the same Part / Overview shell as Synth, with the same lane model, variation rail, mute / solo, chain and Print / Record capture. In Steps it shows one row per voice.
+- **Scatter is replaced by Groove.** Groove is a generative drum player type beside Steps, Walker and Orbit. It uses weighted groove maps across four roles (Anchor, Backbeat, Pulse, Color), per-role Density that only adds hits, bounded Variation with Memory, and Fill. It never re-pitches drums. It prints either the exact performance or a probability pattern into Steps. Scatter's UI and native runtime are deleted. See the [Groove spec](kessho-groove-generator.md) and [prototype](prototypes/kessho-groove.html).
 - **Voice cards:** they become the sound side of the page, as the sound pane is on Synth.
 - **Controls:** `MorphSlider` and `DragNumber` are replaced by the shared slider with the right adapter.
 
@@ -108,7 +108,7 @@ Each item deletes what it replaces in the same change: the drum sequencer UI and
 
 ## Acceptance
 
-1. **Drums:** drum and synth parts use the same Part / Overview components, lane model and capture path. Scatter is selectable as a player type. No `MorphSlider` or `DragNumber` remains.
+1. **Drums:** drum and synth parts use the same Part / Overview components, lane model and capture path. Groove is selectable as a player type and meets its own acceptance checks. No Scatter code, `MorphSlider` or `DragNumber` remains.
 2. **Transport:** every part and Harmony shows its timing relationship in its header. Changing one part's join policy affects only that part. Existing presets load with the same clock sources and policies.
 3. **Journey:** a Journey is edited with the same strip and Arrange drawer as the Harmony progression. A manual blend behaves as the live layer and Journey as the engine, under the existing availability rules.
 4. **Macros:** one macro concept serves Overview and the Snowflake performance view.
