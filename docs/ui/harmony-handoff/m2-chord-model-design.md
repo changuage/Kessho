@@ -22,16 +22,20 @@
 TypeScript type, exactly as specified:
 
 ```ts
-type Chord = { behavior: 'follow' | 'fixed'; degree; shape; color; voicing: { inversion; spread; octave }; notes: ChordNote[] };
+type Chord = { behavior: 'follow' | 'fixed'; degree; quality; extensions; voicing: { inversion; spread; register; bass }; notes: ChordNote[] };
 type ChordNote = { midi; velocity?; offset?; gate?; destination? };
 ```
 
-Native mirror (`KesshoProductChord`, in a new header `KesshoProductChord.h` shared by every place that stores a chord):
+Native mirror, in the public header `KesshoProductChord.h` shared by every place that stores a chord. A zero-initialised intent is a Follow tonic triad in root position.
 
 ```c
 typedef struct KesshoProductChordNote { float midi; float velocity; float gate_beats; float offset_beats; uint32_t destination_source_id; } // 20 bytes; destination 0 = inherit
-typedef struct KesshoProductChordIntent { uint32_t behavior; int32_t degree; uint32_t shape; uint32_t color; int32_t inversion; uint32_t spread; int32_t octave; uint32_t reserved; } // 32 bytes
+typedef struct KesshoProductChordIntent { uint32_t behavior; int32_t degree; uint32_t quality; uint32_t extensions; int32_t inversion; float spread; int32_t register_octave; uint32_t bass_mode; uint32_t bass_pitch_class; } // 36 bytes
 ```
+
+- **Quality:** `diatonic` (stack scale thirds from the degree), major, minor, diminished, augmented, sus2 or sus4.
+- **Extensions:** a bit mask of 6, 7, 9, 11 and 13, plus a dominant flag that forces a flat seventh. Diatonic extensions stay in the scale.
+- **Bass:** none (the lowest voice is the bass), root, or a chosen pitch class. The bass note sits below the voicing.
 
 - **Fixed chords** store absolute MIDI notes. The Pitch lane still transposes them, in semitones.
 - **Follow chords** store intent. Their `notes` are a cache for display only; native ignores them at playback.
@@ -40,7 +44,7 @@ typedef struct KesshoProductChordIntent { uint32_t behavior; int32_t degree; uin
 ### D2 · Notes lane = a cell table with its own traversal
 Today, step content is indexed by trigger step. In M2 the Notes lane becomes a **cell table** (`cells[32]`) with its own `notes_length`, `notes_direction` and `notes_advance` (Hits / Steps), traversed by the same `subLaneStepForField` logic as every other sublane.
 
-Each cell is one of `rest`, `harmony` (play the current Harmony chord: today's `follow_harmony`) or `chord` (a `KesshoProductChordIntent` plus up to 32 `KesshoProductChordNote`), plus an `articulation` override (`none`, `chord`, `strum` or `arp`) and the existing ARP fields.
+Each cell is one of `rest`, `harmony` (play the current Harmony chord: today's `follow_harmony`) or `chord` (a `KesshoProductChordIntent` plus up to 32 `KesshoProductChordNote`, so a printed cell keeps dense attacks as offsets; authored chords, progression events and the Palette use at most `KESSHO_PRODUCT_CHORD_MAX_NOTES` = 8), plus an `articulation` override (`none`, `chord`, `strum` or `arp`) and the existing ARP fields.
 
 The lane carries the default articulation and ARP config. The existing variation `steps[]` struct is renamed and reshaped into this cell, so the per-step note loop at `SynthEuclidSequencer.cpp:2549–2570` stays the playback path. It changes in three ways:
 

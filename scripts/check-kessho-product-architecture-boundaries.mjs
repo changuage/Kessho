@@ -196,6 +196,7 @@ const allocationFreeHotPathFiles = [
   'cpp/KesshoCore/src/product/music/ScaleEngine.cpp',
   'cpp/KesshoCore/src/product/music/HarmonyEngine.cpp',
   'cpp/KesshoCore/src/product/music/VoicingEngine.cpp',
+  'cpp/KesshoCore/src/product/music/ChordResolver.cpp',
   'cpp/KesshoCore/src/product/music/EvolutionEngine.cpp',
   'cpp/KesshoCore/src/product/music/JourneyMorphClock.cpp',
 ];
@@ -541,6 +542,7 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/music/JourneyMorphClock.cpp',
   'cpp/KesshoCore/src/product/music/ScaleEngine.cpp',
   'cpp/KesshoCore/src/product/music/VoicingEngine.cpp',
+  'cpp/KesshoCore/src/product/music/ChordResolver.cpp',
   'cpp/KesshoCore/src/product/sequencer/DrumEuclidSequencer.cpp',
   'cpp/KesshoCore/src/product/sequencer/RatchetEngine.cpp',
   'cpp/KesshoCore/src/product/sequencer/SequencerClock.cpp',
