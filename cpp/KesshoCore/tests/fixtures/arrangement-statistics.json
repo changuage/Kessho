@@ -1,0 +1,68 @@
+{
+  "cases": {
+    "string-waves": {
+      "chords": {
+        "eventsPerPhrase": {"mean": 6.0, "min": 6.0, "max": 6.0},
+        "onsetHistogram": [0.2083, 0.25, 0.1875, 0.1875, 0.1667, 0.0, 0.0, 0.0],
+        "velocity": {"min": 1.0, "max": 1.0, "mean": 1.0},
+        "pitch": {"min": 42.0, "max": 80.0, "mean": 62.5833},
+        "voiceEntrySpreadSeconds": {"mean": 5.9909, "max": 7.7972},
+        "voicesPerChord": {"mean": 6.0, "max": 6.0}
+      },
+      "notes": {
+        "eventsPerPhrase": {"mean": 2.25, "min": 2.0, "max": 3.0},
+        "onsetHistogram": [0.0, 0.1667, 0.1111, 0.1667, 0.1111, 0.2222, 0.1667, 0.0556],
+        "velocity": {"min": 0.5145, "max": 0.884, "mean": 0.6939},
+        "pitch": {"min": 71.0, "max": 88.0, "mean": 79.2778}
+      }
+    },
+    "string-waves-chords-only": {
+      "chords": {
+        "eventsPerPhrase": {"mean": 6.0, "min": 6.0, "max": 6.0},
+        "onsetHistogram": [0.1875, 0.1667, 0.3125, 0.1667, 0.1667, 0.0, 0.0, 0.0],
+        "velocity": {"min": 1.0, "max": 1.0, "mean": 1.0},
+        "pitch": {"min": 42.0, "max": 80.0, "mean": 62.5833},
+        "voiceEntrySpreadSeconds": {"mean": 6.1406, "max": 7.7283},
+        "voicesPerChord": {"mean": 6.0, "max": 6.0}
+      },
+      "notes": {
+        "eventsPerPhrase": {"mean": 0.0, "min": 0.0, "max": 0.0},
+        "onsetHistogram": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "velocity": {"min": 0.0, "max": 0.0, "mean": 0.0},
+        "pitch": {"min": 0.0, "max": 0.0, "mean": 0.0}
+      }
+    },
+    "string-waves-notes-only": {
+      "chords": {
+        "eventsPerPhrase": {"mean": 0.0, "min": 0.0, "max": 0.0},
+        "onsetHistogram": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "velocity": {"min": 0.0, "max": 0.0, "mean": 0.0},
+        "pitch": {"min": 0.0, "max": 0.0, "mean": 0.0},
+        "voiceEntrySpreadSeconds": {"mean": 0.0, "max": 0.0},
+        "voicesPerChord": {"mean": 0.0, "max": 0.0}
+      },
+      "notes": {
+        "eventsPerPhrase": {"mean": 2.5, "min": 2.0, "max": 3.0},
+        "onsetHistogram": [0.05, 0.15, 0.1, 0.35, 0.1, 0.05, 0.05, 0.15],
+        "velocity": {"min": 0.5393, "max": 0.8972, "mean": 0.7368},
+        "pitch": {"min": 64.0, "max": 88.0, "mean": 77.95}
+      }
+    },
+    "string-waves-beat-clock": {
+      "chords": {
+        "eventsPerPhrase": {"mean": 6.0, "min": 6.0, "max": 6.0},
+        "onsetHistogram": [0.1944, 0.2917, 0.25, 0.125, 0.1389, 0.0, 0.0, 0.0],
+        "velocity": {"min": 1.0, "max": 1.0, "mean": 1.0},
+        "pitch": {"min": 42.0, "max": 80.0, "mean": 63.4444},
+        "voiceEntrySpreadSeconds": {"mean": 3.576, "max": 5.0712},
+        "voicesPerChord": {"mean": 6.0, "max": 6.0}
+      },
+      "notes": {
+        "eventsPerPhrase": {"mean": 2.25, "min": 2.0, "max": 3.0},
+        "onsetHistogram": [0.0, 0.2222, 0.0741, 0.1852, 0.1111, 0.1111, 0.1481, 0.1481],
+        "velocity": {"min": 0.5204, "max": 0.884, "mean": 0.6689},
+        "pitch": {"min": 64.0, "max": 88.0, "mean": 77.4815}
+      }
+    }
+  }
+}

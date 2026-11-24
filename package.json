@@ -160,6 +160,7 @@
     "core:product:harmony": "node scripts/check-kessho-product-harmony.mjs",
     "core:product:arrangement-sample-offset": "tsx --test src/audio/coreProductArrangementSampleOffset.test.ts",
     "core:product:determinism": "node scripts/check-kessho-product-deterministic-music.mjs",
+    "test:m1-arrangement-statistics": "tsx scripts/m1/export-arrangement-snapshots.ts && node scripts/run-kessho-product-cpp-test.mjs ProductArrangementStatisticsTests",
     "core:product:graph": "node scripts/check-kessho-product-graph.mjs",
     "core:product:fx": "node scripts/check-kessho-product-fx-routing.mjs",
     "core:product:level-calibration": "node scripts/check-kessho-product-level-calibration.mjs",
