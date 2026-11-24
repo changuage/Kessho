@@ -1,0 +1,20 @@
+# Harmony redesign handoff
+
+Start with [Harmony, Random and Brain](../harmony-random-brain-design.md) for musical behavior and [UI integration](../harmony-ui-integration.md) for layout and control sizing. Read its [Decisions](../harmony-random-brain-design.md#decisions-24-november-2026) table and [One Harmony pipeline](../harmony-random-brain-design.md#one-harmony-pipeline) first; they settle the architecture questions the studies below leave open. Use the full [Kessho unified instrument](prototypes/kessho-unified-instrument.html) interaction prototype for the walkthrough in Global, Synth and Design map. The smaller [panel fit](prototypes/kessho-panel-fit.html) study demonstrates sizing and disclosure. The two current specs take precedence where a prototype or older study differs; in particular, the prototypes use per-part seeds, a separate Harmony tab layout and four visible slots that the decisions supersede.
+
+**Authored chords are rebuilt without backward compatibility.** Where a study below refers to the eight shared chord slots, slot references, Manage Pool, Draft/Capture, a separate chord-choice lane or Auto/Relative/Exact, read it through the [Chords](../harmony-random-brain-design.md#chords) section instead: one inline `Chord` value (Follow or Fixed), one Notes lane with `Advance: Steps / Hits`, a copy-only Palette and direct edits with Undo.
+
+## Companion documents
+
+| When working on | Read | Carry forward |
+| --- | --- | --- |
+| Brain suggestions and Orchid input | [Harmony assist study](kessho-harmony-assist-plan.md) | How to rank in-scale destinations, keep suggestions stable under a finger, retain common tones and respect explicit voicings. Ring position shows fifths relationships. The current design gives recommendations their own pads. |
+| Synth notes, chords and independent lanes | [Synth sequencer scope](kessho-synth-sequencer-scope.md) | With `Advance: Hits`, a rest does not advance the Notes lane. Editing one cell never changes another. Keep the selected cell distinct from the sounding playhead. Entry uses held keys, momentary chord modifiers, and Place. |
+| Live recording and generator printing | [Players and printing](kessho-players-and-printing-scope.md) | Share timestamped capture, retain individual attacks and routes, and commit to a chosen variation after acknowledgement. Print captures a fixed window before Brain. Preserve the take on failure and support Undo. Printed takes are Fixed Chords; the per-note offset/destination extension it describes is the `ChordNote` fields, not a separate payload. |
+| Client presentation | [Original pitch](kessho-harmony-pitch.md) | The musician's problem, hardware references and demo narrative. Use the current specs for feature commitments. |
+
+## Engineering evidence
+
+The [September recording audit](step-sequencer-recording-architecture-audit-2026-09-06.md) identifies concrete ways timing, gates, velocity and dense attacks can be lost. The subsequent [accepted step-printing direction](step-printing-accepted-direction-2026-09-08.md) records the decision to print into Steps and documents working Walker/Orbit cases. Use those cases alongside the October printer findings when testing a repair. Earlier pass counts and latency instrumentation are historical evidence. Device input-to-sound latency still requires measurement.
+
+For implementation, trace Harmony ownership through the [unified architecture](../../architecture/unified-harmony.md) and [native projection boundary](../../product-core/harmony-projection.md). Use the [existing workspace](../harmony-workspace.md) for component ownership and the [slider re-audit](../../slider-dual-preset-reaudit.md) for modulation and preset compatibility. The [older Harmony UI spec](../../product-core/kessho_harmony_ui_redesign_spec.md) records the earlier popup layout and midpoint lock. Under the current design Brain works at held blends and yields while Journey drives a transition.

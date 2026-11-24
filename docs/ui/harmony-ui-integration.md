@@ -1,6 +1,6 @@
 # Harmony redesign: fit within Kessho
 
-Updated 5 November 2026. Proposed integration of the accepted [Harmony, Random and Brain design](harmony-random-brain-design.md). The application has not been changed. Measurements below distinguish existing CSS contracts from proposed component budgets; rendered production fit still needs verification.
+Updated 24 November 2026. Proposed integration of the accepted [Harmony, Random and Brain design](harmony-random-brain-design.md). The application has not been changed. Measurements below distinguish existing CSS contracts from proposed component budgets; rendered production fit still needs verification.
 
 ## Retain the application frame
 
@@ -30,24 +30,40 @@ Keep the L4 preset blend and Journey in their existing summary area. Harmony's c
 
 Inside the existing Harmony card:
 
-1. A compact header shows the resolved key/scale and current ownership or Journey status.
-2. A circle of fifths approximately 180–220px across sits beside a small Brain pad bank when the panel has at least about 560px available. These are proposed budgets, not new global scaling constants. Below that width, stack the pads below the circle; touch layout uses sufficient ring spacing and larger targets.
-3. A short progression strip stays separate from the twelve-key ring. Key motion is a concise Held / Free walk control with its details on disclosure.
-4. Generative policy, source evidence and advanced routing open within the existing detail surface. They do not occupy permanent explanatory panels.
+The Harmony card is **one surface with drawers**. The current Simple / Detail / Overview workspace tabs are removed; their functions move into the resting surface or a drawer, so the live surface never disappears behind a tab.
 
-Brain has a stable location and a visible Return to Engine action while engaged. During an active Journey transition the same pad bank remains visible but unavailable, with one short status. No panel jumps, automatic page changes or duplicated circles. Static intermediate blends remain playable under the accepted Brain rule.
+At rest:
+
+1. A compact header shows the resolved key/scale and current ownership or Journey status.
+2. A circle of fifths approximately 180–220px across sits beside a small Brain pad bank when the panel has at least about 560px available. These are proposed budgets, not new global scaling constants. Below that width, stack the pads below the circle; touch layout uses sufficient ring spacing and larger targets. Tapping a key on the circle shapes the root on the live layer; it does not change Home.
+3. A short progression strip stays separate from the twelve-key ring. Each event shows `Auto` or its chord name. Key motion is a concise `Held / Drift` control with its details on disclosure.
+4. Brain shows three suggested destinations. **All moves** expands the same list to eight with the Z X C V B N M , shortcuts; there is no separate suggestion grid. A suggestion has three actions only: press to play it on the live layer, **Place** into the selected progression event or Notes cell, and **Save** to the Palette.
+5. The **Palette** is one row of saved chord chips (up to 16). Pressing a chip plays it on the live layer; dragging it, or Place, copies it into the selected target.
+
+Drawers, opened one at a time inside the card:
+
+- **Arrange** — progression rows: Add, Duplicate, Move, Delete, duration and `Auto` / Chord per event. There is no chord pool to manage.
+- **Voicing** — the Chord editor for the selected progression event. It is the same component as Synth's Notes editor.
+- **Generate** — generative policy, source evidence and advanced routing.
+
+While the live layer is engaged, the header shows **Return** and **Keep**. Pads latch by default; holding with a modifier or long-pressing is momentary. Keep is disabled at an intermediate blend, with the reason in its tooltip; Brain stays playable. During an active Journey transition the same pad bank remains visible but unavailable, with one short status. No panel jumps, automatic page changes or duplicated circles. Remove the morph read-only banner; the disabled authoring controls and Journey status carry that state.
 
 ## Synth: preserve the subsequencer workspace
 
-Keep sound editing on the left and performance editing on the right. Retain Simple / Detail / Overview as the existing density/navigation mechanism; do not add another Basic / Advanced switch. They expose the same musical state. Overview shows all parts' compact activity; Detail reveals independent sublane settings; Simple keeps the working lanes and relevant entry actions.
+Keep sound editing on the left and performance editing on the right. The sequencer has two views, **Part** and **Overview**, over the same musical state. Simple is removed: its Chord Generator and Random Notes controls become Random slots. Do not add another Basic / Advanced switch.
 
-Keep the sequencer slot strip, mute/solo, variation rail and independent Trigger, Notes, Expression, Morph, Distance and Nudge lanes. Add Random to the existing type control. Put Notes / Chords beneath it only while Random is selected. Preserve at least six processes: four visible slots plus an expandable remaining pair at narrow panel widths; show all six when they fit. Expansion never disables hidden parts.
+- **Part** (today's Detail) is the selected slot's full editor: its header, type surface and independent sublanes.
+- **Overview** is the high-level macros view: all six slots on one screen, one compact row each. Each row edits directly: enable/mute/solo, sound destination, Respond to Brain, type and Random mode, active variation A–D, Print, trigger-step toggles for Steps slots, and one primary macro for generators (density for Notes, voice count or wave timing for Chords, movement for Walker, speed for Orbit). The existing sequencer chain rail sits at the top. Selecting a row's name opens that slot in Part.
+
+Keep the sequencer slot strip, mute/solo, variation rail and independent Trigger, Notes, Expression, Morph, Distance and Nudge lanes. Add Random to the existing type control. Put Notes / Chords beneath it only while Random is selected. The slot strip shows all six uniform slots; at narrow panel widths it wraps to two rows of three rather than hiding any. Remove the unused `scatter` and `chain` members from `SequencerViewMode` along with `simple`.
 
 The selected slot header has source, type and one compact Harmony relationship control. Its detail separates pitch sourcing from Brain participation. Do not repeat Global's full context editor or circle here. Keep live Brain access through a compact shared performance disclosure that opens the same controls and state.
 
-Selecting a Notes cell opens one inline editor immediately beneath that lane. It contains the selected step, chord/note preview, Copy/Place actions and a keyboard using the current key styling. Start with roughly 106–144px key height, matching the existing [live keyboard](../../src/ui/harmony/live/liveChordKeyboard.css). The complete editor can occupy roughly 200–260px depending on wrapping; this is a proposed budget. Closing it returns the space to the lanes.
+There is one pitch lane, **Notes**; the separate Play/Chords chord-choice lane is removed. Each cell shows a compact mark for a Chord (single note or chord), `H` for Harmony, or empty for Rest. The lane settings hold its length, `Advance: Steps / Hits` and default articulation (Chord · Strum · Arp).
 
-Plain held keys enter literal notes; held Orchid modifiers temporarily change entry behavior. The four basic shape buttons stay beside/below the keyboard; extensions and voicing open on demand. Copy from the first trigger and Place into the third uses this same editor. Preserve existing keyboard shortcuts, explicit placement, mixed note/chord content and recording access.
+Selecting a Notes cell opens one inline editor immediately beneath that lane. It contains the selected step, chord/note preview, a **Follow / Fixed** toggle, an articulation override, Copy/Place actions and a keyboard using the current key styling. Start with roughly 106–144px key height, matching the existing [live keyboard](../../src/ui/harmony/live/liveChordKeyboard.css). The complete editor can occupy roughly 200–260px depending on wrapping; this is a proposed budget. Closing it returns the space to the lanes.
+
+Plain held keys enter literal notes; held Orchid modifiers temporarily change entry behavior. The four basic shape buttons stay beside/below the keyboard; extensions and voicing open on demand. Literal notes are stored as a Fixed chord; picking a root and shape creates a Follow chord. Edits apply immediately with Undo; there is no Draft or Capture step. Copy from the first trigger and Place into the third uses this same editor, and every Place makes an independent copy. Shift-select several cells to edit them together. Global's Voicing drawer reuses this component. Preserve existing keyboard shortcuts, explicit placement, mixed note/chord content and recording access.
 
 Print opens a compact strip in the selected part. Capture progress, destination/fit issues and the resulting take appear in that strip only when relevant. Random, Walker and Orbit replace the selected player's main surface while retaining its header and controls; printing never adds another permanent pane.
 
@@ -65,4 +81,6 @@ Verify the redesigned panel at 380px and at its normal desktop widths; verify wh
 
 Use current production controls in the integration review, including dual handles and runtime indicators. Reflow must not remount musical state, reset a generator or multiply subscriptions. Hidden views may stop their visual work; the native performance continues. Motion remains event-driven or uses the existing coalesced indicator path, with reduced-motion support and no decorative animation loops.
 
-The accompanying fit study illustrates placement, colors and disclosure at the existing panel widths. It is not a production screenshot or a replacement for the complete interaction prototype. Its controls are illustrative; audio, recording, live key handling and the production dual-slider bindings require app integration.
+The accompanying fit study uses the production slider primitive for preset morph. On Global, the center chord, Brain pads and Journey controls respond to local preview state. On Synth, selecting a Notes cell reveals its voicing on the keyboard. Copy on trigger one and Place on trigger three exercise the same edit within the narrow panel. The keyboard in this study displays the voicing. The full interaction prototype covers live key entry and additional player types.
+
+A Chromium check exercised eight viewport widths from 320 to 1,500 CSS pixels. The Synth panel measured 378px on a 390px phone, 522px at a 1,024px desktop width, and 730px in the full desktop layout. At each width the visible panel, keyboard and action controls fit horizontally. Brain selection, Journey suspension and neutral return on pause, and copying the first chord into the third trigger passed. Native audio, preset persistence, production modulation bindings and integration with the complete app remain separate verification work.
