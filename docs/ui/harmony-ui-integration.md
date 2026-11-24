@@ -37,7 +37,7 @@ At rest:
 1. A compact header shows the resolved key/scale and current ownership or Journey status.
 2. A circle of fifths approximately 180–220px across sits beside a small Brain pad bank when the panel has at least about 560px available. These are proposed budgets, not new global scaling constants. Below that width, stack the pads below the circle; touch layout uses sufficient ring spacing and larger targets. Tapping a key on the circle shapes the root on the live layer; it does not change Home.
 3. A short progression strip stays separate from the twelve-key ring. Each event shows `Auto` or its chord name. Key motion is a concise `Held / Drift` control with its details on disclosure.
-4. Brain shows three suggested destinations. **All moves** expands the same list to eight with the Z X C V B N M , shortcuts; there is no separate suggestion grid. A suggestion has three actions only: press to play it on the live layer, **Place** into the selected progression event or Notes cell, and **Save** to the Palette.
+4. Brain shows three suggested destinations. **All moves** expands the same list to every in-scale destination with the Z X C V B N M shortcuts; there is no separate suggestion grid. A suggestion has three actions only: press to play it on the live layer, **Place** into the selected progression event or Notes cell, and **Save** to the Palette.
 5. The **Palette** is one row of saved chord chips (up to 16). Pressing a chip plays it on the live layer; dragging it, or Place, copies it into the selected target.
 
 Drawers, opened one at a time inside the card:
@@ -53,7 +53,30 @@ While the live layer is engaged, the header shows **Return** and **Keep**. Pads 
 Keep sound editing on the left and performance editing on the right. The sequencer has two views, **Part** and **Overview**, over the same musical state. Simple is removed: its Chord Generator and Random Notes controls become Random slots. Do not add another Basic / Advanced switch.
 
 - **Part** (today's Detail) is the selected slot's full editor: its header, type surface and independent sublanes.
-- **Overview** is the high-level macros view: all six slots on one screen, one compact row each. Each row edits directly: enable/mute/solo, sound destination, Respond to Brain, type and Random mode, active variation A–D, Print, trigger-step toggles for Steps slots, and one primary macro for generators (density for Notes, voice count or wave timing for Chords, movement for Walker, speed for Orbit). The existing sequencer chain rail sits at the top. Selecting a row's name opens that slot in Part.
+- **Overview** is the high-level macros view: all six slots on one screen, one compact row each. Every row edits enable/mute/solo, sound destination, Respond to Brain, type and Random mode, and Print. The existing sequencer chain rail sits at the top. Selecting a row's name opens that slot in Part.
+
+**Overview rows show only what each type uses:**
+
+| Type | Rhythm column | Macro | A–D |
+| --- | --- | --- | --- |
+| Steps | Trigger toggles | — | Yes |
+| Walker, step-grid mode | Trigger toggles | Movement | No |
+| Walker on its own clock, Orbit, Random | Recent-note activity | Movement / Speed / Density (Notes) / Wave timing (Chords) | No |
+
+Variations hold Steps patterns and printed takes, so generator rows have no A–D; Print chooses its destination in its own strip. The activity strip draws recent notes from the same generated-event stream that capture uses, refreshed on musical events, not animation frames. When Walker layers route to other sounds, the sound control shows the extra count (for example "Pad 1 +1").
+
+**Subsequencers in Part.** Each slot owns its lanes separately in each variation A–D, and nothing is shared between slots.
+
+- **Lane settings:** every lane, Notes included, has the same three settings: length, direction and Advance (Hits: only audible triggers move it; Steps: every step moves it). This mirrors the engine's existing per-sublane fields.
+- **Showing lanes:** Trigger and Notes always show. Other active lanes show as one-line summaries with their shape, length and playhead.
+- **Turning lanes on and off:** **Add or turn on a lane** lists the inactive ones: Pitch, Morph, Distance, Nudge, Probability, Ratchet and trig conditions. Probability and Ratchet are lanes with their own length, as in the engine; the Notes editor can still override them for one cell.
+- **One detail panel:** tapping a lane label opens one detail panel beneath the lanes. Closing it only collapses the panel, and the lane keeps playing. **Turn lane off** is the separate, explicit way to stop a lane, and it keeps the lane's values.
+
+**Generators in Part.** Random and Orbit replace the lane area with their surface; their parameter motion comes from Mod A/B, not sublanes.
+
+- **Walker trigger modes:** Walker has three: gesture hold, step grid and auto clock.
+- **Step-grid mode:** Walker moves on its slot's trigger lane and is thinned by the Probability lane and trig conditions, as the engine does today. So the Walker surface keeps those two lanes visible beneath it.
+- **Layer routing:** each Walker layer can route to its own sound, in the anchor and routing details.
 
 Keep the sequencer slot strip, mute/solo, variation rail and independent Trigger, Notes, Expression, Morph, Distance and Nudge lanes. Add Random to the existing type control. Put Notes / Chords beneath it only while Random is selected. The slot strip shows all six uniform slots; at narrow panel widths it wraps to two rows of three rather than hiding any. Remove the unused `scatter` and `chain` members from `SequencerViewMode` along with `simple`.
 
@@ -63,9 +86,9 @@ There is one pitch lane, **Notes**; the separate Play/Chords chord-choice lane i
 
 Selecting a Notes cell opens one inline editor immediately beneath that lane. It contains the selected step, chord/note preview, a **Follow / Fixed** toggle, an articulation override, Copy/Place actions and a keyboard using the current key styling. Start with roughly 106–144px key height, matching the existing [live keyboard](../../src/ui/harmony/live/liveChordKeyboard.css). The complete editor can occupy roughly 200–260px depending on wrapping; this is a proposed budget. Closing it returns the space to the lanes.
 
-Plain held keys enter literal notes; held Orchid modifiers temporarily change entry behavior. The four basic shape buttons stay beside/below the keyboard; extensions and voicing open on demand. Literal notes are stored as a Fixed chord; picking a root and shape creates a Follow chord. Edits apply immediately with Undo; there is no Draft or Capture step. Copy from the first trigger and Place into the third uses this same editor, and every Place makes an independent copy. Shift-select several cells to edit them together. Global's Voicing drawer reuses this component. Preserve existing keyboard shortcuts, explicit placement, mixed note/chord content and recording access.
+Plain held keys enter literal notes; held Orchid modifiers temporarily change entry behavior. The four basic shape buttons stay beside/below the keyboard; extensions and voicing open on demand. Literal notes are stored as a Fixed chord; picking a root and shape creates a Follow chord. Edits apply immediately with Undo; there is no Draft or Capture step. Copy from the first Notes cell and Place into the third uses this same editor, and every Place makes an independent copy. Shift-select several cells to edit them together. Global's Voicing drawer reuses this component. Preserve existing keyboard shortcuts, explicit placement, mixed note/chord content and recording access.
 
-Print opens a compact strip in the selected part. Capture progress, destination/fit issues and the resulting take appear in that strip only when relevant. Random, Walker and Orbit replace the selected player's main surface while retaining its header and controls; printing never adds another permanent pane.
+Print opens a compact strip in the selected part. Capture progress, destination/fit issues and the resulting take appear in that strip only when relevant. Random, Walker and Orbit replace the selected player's main surface while retaining its header and controls (a step-grid Walker also keeps its Trigger and Probability lanes); printing never adds another permanent pane.
 
 ## Fit by reflowing, not scaling the entire interface
 
@@ -81,6 +104,17 @@ Verify the redesigned panel at 380px and at its normal desktop widths; verify wh
 
 Use current production controls in the integration review, including dual handles and runtime indicators. Reflow must not remount musical state, reset a generator or multiply subscriptions. Hidden views may stop their visual work; the native performance continues. Motion remains event-driven or uses the existing coalesced indicator path, with reduced-motion support and no decorative animation loops.
 
-The accompanying fit study uses the production slider primitive for preset morph. On Global, the center chord, Brain pads and Journey controls respond to local preview state. On Synth, selecting a Notes cell reveals its voicing on the keyboard. Copy on trigger one and Place on trigger three exercise the same edit within the narrow panel. The keyboard in this study displays the voicing. The full interaction prototype covers live key entry and additional player types.
+The accompanying [fit study](harmony-handoff/prototypes/kessho-panel-fit.html) was rebuilt on 24 November 2026 for the decisions in the design doc. It uses the production slider primitive for the preset morph and for Overview's generator macros.
 
-A Chromium check exercised eight viewport widths from 320 to 1,500 CSS pixels. The Synth panel measured 378px on a 390px phone, 522px at a 1,024px desktop width, and 730px in the full desktop layout. At each width the visible panel, keyboard and action controls fit horizontally. Brain selection, Journey suspension and neutral return on pause, and copying the first chord into the third trigger passed. Native audio, preset persistence, production modulation bindings and integration with the complete app remain separate verification work.
+- **Global:** the circle shapes the root. The three Brain pads latch, with All moves, Return and Keep (endpoint-only). The progression strip shows Auto / Follow / Fixed events. Key motion is Held / Drift. There is a Palette row and Arrange, Voicing and Generate drawers, with progression edits locked at an intermediate blend.
+- **Synth Part:** six slots in two rows of three on narrow panels. The Notes editor has Follow / Fixed, Harmony and Rest, plus Copy, Place and Undo. Notes-lane Advance (Hits / Steps) and articulation settings are included, and Expression has its own Advance. The trigger lane labels which Notes cell each hit plays. **Add or turn on a lane** lists every other sublane. The Walker slot shows its step-grid Trigger and Probability lanes.
+- **Synth Overview:** all six parts with On, Solo, Print and the chain. Rows are shaped by type: Steps rows show A–D and trigger toggles; the step-grid Walker shows trigger toggles, a macro and "+1" for its routed layer; Random and Orbit rows show activity and a macro.
+
+The keyboard in this study displays the voicing; the full interaction prototype covers live key entry.
+
+A Chromium check on 24 November 2026 exercised eight viewport widths: 320, 390, 600, 768, 900, 1,024, 1,280 and 1,500 CSS pixels. Widths below 768 were emulated as touch devices, so the 44px target rules were active.
+
+- **Panel widths:** the Synth panel measured 292px at 320, 362px on a 390px phone, 506px at 1,024, and 730px in the full desktop layout.
+- **Fit:** at every width there was no horizontal page overflow and no clipped control in any of four states. The states were Global with All moves and Arrange open, Synth Part with the Notes editor and every lane panel open, the Walker part, and Synth Overview.
+- **Behavior checked:** latching and releasing a pad, root shaping with Keep disabled at 50/50 and working at an endpoint, the Arrange lock at an intermediate blend, copying the first Notes cell into the third, Fixed → Follow conversion, and the Hits / Steps trigger mapping.
+- **Not covered:** native audio, preset persistence, production modulation bindings and integration with the complete app remain separate verification work.

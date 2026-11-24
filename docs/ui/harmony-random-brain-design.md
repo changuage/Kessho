@@ -19,7 +19,7 @@ These decisions close the open questions from the November review. They take pre
 | Live layer | **One Harmony pipeline: Engine → Live layer → Parts.** Brain is the single live layer and absorbs today's Harmony takeover. | Separate takeover route, separate takeover scope |
 | Brain persistence | **Temporary, with Keep.** Return to Engine drops the live layer. Keep makes the current root the new home (today's Adopt) and the engine continues generatively from there. | Adopt as a separate workspace action |
 | Pad gesture | **Latch by default.** Holding with a modifier, or a long press, is momentary. | — |
-| Suggestions | **One suggestion engine, two views.** Brain pads show its top three moves; All moves expands to the full eight with the Z X C V B N M , shortcuts. | A second ranking for Brain |
+| Suggestions | **One suggestion engine, two views.** Brain pads show its top three destinations; All moves expands to every in-scale destination with the Z X C V B N M shortcuts. The offered pads freeze while the live layer is engaged, and the latched pad always stays visible. | A second ranking for Brain |
 | Smooth | **One shared voicing resolver** for Brain moves and authored chords. Random Chords keeps its existing renderer unchanged. | Per-feature voicing code |
 | Midpoint rights | **Live at any held blend; authoring at endpoints.** The projection exposes `liveAvailable` and `authoringAvailable` instead of one `morphLocked`. | Overloaded `manualControlAvailable` |
 | Chords | **Full overhaul, no backward compatibility.** No shipped preset uses authored chords, so the chord model is rebuilt from scratch: see [Chords](#chords). The Random Chords *generator* is not an authored chord and keeps its behavior. | Everything listed under [What is deleted](#what-is-deleted) |
@@ -29,7 +29,8 @@ These decisions close the open questions from the November review. They take pre
 | Articulation | **Chord · Strum · Arp** per lane, overridable per cell. | Play `mode: arp | chord`, `ProductChordStyle` |
 | Editing | **Direct edits with Undo.** Pressing a key or pad auditions immediately. | Draft → Capture choreography |
 | Global Harmony | **One surface with drawers.** The Simple / Detail / Overview tabs are removed. | Harmony workspace tabs |
-| Synth views | **Part + Overview.** Part is the selected slot's full editor. Overview is a high-level macros view of all six slots. | Simple view; unused `scatter` / `chain` view modes |
+| Synth views | **Part + Overview.** Part is the selected slot's full editor. Overview is a high-level macros view of all six slots; each row shows only what its type uses. | Simple view; unused `scatter` / `chain` view modes |
+| Subsequencers | **One lane model.** Every sublane has length · direction · advance (Hits / Steps), per slot and per variation, matching the engine's existing per-sublane fields. Collapsing a lane only hides its detail; turning it off is a separate, explicit action. | Notes-only Advance; separate pitch-binding traversal |
 | Key motion | Labelled **Key drift** (`Key motion: Held / Drift`), matching the code name `cofDrift`. | Collision with Walker and Mod A/B Walk |
 | Pattern / Harp | **Later phase.** The performance contract leaves room for them; they are not built or shown now. | — |
 | Cleanup | **Each phase deletes the code it supersedes in the same change.** Only preset decoders and migrations stay. No feature flags or parallel fallbacks. | Accumulated dead paths |
@@ -51,7 +52,7 @@ Capture tap   pre-live-layer notes → Print
 
 **Engine.** Generative progression, key drift and preset morphing run with no interaction, exactly as Harmony does today. Journey owns the route while it transitions; otherwise Harmony owns key drift.
 
-**Live layer.** One small native state: a root offset (from tapping a key on the circle), a destination Chord (from a Brain pad, a suggestion or a chord played on the keyboard), latch state, and the participating-part mask. Brain pads and suggestions are the same thing: the pads show the top three suggested destinations. There is no second takeover route. The layer reads the resolved effective frame, including drift and the held blend position, and recomputes only when that frame or the gesture changes. Harmony-following parts play the destination through the shared voicing resolver (Smooth). Melodic parts move by the same number of scale degrees and keep their contour. Fixed chords and parts with Respond to Brain off are untouched.
+**Live layer.** One small native state: a root offset (from tapping a key on the circle), a destination Chord (from a Brain pad, a suggestion or a chord played on the keyboard), latch state, and the participating-part mask. Brain pads and suggestions are the same thing: the pads show the top three suggested destinations. There is no second takeover route. The layer reads the resolved effective frame, including drift and the held blend position, and recomputes only when that frame or the gesture changes. Harmony-following parts play the destination through the shared voicing resolver (Smooth). Melodic parts move by the same number of scale degrees and keep their contour. Participation is decided per part: a part with Respond to Brain off is untouched, and a participating part's Fixed chords move with it, so printed takes respond live without being transposed twice. Brain pad labels and the center chord show the destination in the live key, including a shaped root.
 
 **Return and Keep.** Return to Engine drops the layer at the next musical boundary and rejoins the then-current frame. Keep writes the current root as Home and clears the layer, so the engine carries on from the new key. Keep is an authoring action: available at endpoints, disabled at an intermediate blend.
 
@@ -79,8 +80,8 @@ type Chord = {
 type ChordNote = { midi: number; velocity?: number; offset?: number; gate?: number; destination?: SourceId };
 ```
 
-- **Follow** resolves `degree`, `quality`, `extensions` and `voicing` against the effective frame (Home, key drift, L4 route, live layer) once, at event time, through the shared voicing resolver.
-- **Fixed** plays `notes` exactly and bypasses every transformation. Printed and recorded takes are Fixed Chords; their per-note `velocity`, `offset`, `gate` and `destination` carry the performance the printing scope requires.
+- **Follow** resolves `degree`, `quality`, `extensions` and `voicing` against the harmony (Home, key drift, L4 route) once, at event time, through the shared voicing resolver.
+- **Fixed** plays `notes` exactly and does not follow the harmony. Follow/Fixed answers one question only, whether a chord follows the harmony; Brain participation is a separate per-part setting. Printed and recorded takes are Fixed Chords; their per-note `velocity`, `offset`, `gate` and `destination` carry the performance the printing scope requires.
 - Literal keys entered in the editor create a Fixed Chord. Choosing a root and quality creates a Follow Chord. One toggle in the editor converts between them: Follow → Fixed pins the currently resolved notes; Fixed → Follow recognizes the nearest degree and quality.
 - The chord name is computed for display, never stored. Recognition is a pure function.
 
@@ -103,7 +104,7 @@ Each Notes lane has a default articulation: **Chord**, **Strum** (direction, spr
 
 - One bounded `Chord` encoding (up to 8 notes) shared by the progression, Notes lane cells, the Palette, the live layer and printing. One encoder in TypeScript, one decoder and validator in native.
 - One resolver, in native, used for live, scheduled and printed chords. UI previews read resolved notes from the projection or call the same native function. Do not keep a TypeScript reimplementation.
-- The Notes lane's existing pitch binding modes (`polyrhythmic`, `linked`, `sequence`) must map onto `Advance: Steps / Hits`; remove any mode that only duplicated the chord-choice traversal.
+- `Advance: Steps / Hits` is a setting of every sublane, not only Notes. The engine already stores it per sublane and variation (`sublane_follow_trigger_hits_mask`, with `sublane_steps` and `sublane_directions`) and derives Pitch's traversal from its binding mode (`SequencerEventBuffer.cpp`, `subLaneStepForField`). Expose it as one uniform lane setting. Map the pitch binding modes onto it, and keep a binding mode only if it means more than traversal.
 
 ### What is deleted
 
@@ -258,7 +259,7 @@ The availability rule is **Journey actively driving a transition**, never `0% < 
 
 Keep the Brain surface in place during a Journey transition, with disabled performance targets and one concise status. Show `Key drift paused` only in the motion detail when relevant. Do not replace the performance surface with an explanatory dashboard.
 
-When Brain becomes available again, leave it neutral. A fresh gesture is required; never reinstate a stale override. Brain remains a live layer applied once, with per-part participation and Return to Engine. Brain sequencing/automation stays deferred. Authoring (slot edits, Print, Keep) remains endpoint-only: `authoringAvailable` is false at any intermediate blend even while `liveAvailable` is true.
+When Brain becomes available again, leave it neutral. A fresh gesture is required; never reinstate a stale override. Brain remains a live layer applied once, with per-part participation and Return to Engine. Brain sequencing/automation stays deferred. Authoring (progression edits and Keep) remains endpoint-only: `authoringAvailable` is false at any intermediate blend even while `liveAvailable` is true.
 
 ## Architecture and CPU requirements
 
@@ -302,9 +303,10 @@ Required acceptance checks:
 14. One live layer: a Brain pad, a suggestion Play and a circle root tap all change the same native state, and one Return clears all of them. Latch holds without a finger; the momentary gesture releases at the next boundary.
 15. Keep at an endpoint makes the shaped root the new Home and the engine continues generatively from it; Keep is disabled at an intermediate blend while Brain stays playable.
 16. Editing one Notes cell or progression event never changes another. Copy from trigger one and Place on trigger three, and Place from the Palette, produce independent copies. With `Advance: Hits`, six hits in a sixteen-step trigger loop advance an eight-cell Notes lane by six.
-17. A Follow Chord moves with key drift, the L4 route and the live layer exactly once; a Fixed Chord never moves. A one-note Chord behaves like a note. Follow → Fixed → Follow round-trips the same degree and quality for diatonic chords.
+17. A Follow Chord moves with key drift and the L4 route; a Fixed Chord does not. Both move with the live layer exactly once when their part responds to Brain. A one-note Chord behaves like a note. Follow → Fixed → Follow round-trips the same degree and quality for diatonic chords.
 18. Presets containing old chord fields load without error, play their generative harmony unchanged and save without those fields.
-19. Overview shows all six slots on one screen at the 380px panel width and supports mute/solo, destination, type, variation, step toggles, one macro per generator and the sequencer chain without opening Part.
+19. Overview shows all six slots on one screen at the 380px panel width and supports mute/solo, destination, type, Print and the sequencer chain without opening Part. Each row shows only what its type uses: Steps rows show A–D and trigger toggles. Walker in step-grid mode shows trigger toggles plus its macro. Walker on its own clock, Orbit and Random rows show recent-note activity plus one macro. Generator rows show no A–D. A Walker with layers routed to other sounds shows the extra count.
+21. Every sublane in Part has length, direction and advance; Probability, Ratchet and trig conditions are available as lanes. Collapsing a lane never stops it, and a Walker in step-grid mode keeps its Trigger and Probability lanes visible under its surface.
 20. No superseded path remains after its phase lands: searching for the removed takeover route, morph banner, Simple view, generated recorder, chord bank and Play chord sequencer finds nothing outside the non-chord preset decoders.
 
 ## Implementation phases
@@ -322,4 +324,16 @@ Each phase ships on its own and deletes what it replaces.
 
 ## Prototype status
 
-The [unified interaction prototype](harmony-handoff/prototypes/kessho-unified-instrument.html) demonstrates the layout, input, slot model, Brain/Journey availability and recording/printing flow. Its generator algorithms, timing units, parameter-motion controls and route thresholds are simplified. Its independent Random Chords density control is superseded by **Follow Harmony** as the default. Its standalone slider controls illustrate placement and interaction intent; they are not the production implementation reference. Production integration must use the shared architecture specified above. This documentation update does not modify that prototype or implement the production migration.
+Both prototypes were updated on 24 November 2026 to match the decisions above.
+
+The [unified interaction prototype](harmony-handoff/prototypes/kessho-unified-instrument.html) demonstrates:
+
+- **Live layer:** root shaping on the circle, latched and momentary Brain pads (tap, Shift or long-press, Z–M keys), Return, and Keep (endpoint-only).
+- **Chords:** the one Chord value (Follow / Fixed) in Notes cells and inline progression events; Advance by Hits or Steps; lane articulation with per-cell override; direct edits with Undo; Copy/Place across cells and events; the Palette.
+- **Global:** Arrange, Voicing and Generate drawers; Key motion Held / Drift. The Voicing drawer hosts the same Chord editor component as Synth.
+- **Synth:** six uniform slots with per-part seeds; Part and Overview views.
+  - **Part:** every lane has length, direction and advance, with Probability and Ratchet lanes and an explicit "Turn lane off". Walker's step-grid mode keeps its Trigger and Probability lanes, and each Walker layer can route to its own sound.
+  - **Overview:** rows shaped by type, with live activity for generators.
+- **Unchanged flows:** recording and printing.
+
+Its `window.__kesshoPrototype` hooks support scripted checks. Its generator algorithms, timing units, parameter-motion controls and route thresholds are simplified, and its standalone sliders illustrate placement only. Production integration must use the shared architecture specified above. The prototypes do not implement the production migration.
