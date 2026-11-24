@@ -78,23 +78,37 @@ Whether a step plays is a pure function: `hit(seed, role, step, variationBar)`, 
 
 ## Interface
 
-**Part surface (resting):**
+**Layout principle:** the pattern grid is the hero. Controls sit in one strip above it and one bar below it. Each role is edited through a single inspector for whichever role is selected, rather than through controls repeated on every row.
 
-- **Kit Style pad,** about 190px square, with the map names faintly at their grid points.
-  - **Dots:** each role is a coloured dot, and a dashed ring marks their centre.
-  - **Dragging:** drag a dot to move one role; drag anywhere else to move all four together, keeping their spacing.
-- **Kit macros:** Variation · all, Fill and Swing.
-- **Loop box:** 1 / 2 / 4 bars and **Lock last n**. While looping it shows **Release**, **Print loop** and the loop position. Then **Reroll**.
-- **Role grid:** four rows (Anchor, Backbeat, Pulse, Color) by 16 or 12 steps. Each row has:
-  - **Label:** a colour mark, the role's nearest style and its voices.
-  - **Mini Style pad:** 56px, the same state as that role's dot on the kit pad.
-  - **Cells.**
-  - **Density and Variation** inline.
-  - **A ⋯ button** that opens the row's Accent, Humanize and Fill share. One row's panel is open at a time.
-  - **Cells:** shading shows the weight; a dot marks a hit in the current bar, and a bar-shaped dot marks a ratchet.
-  - **Markers:** a coloured underline shows the fill zone, and an outline the playhead.
-  - **Interaction:** tapping a cell cycles force-on → force-off → free. In production, a tap forces on and a long press forces off.
-- **Status line:** bar, nearest style, memory and "fill in N bars".
+**Header:** "Groove · Part 01 · Kit" on the left; the status on the right (bar, "fill in N", the variation period, or "Looping bar k of n").
+
+**Control strip, one line:**
+
+- **Kit macros:** Swing, Fill and Variation (which scales every role). Each is a slider with its value shown inline.
+- **Performance actions,** after a divider: loop length (1 / 2 / 4 bars), **Loop**, and **Reroll**. While looping, Loop becomes a lit **Release** and **Print loop** appears.
+
+**Body, two columns:**
+
+- **Style pad (left, about 240px):** a quiet 3 × 3 grid with faint map names.
+  - **Selected role:** a solid dot; the other roles are small hollow rings.
+  - **Dragging:** moves the selected role. Tapping a ghost dot selects that role.
+  - **Move all:** a toggle under the pad; while on, dragging moves all four roles together and keeps their spacing.
+- **Role grid (right):** four rows (Anchor, Backbeat, Pulse, Color) by 16 or 12 steps.
+  - **Row header:** the role name, its nearest style and its voices, in plain text. Tapping it selects the role. Selection shows as full-strength text, with the row's track slightly brighter; unselected rows are muted.
+  - **Tracks:** each row is a borderless rounded track, with faint separators at each beat.
+  - **Cells:**
+    - **Weight:** a thin, faint vertical tick whose height follows the weight.
+    - **Hit:** a solid mark in the role's colour, with opacity following velocity.
+    - **Ratchet:** a split mark.
+    - **Forced on:** a cream underline.
+    - **Forced off:** a short muted dash.
+    - **Tap:** cycles force-on → force-off → free. In production, a tap forces on and a long press forces off.
+  - **Fill zone:** a warm band behind the last beat on fill bars.
+  - **Playhead:** one column highlight across all four rows, updated by setting a single value per step.
+  - **While looping:** the tracks get a warm outline.
+- **Inspector (under the grid):** a plain section below a hairline rule, headed by the role name. It holds the selected role's Density, Variation, Accent, Humanize and Fill share, as labelled sliders with values in a responsive grid. Placement and the heading tie it to the selected row; no box, tint or coloured edge does.
+
+**Bottom bar:** drawer tabs (Voices, Timing, Color) on the left; the Print controls on the right (mode, bars, destination, Capture or Write). Capture progress and the take review open beneath it only when relevant.
 
 **Drawers, one at a time:**
 
@@ -102,11 +116,31 @@ Whether a step plays is a pure function: `hit(seed, role, step, variationBar)`, 
 - **Timing:** Rate, Memory and Fill every, plus a pointer to the part header's clock.
 - **Color:** Color depth.
 
+**Explanations** live in tooltips, not printed on the surface.
+
+**Visual language:** Kessho's own tokens.
+
+- **Surfaces:** warm charcoal cards, cream and soft-white text, 12% borders, an 8px card and 6px control radius, and hairline head rules.
+- **Title:** the Drums tab colour on the card title only.
+- **Role colours:** taken from Kessho's material palette (cream, clay, sage, slate), and appearing only on hits and pad dots.
+- **Controls:** sliders are neutral cream, and on-states use Kessho's sage "on" treatment.
+- **Live states:** clay marks Loop, the fill band and the loop outline.
+
+The surface follows the UI integration doc's "Avoid generic UI patterns" rules: no side-edge colour bars, decorative dots, tinted selection cards, glow halos, pill chips or uppercase letter-spaced labels.
+
 **Overview row:** recent-hit activity and the master Density macro, following the Overview rule for generators. It notes when a loop is running.
 
-**At narrow widths:** the kit pad stacks above the kit macros. Each role row puts its label, mini pad and macros on one line, and the cells on the line beneath.
+**At narrow widths:**
 
-**In production:** every pad and macro uses the shared control system. The mini pads and kit pad are one XY control bound to the same per-role state. Both pad axes and every macro are MIDI-learnable, so a controller can play one role's Style live.
+- **Below about 820px:** the Style pad sits above the grid, with Move all beside it.
+- **On phones:** the pad is capped at about 300px and centred. Each role's header sits above its full-width track, and the inspector wraps into one or two columns.
+
+**Steps view:** uses the same track treatment. There is one row per voice, used voices by default; hits take their role's colour, opacity shows velocity × probability, and small labels show probability and fill conditions.
+
+**In production:**
+
+- **Controls:** every slider and pad uses the shared control system.
+- **One XY state per role:** the pad edits the selected role's XY. A role's Style can be MIDI-mapped as its own pair of axes, so a controller can perform any role's Style directly without selecting it on screen.
 
 ## Printing
 
@@ -142,14 +176,14 @@ Printing uses the shared Print strip and destination rules: choose a variation, 
 6. **Pattern print:** yields a Steps part whose long-run hit frequency per step matches the model's probability, and whose fills fire only on their condition.
 7. **Return to Groove:** resumes the generator with its settings unchanged after a print.
 8. **Fit:** the surface fits the 380px panel with 44px touch targets, and the Overview row follows the generator rule.
-9. **Per-role independence:** moving one role's Style, or changing one role's Variation, never changes another role's hits. Dragging the kit pad's background moves all four roles by the same amount.
+9. **Per-role independence:** moving one role's Style, or changing one role's Variation, never changes another role's hits. With Move all on, dragging moves all four roles by the same amount.
 10. **Loop:** Lock last *n* replays exactly the *n* bars that were heard, from the next bar line, until Release. Edits made while looping don't change what loops. Release returns to the live groove at the next bar line, at the generator's current bar. Print loop writes the looped bars into Steps. Nothing about a loop is saved in the preset.
 
 ## Prototype status
 
 The [Groove prototype](prototypes/kessho-groove.html) implements:
 
-- **Generator:** the nine maps; a Style position for each role, on the kit pad (drag one dot or all four) and on each row's mini pad; per-role Density, Variation, Accent, Humanize and Fill share; kit Variation · all, Fill and Swing; Memory, the three rates and locks.
+- **Generator:** the nine maps; a Style position for each role, edited on one pad for the selected role (other roles shown as ghosts, Move all to shift every role together); per-role Density, Variation, Accent, Humanize and Fill share in the inspector under the grid; kit Swing, Fill and Variation; Memory, the three rates and locks.
 - **Loop:** retrospective 1, 2 or 4 bars, with Release and Print loop.
 - **Controls:** Reroll, the role-to-voice matrix and Color depth.
 - **Printing and Steps:** both print modes, and a Steps view (used voices by default, all seven on request) with probability and fill-condition labels. The Overview row has activity and a master Density.

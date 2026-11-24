@@ -24,6 +24,21 @@ Use the existing `--k-fs-*` typography scale. Essential labels and values should
 
 New or changed controls use the existing 32px fine-pointer / 44px touch target policy. Retain the current focus styling. Small visible icons and slider rails may have larger effective hit regions, but adjacent hit regions must not overlap. Where an existing local override undersizes a changed control, correct its use of the shared policy instead of adding another exception. Increase keyboard readability and reduce visible key span on small touch screens rather than shrinking targets indefinitely.
 
+### Avoid generic UI patterns
+
+The redesign should look like Kessho, not like a generated dashboard. Every new or changed surface follows these rules. Reviews check for them explicitly.
+
+- **No side-edge colour bars.** No coloured left or right border, or inset shadow stripe, on cards, rows, inspectors or callouts to mark selection or category.
+- **No decorative status dots.** No coloured dot before a label just to say "this is role X". Colour identifies content (a hit, a voice, a pad position), not headings.
+- **No tinted selection cards.** Selection changes text strength, an existing control's pressed state, or the content area it belongs to, not a pastel box around the item.
+- **No nested boxes for grouping.** Use spacing and Kessho's hairline head rules, and keep the existing card grammar rather than a bordered panel inside a card inside a card.
+- **No glows or halo rings.** No soft halos, drop-shadow rings or gradient blobs to show focus, selection or "live". Use the existing focus ring and pressed states.
+- **No pill-chip defaults.** Toggles and segmented choices use Kessho's 6px control shape and its sage on-state, not fully rounded chips.
+- **No uppercase letter-spaced labels.** No small caps or tracking used as section labels; use the `--k-fs-*` scale and weight.
+- **No chained middle-dot captions or instructional prose.** Don't use "A · B · C" captions under every heading, or instructional prose printed on the surface. Short values may sit together; explanations go in help, tooltips or first-run guidance.
+- **No new palette.** Use Kessho's tokens: charcoal surfaces, cream and soft-white text, 12% borders, sage, clay, slate and the page's tab colour on the card title. Add no new hues, gradients or emoji for decoration.
+- **Selected state must read as stronger, not dimmer.** Check every pressed and selected state for contrast against its unselected neighbours.
+
 ## Global: one compact performance area
 
 Keep the L4 preset blend and Journey in their existing summary area. Harmony's circle displays their shared route; there is no second morph slider beside Brain. Keep the Mod A/B editors in Global's existing Modulation card. Parameter context controls link to those same sources.
