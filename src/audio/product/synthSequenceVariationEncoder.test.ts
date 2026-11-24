@@ -12,7 +12,7 @@ import {
   encodeSynthSequenceVariationBank,
   SYNTH_SEQUENCE_VARIATION_BANK_BYTES,
   SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES,
-  SYNTH_SEQUENCE_VARIATION_STEP_BYTES,
+  SYNTH_SEQUENCE_VARIATION_CELL_BYTES,
 } from './synthSequenceVariationEncoder';
 
 function baseLane(): SynthVariationLane {
@@ -46,16 +46,21 @@ function snapshotOffset(index: number): number {
   return 40 + index * SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES;
 }
 
-function stepOffset(snapshot: number, step: number): number {
-  return snapshot + 1688 + step * SYNTH_SEQUENCE_VARIATION_STEP_BYTES;
+function cellOffset(snapshot: number, cell: number): number {
+  return snapshot + 1684 + cell * SYNTH_SEQUENCE_VARIATION_CELL_BYTES;
 }
 
-test('encodes native ABI sizes, offsets, independent sub-lane lengths, and pitch root offsets', () => {
+const CELL_NOTES = 216;
+const CELL_NOTE_BYTES = 20;
+
+test('encodes native ABI sizes, offsets, independent sub-lane lengths, and printed fixed cells', () => {
   const bank = printedBank();
   const bytes = encodeSynthSequenceVariationBank(bank);
   assert.equal(bytes.byteLength, SYNTH_SEQUENCE_VARIATION_BANK_BYTES);
+  assert.equal(SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES, 29076);
+  assert.equal(SYNTH_SEQUENCE_VARIATION_CELL_BYTES, 856);
   const view = new DataView(bytes);
-  assert.equal(view.getUint32(0, true), 1);
+  assert.equal(view.getUint32(0, true), 2);
   assert.equal(view.getUint32(4, true), 1);
   assert.equal(view.getUint32(8, true), 1);
   assert.equal(view.getUint32(12, true), 0);
@@ -70,26 +75,49 @@ test('encodes native ABI sizes, offsets, independent sub-lane lengths, and pitch
   assert.equal(view.getUint32(snapshot + 20 + 4 * 4, true), 4);
   assert.equal(view.getUint32(snapshot + 20 + 5 * 4, true), 2);
   assert.equal(view.getUint32(snapshot + 20 + 8 * 4, true), 2);
-  assert.equal(view.getUint32(snapshot + 92, true), (1 << 5) | (1 << 8));
-  assert.equal(view.getFloat32(snapshot + 96, true), 61);
-  assert.equal(view.getUint32(snapshot + 100, true), 1);
-  assert.equal(view.getUint32(snapshot + 104, true), 1);
-  assert.equal(view.getUint32(snapshot + 120, true), 0b1111);
-  assert.equal(view.getFloat32(snapshot + 664, true), 0);
-  assert.equal(view.getFloat32(snapshot + 664 + 4, true), 3);
-  assert.equal(view.getFloat32(snapshot + 792, true), 0.25);
-  assert.ok(Math.abs(view.getFloat32(snapshot + 1560, true) - 0.2) < 1e-6);
+  // The Notes lane (field 9) walks one cell per step, forward, Advance = Steps.
+  assert.equal(view.getUint32(snapshot + 20 + 9 * 4, true), 4);
+  assert.equal(view.getUint32(snapshot + 60 + 9 * 4, true), 0);
+  // The printed lane binds pitch to 'sequence', so pitch Advance (bit 4) is Steps.
+  assert.equal(view.getUint32(snapshot + 100, true), (1 << 5) | (1 << 8));
+  assert.equal(view.getUint32(snapshot + 116, true), 0b1111);
+  assert.equal(view.getFloat32(snapshot + 660, true), 0);
+  assert.equal(view.getFloat32(snapshot + 660 + 4, true), 3);
+  assert.equal(view.getFloat32(snapshot + 788, true), 0.25);
+  assert.ok(Math.abs(view.getFloat32(snapshot + 1556, true) - 0.2) < 1e-6);
 
-  const firstStep = stepOffset(snapshot, 0);
-  assert.equal(view.getUint32(firstStep, true), 1);
-  assert.equal(view.getUint32(firstStep + 4, true), 1);
-  assert.equal(view.getFloat32(firstStep + 8, true), 0.5);
-  assert.equal(view.getFloat32(firstStep + 180, true), 0);
-  assert.equal(view.getFloat32(firstStep + 184, true), 1);
-  assert.equal(view.getFloat32(firstStep + 188, true), 0);
-  const secondStep = stepOffset(snapshot, 1);
-  assert.equal(view.getFloat32(secondStep + 8, true), 6);
-  assert.equal(view.getFloat32(secondStep + 180, true), 0);
+  // Printed Notes-mode steps are FIXED cells at root + interval (root 61).
+  const firstCell = cellOffset(snapshot, 0);
+  assert.equal(view.getUint32(firstCell, true), 2);
+  assert.equal(view.getUint32(firstCell + 4, true), 0);
+  assert.equal(view.getUint32(firstCell + 8, true), 1);
+  assert.equal(view.getFloat32(firstCell + 12, true), 0.5);
+  assert.equal(view.getFloat32(firstCell + CELL_NOTES, true), 61);
+  assert.equal(view.getFloat32(firstCell + CELL_NOTES + 4, true), 1);
+  assert.equal(view.getFloat32(firstCell + CELL_NOTES + 8, true), 0);
+  assert.equal(view.getFloat32(firstCell + CELL_NOTES + 12, true), 0);
+  assert.equal(view.getUint32(firstCell + CELL_NOTES + 16, true), 0);
+  const secondCell = cellOffset(snapshot, 1);
+  assert.equal(view.getFloat32(secondCell + 12, true), 6);
+  assert.equal(view.getFloat32(secondCell + CELL_NOTES, true), 61);
+  // A step without a trigger is a REST cell with no notes.
+  assert.equal(view.getUint32(cellOffset(snapshot, 2), true), 0);
+  assert.equal(view.getUint32(cellOffset(snapshot, 2) + 8, true), 0);
+});
+
+test('pitch Advance follows the pitch binding and Semitones steps ride the harmony pitch', () => {
+  const bank = printedBank();
+  const lane = bank.variations.A!.lane;
+  for (const [binding, hits] of [['polyrhythmic', true], ['linked', true], ['sequence', false]] as const) {
+    lane.state.pitchBindingMode = binding;
+    const view = new DataView(encodeSynthSequenceVariationBank(bank));
+    assert.equal((view.getUint32(snapshotOffset(0) + 100, true) & (1 << 4)) !== 0, hits, binding);
+  }
+  lane.state.pitchSettings = { mode: 'semitones', root: 60, scale: 'Chromatic' };
+  const view = new DataView(encodeSynthSequenceVariationBank(bank));
+  const cell = cellOffset(snapshotOffset(0), 0);
+  assert.equal(view.getUint32(cell, true), 1);
+  assert.equal(view.getFloat32(cell + CELL_NOTES, true), 0);
 });
 
 test('writes chained snapshots at their own bases and preserves sparse non-chain selection', () => {
@@ -135,8 +163,8 @@ test('writes chained snapshots at their own bases and preserves sparse non-chain
   assert.equal(chainedView.getUint32(bOffset + 20 + 4 * 4, true), 2);
   assert.equal(chainedView.getUint32(bOffset + 20 + 5 * 4, true), 3);
   assert.equal(chainedView.getUint32(bOffset + 12, true), 1);
-  assert.equal(chainedView.getUint32(bOffset + 124, true), 0b111);
-  assert.ok(Math.abs(chainedView.getFloat32(bOffset + 792 + 2 * 4, true) - 0.3) < 1e-6);
+  assert.equal(chainedView.getUint32(bOffset + 120, true), 0b111);
+  assert.ok(Math.abs(chainedView.getFloat32(bOffset + 788 + 2 * 4, true) - 0.3) < 1e-6);
 
   const sparse: SynthSequenceVariationBank = {
     ...source,
@@ -179,11 +207,12 @@ test('encodes local chord intervals and full per-step ARP configuration', () => 
     },
   };
   const view = new DataView(encodeSynthSequenceVariationBank(source));
-  const step = stepOffset(snapshotOffset(0), 0);
-  assert.equal(view.getUint32(step, true), 3);
-  assert.equal(view.getUint32(step + 4, true), 2);
-  assert.equal(view.getFloat32(step + 8, true), 5);
-  assert.equal(view.getFloat32(step + 12, true), 2);
+  const step = cellOffset(snapshotOffset(0), 0);
+  assert.equal(view.getUint32(step, true), 2);
+  assert.equal(view.getUint32(step + 4, true), 1);
+  assert.equal(view.getUint32(step + 8, true), 2);
+  assert.equal(view.getFloat32(step + 12, true), 5);
+  assert.equal(view.getFloat32(step + 16, true), 2);
   assert.equal(view.getUint32(step + 28, true), 3);
   assert.equal(view.getUint32(step + 32, true), 0b111);
   assert.equal(view.getUint32(step + 36, true), 3);
@@ -192,11 +221,12 @@ test('encodes local chord intervals and full per-step ARP configuration', () => 
   assert.equal(view.getUint32(step + 48, true), 1);
   assert.equal(view.getInt32(step + 52 + 4, true), 2);
   assert.equal(view.getInt32(step + 116 + 4, true), 2);
-  assert.equal(view.getFloat32(step + 180, true), 0);
-  assert.equal(view.getFloat32(step + 188, true), 3);
-  assert.equal(view.getFloat32(step + 192, true), 7);
-  assert.equal(view.getFloat32(step + 196, true), 0.5);
-  assert.equal(view.getFloat32(step + 200, true), 1);
+  // Fixed cells store root (61) + interval.
+  assert.equal(view.getFloat32(step + CELL_NOTES, true), 61);
+  assert.equal(view.getFloat32(step + CELL_NOTES + 8, true), 3);
+  assert.equal(view.getFloat32(step + CELL_NOTES + CELL_NOTE_BYTES, true), 68);
+  assert.equal(view.getFloat32(step + CELL_NOTES + CELL_NOTE_BYTES + 4, true), 0.5);
+  assert.equal(view.getFloat32(step + CELL_NOTES + CELL_NOTE_BYTES + 8, true), 1);
 });
 
 test('rejects values the native ABI cannot represent instead of clamping them', () => {
@@ -249,11 +279,11 @@ test('shared length scales encoded chord voice holds and preserves the arp run s
   };
   bank.variations.A!.stepMetadata['0'] = withSynthVariationStepLength(metadata, 2);
   const view = new DataView(encodeSynthSequenceVariationBank(bank));
-  const step = stepOffset(snapshotOffset(0), 0);
-  assert.equal(view.getFloat32(step + 8, true), 2);
-  assert.equal(view.getFloat32(step + 12, true), 8);
-  assert.equal(view.getFloat32(step + 188, true), 2);
-  assert.equal(view.getFloat32(step + 200, true), 1);
+  const step = cellOffset(snapshotOffset(0), 0);
+  assert.equal(view.getFloat32(step + 12, true), 2);
+  assert.equal(view.getFloat32(step + 16, true), 8);
+  assert.equal(view.getFloat32(step + CELL_NOTES + 8, true), 2);
+  assert.equal(view.getFloat32(step + CELL_NOTES + CELL_NOTE_BYTES + 8, true), 1);
   assert.equal(metadata.chord.intervals[0]!.gateBeats, 4);
   assert.equal(withSynthVariationStepLength({ ...metadata, gateBeats: 0 }, 3).chord?.intervals[0]?.gateBeats, 3);
 });

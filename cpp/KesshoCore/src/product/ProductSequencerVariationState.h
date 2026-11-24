@@ -76,4 +76,37 @@ inline bool variationFieldEnabled(
   return field_id < 9u && (variation.sublane_enabled_mask & (1u << field_id)) != 0u;
 }
 
+// The one traversal rule shared by every sublane, including the Notes lane:
+// position of `phase` within a cycle of `steps` under a sublane direction.
+inline uint32_t variationCyclePosition(
+    uint32_t steps,
+    uint32_t direction,
+    uint64_t phase) noexcept {
+  if (steps <= 1u) return 0u;
+  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
+    return steps - 1u - static_cast<uint32_t>(phase % steps);
+  }
+  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG) {
+    const uint32_t period = steps * 2u - 2u;
+    const uint32_t position = static_cast<uint32_t>(phase % period);
+    return position < steps ? position : period - position;
+  }
+  return static_cast<uint32_t>(phase % steps);
+}
+
+// Notes-lane cell for a trigger: length, direction and Advance (bit 9 of the
+// follow mask: set = hits, clear = steps) come from the snapshot.
+inline const KesshoProductSequencerNotesCell& variationNotesCell(
+    const KesshoProductSequencerVariationSnapshot& variation,
+    uint32_t trigger_step,
+    uint64_t hit_count_phase) noexcept {
+  constexpr uint32_t kLane = KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE;
+  const uint32_t steps = std::clamp<uint32_t>(
+      variation.sublane_steps[kLane], 1u, KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS);
+  const bool follow_hits = (variation.sublane_follow_trigger_hits_mask & (1u << kLane)) != 0u;
+  return variation.cells[variationCyclePosition(
+      steps, variation.sublane_directions[kLane],
+      follow_hits ? hit_count_phase : static_cast<uint64_t>(trigger_step))];
+}
+
 } // namespace kessho::product::internal

@@ -15,6 +15,7 @@
 
 namespace {
 
+constexpr uint32_t kNotesSublane = KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE;
 void require(bool condition, const char* message) {
   if (!condition) {
     std::cerr << "Kessho Product Core test failed: " << message << "\n";
@@ -4839,14 +4840,15 @@ void requireNegativeFirstNudgePendingEdits() {
       for (uint32_t index = 0u; index < 2u; ++index) {
         auto& phrase = bank.variations[index];
         phrase.step_count = index == 0u ? 8u : 24u;
+        phrase.sublane_steps[kNotesSublane] = phrase.step_count;
         phrase.clock_division = 64u;
         phrase.trigger_mask = 1u;
         phrase.nudge_mask = 1u;
         phrase.nudge_values[0] = -0.24f;
-        phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-        phrase.steps[0].note_count = 1u;
-        phrase.steps[0].notes[0].velocity = 0.5f;
-        phrase.steps[0].notes[0].gate_beats = 0.125f;
+        phrase.cells[0].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+        phrase.cells[0].note_count = 1u;
+        phrase.cells[0].notes[0].velocity = 0.5f;
+        phrase.cells[0].notes[0].gate_beats = 0.125f;
       }
       require(kessho_product_set_sequencer_variation_bank(
           engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
@@ -4858,6 +4860,7 @@ void requireNegativeFirstNudgePendingEdits() {
             "negative first nudge selection failed");
       } else {
         bank.variations[0].step_count = 24u;
+        bank.variations[0].sublane_steps[kNotesSublane] = bank.variations[0].step_count;
         bank.variations[0].clock_division = 12u;
         require(kessho_product_set_sequencer_variation_bank(
             engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
@@ -4895,6 +4898,7 @@ void requirePrinted24StepTelemetryTests() {
   bank.chain_length = 1u;
   auto& variation = bank.variations[0];
   variation.step_count = 24u;
+  variation.sublane_steps[kNotesSublane] = variation.step_count;
   variation.clock_division = 12u;
   variation.sublane_enabled_mask = 1u << 8u;
   variation.sublane_follow_trigger_hits_mask = 1u << 8u;
@@ -4905,12 +4909,13 @@ void requirePrinted24StepTelemetryTests() {
     const uint32_t step = trigger_steps[hit];
     variation.trigger_mask |= 1u << step;
     variation.nudge_values[hit] = hit == 0u ? 0.0f : hit % 2u ? 0.25f : -0.25f;
-    variation.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-    variation.steps[step].note_count = 1u;
-    variation.steps[step].notes[0].velocity = 1.0f;
+    variation.cells[step].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+    variation.cells[step].note_count = 1u;
+    variation.cells[step].notes[0].velocity = 1.0f;
   }
   auto initial_bank = bank;
   initial_bank.variations[0].step_count = 8u;
+  initial_bank.variations[0].sublane_steps[kNotesSublane] = initial_bank.variations[0].step_count;
   initial_bank.variations[0].clock_division = 4u;
   initial_bank.variations[0].trigger_mask &= 0xffu;
   require(kessho_product_set_sequencer_variation_bank(
@@ -4972,24 +4977,25 @@ void requireProductSequencerVariationRuntimeTests() {
     for (uint32_t variation = 0u; variation < 2u; ++variation) {
       auto& phrase = bank.variations[variation];
       phrase.step_count = 2u;
+      phrase.sublane_steps[kNotesSublane] = phrase.step_count;
       phrase.clock_division = clock_division;
       phrase.trigger_mask = 0x3u;
       phrase.swing = 0.0f;
-      phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-      phrase.steps[0].note_count = 1u;
-      phrase.steps[0].gate_beats = 0.25f;
-      phrase.steps[0].notes[0].midi_note = variation == 0u ? 0.0f : 12.0f;
-      phrase.steps[0].notes[0].velocity = 0.5f;
-      phrase.steps[0].notes[0].gate_beats = 0.125f;
-      phrase.steps[1].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_CHORD;
-      phrase.steps[1].note_count = 2u;
-      phrase.steps[1].gate_beats = 0.5f;
-      phrase.steps[1].notes[0].midi_note = variation == 0u ? 7.0f : 19.0f;
-      phrase.steps[1].notes[0].velocity = 0.75f;
-      phrase.steps[1].notes[0].gate_beats = 0.25f;
-      phrase.steps[1].notes[1].midi_note = variation == 0u ? 12.0f : 24.0f;
-      phrase.steps[1].notes[1].velocity = 0.625f;
-      phrase.steps[1].notes[1].gate_beats = 0.375f;
+      phrase.cells[0].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+      phrase.cells[0].note_count = 1u;
+      phrase.cells[0].gate_beats = 0.25f;
+      phrase.cells[0].notes[0].midi = variation == 0u ? 0.0f : 12.0f;
+      phrase.cells[0].notes[0].velocity = 0.5f;
+      phrase.cells[0].notes[0].gate_beats = 0.125f;
+      phrase.cells[1].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+      phrase.cells[1].note_count = 2u;
+      phrase.cells[1].gate_beats = 0.5f;
+      phrase.cells[1].notes[0].midi = variation == 0u ? 7.0f : 19.0f;
+      phrase.cells[1].notes[0].velocity = 0.75f;
+      phrase.cells[1].notes[0].gate_beats = 0.25f;
+      phrase.cells[1].notes[1].midi = variation == 0u ? 12.0f : 24.0f;
+      phrase.cells[1].notes[1].velocity = 0.625f;
+      phrase.cells[1].notes[1].gate_beats = 0.375f;
     }
     require(
         kessho_product_set_sequencer_variation_bank(
@@ -5061,7 +5067,7 @@ void requireProductSequencerVariationRuntimeTests() {
     bank.play_variation = 1u;
     apply_bank_at_boundary();
     require(runtime.active_variation == 1u, "explicit bank playback selection should switch to B");
-    bank.variations[1].steps[0].notes[0].velocity = 0.7f;
+    bank.variations[1].cells[0].notes[0].velocity = 0.7f;
     apply_bank_at_boundary();
     require(runtime.active_variation == 1u, "editing B should preserve its playback selection");
     bank.chain_length = 2u;
@@ -5095,6 +5101,7 @@ void requireProductSequencerVariationRuntimeTests() {
     bank.play_variation = 0u;
     auto& phrase = bank.variations[0];
     phrase.step_count = 8u;
+    phrase.sublane_steps[kNotesSublane] = phrase.step_count;
     phrase.clock_division = clock_division;
     phrase.trigger_mask = 0xffu;
     phrase.nudge_mask = 0x7u;
@@ -5105,10 +5112,10 @@ void requireProductSequencerVariationRuntimeTests() {
     phrase.sublane_steps[8] = 3u;
     phrase.sublane_directions[8] = KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD;
     for (uint32_t step = 0u; step < phrase.step_count; ++step) {
-      phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-      phrase.steps[step].note_count = 1u;
-      phrase.steps[step].notes[0].midi_note = 0.0f;
-      phrase.steps[step].notes[0].velocity = 1.0f;
+      phrase.cells[step].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+      phrase.cells[step].note_count = 1u;
+      phrase.cells[step].notes[0].midi = 0.0f;
+      phrase.cells[step].notes[0].velocity = 1.0f;
     }
     require(
         kessho_product_set_sequencer_variation_bank(
@@ -5159,27 +5166,29 @@ void requireProductSequencerVariationRuntimeTests() {
     bank.play_variation = 0u;
     auto& phrase = bank.variations[0];
     phrase.step_count = 2u;
+    phrase.sublane_steps[kNotesSublane] = phrase.step_count;
     phrase.clock_division = clock_division;
     phrase.trigger_mask = 0x3u;
-    phrase.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP;
-    phrase.steps[0].note_count = 2u;
-    phrase.steps[0].gate_beats = 0.25f;
-    phrase.steps[0].arp_span_steps = 4.0f;
-    phrase.steps[0].arp_rate_x2 = 2u;
-    phrase.steps[0].arp_length = 2u;
-    phrase.steps[0].arp_pulse_mask = 0x3u;
-    phrase.steps[0].notes[0].midi_note = 1.0f;
-    phrase.steps[0].notes[0].velocity = 0.8f;
-    phrase.steps[0].notes[0].gate_beats = 0.125f;
-    phrase.steps[0].notes[1].midi_note = 3.0f;
-    phrase.steps[0].notes[1].velocity = 0.7f;
-    phrase.steps[0].notes[1].gate_beats = 0.25f;
-    phrase.steps[1].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-    phrase.steps[1].note_count = 1u;
-    phrase.steps[1].gate_beats = 8.0f;
-    phrase.steps[1].notes[0].midi_note = 24.0f;
-    phrase.steps[1].notes[0].velocity = 0.6f;
-    phrase.steps[1].notes[0].gate_beats = 8.0f;
+    phrase.cells[0].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+    phrase.cells[0].articulation = KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP;
+    phrase.cells[0].note_count = 2u;
+    phrase.cells[0].gate_beats = 0.25f;
+    phrase.cells[0].arp_span_steps = 4.0f;
+    phrase.cells[0].arp_rate_x2 = 2u;
+    phrase.cells[0].arp_length = 2u;
+    phrase.cells[0].arp_pulse_mask = 0x3u;
+    phrase.cells[0].notes[0].midi = 1.0f;
+    phrase.cells[0].notes[0].velocity = 0.8f;
+    phrase.cells[0].notes[0].gate_beats = 0.125f;
+    phrase.cells[0].notes[1].midi = 3.0f;
+    phrase.cells[0].notes[1].velocity = 0.7f;
+    phrase.cells[0].notes[1].gate_beats = 0.25f;
+    phrase.cells[1].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+    phrase.cells[1].note_count = 1u;
+    phrase.cells[1].gate_beats = 8.0f;
+    phrase.cells[1].notes[0].midi = 24.0f;
+    phrase.cells[1].notes[0].velocity = 0.6f;
+    phrase.cells[1].notes[0].gate_beats = 8.0f;
     require(
         kessho_product_set_sequencer_variation_bank(
             engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
@@ -5215,7 +5224,7 @@ void requireProductSequencerVariationRuntimeTests() {
     engine = kessho_product_create(sample_rate, 4096u, 0u);
     require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
         "delayed arp snapshot reset failed");
-    std::swap(phrase.steps[0], phrase.steps[1]);
+    std::swap(phrase.cells[0], phrase.cells[1]);
     phrase.nudge_mask = 2u;
     phrase.nudge_values[1] = 0.25f;
     require(kessho_product_set_sequencer_variation_bank(
@@ -5243,6 +5252,7 @@ void requireProductSequencerVariationRuntimeTests() {
     bank.chain_length = 1u;
     auto& phrase = bank.variations[0];
     phrase.step_count = 2u;
+    phrase.sublane_steps[kNotesSublane] = phrase.step_count;
     phrase.clock_division = clock_division;
     phrase.trigger_mask = 3u;
     phrase.nudge_mask = 3u;
@@ -5255,10 +5265,10 @@ void requireProductSequencerVariationRuntimeTests() {
     phrase.sublane_follow_trigger_hits_mask = 1u << 5u;
     phrase.sublane_steps[5] = 2u;
     for (uint32_t step = 0u; step < 2u; ++step) {
-      phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-      phrase.steps[step].note_count = 1u;
-      phrase.steps[step].notes[0].midi_note = step == 0u ? 0.0f : 12.0f;
-      phrase.steps[step].notes[0].velocity = step == 0u ? 0.3f : 0.9f;
+      phrase.cells[step].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+      phrase.cells[step].note_count = 1u;
+      phrase.cells[step].notes[0].midi = step == 0u ? 0.0f : 12.0f;
+      phrase.cells[step].notes[0].velocity = step == 0u ? 0.3f : 0.9f;
     }
     require(kessho_product_set_sequencer_variation_bank(
         engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
@@ -5299,16 +5309,17 @@ void requireProductSequencerVariationRuntimeTests() {
         for (uint32_t variation = 0u; variation < 4u; ++variation) {
           auto& phrase = bank.variations[variation];
           phrase.step_count = 2u;
+          phrase.sublane_steps[kNotesSublane] = phrase.step_count;
           phrase.clock_division = clock_division;
           phrase.trigger_mask = 0x3u;
           for (uint32_t step = 0u; step < phrase.step_count; ++step) {
-            phrase.steps[step].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-            phrase.steps[step].note_count = 1u;
-            phrase.steps[step].gate_beats = 0.25f;
-            phrase.steps[step].notes[0].midi_note = variation == 0u
+            phrase.cells[step].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+            phrase.cells[step].note_count = 1u;
+            phrase.cells[step].gate_beats = 0.25f;
+            phrase.cells[step].notes[0].midi = variation == 0u
                 ? (step == 0u ? 0.0f : 7.0f)
                 : 12.0f;
-            phrase.steps[step].notes[0].velocity = 1.0f;
+            phrase.cells[step].notes[0].velocity = 1.0f;
           }
         }
         bank.variations[0].nudge_mask = 0x3u;
@@ -5353,6 +5364,134 @@ void requireProductSequencerVariationRuntimeTests() {
 
 }
 
+void requireNotesLaneTests() {
+  constexpr uint32_t step_frames = 1500u;
+  const auto make_engine = []() {
+    KesshoProductEngine* engine = kessho_product_create(48000.0, 4096u, 0u);
+    KesshoProductSnapshotV2 snapshot = makeSnapshot();
+    snapshot.drum_euclid.lane_count = 0u;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+        "notes lane snapshot failed");
+    return engine;
+  };
+  // Fixed cells play 60, 64, 67.
+  const auto make_bank = [](uint32_t step_count, uint32_t trigger_mask, uint32_t cell_count) {
+    KesshoProductSequencerVariationBank bank{};
+    bank.schema_version = KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION;
+    bank.enabled = 1u;
+    bank.chain_length = 1u;
+    auto& phrase = bank.variations[0];
+    phrase.step_count = step_count;
+    phrase.clock_division = 64u;
+    phrase.trigger_mask = trigger_mask;
+    phrase.sublane_steps[kNotesSublane] = cell_count;
+    for (uint32_t index = 0u; index < cell_count; ++index) {
+      auto& cell = phrase.cells[index];
+      cell.kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FIXED;
+      cell.note_count = 1u;
+      cell.gate_beats = 0.25f;
+      cell.notes[0].midi = index == 0u ? 60.0f : index == 1u ? 64.0f : 67.0f;
+      cell.notes[0].velocity = 1.0f;
+    }
+    return bank;
+  };
+  // Pitch played at each trigger step within the first pass of the phrase.
+  const auto play = [&](const KesshoProductSequencerVariationBank& bank, uint32_t frames,
+                        bool* accepted = nullptr) {
+    KesshoProductEngine* engine = make_engine();
+    const int32_t status = kessho_product_set_sequencer_variation_bank(
+        engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank);
+    if (accepted != nullptr) *accepted = status == KESSHO_PRODUCT_OK;
+    std::vector<RenderedSequencerEvent> events;
+    if (status == KESSHO_PRODUCT_OK) {
+      events = renderEventsInBlocks(engine, 64u, frames);
+    }
+    kessho_product_destroy(engine);
+    return events;
+  };
+  const auto note_at_step = [](const std::vector<RenderedSequencerEvent>& events, uint32_t step,
+                               uint32_t frames) {
+    for (const auto& event : events) {
+      if (event.event.step_id == step && event.absolute_offset < frames) return event.event.midi_note;
+    }
+    return -1.0f;
+  };
+
+  {  // Advance = Steps follows the trigger step; Advance = Hits skips rests.
+    auto bank = make_bank(4u, 0xbu, 3u);
+    auto events = play(bank, step_frames * 4u);
+    require(note_at_step(events, 0u, step_frames * 4u) == 60.0f &&
+            note_at_step(events, 1u, step_frames * 4u) == 64.0f &&
+            note_at_step(events, 2u, step_frames * 4u) == -1.0f &&
+            note_at_step(events, 3u, step_frames * 4u) == 60.0f,
+        "Notes lane Advance Steps must index cells by trigger step");
+    bank.variations[0].sublane_follow_trigger_hits_mask = 1u << kNotesSublane;
+    events = play(bank, step_frames * 4u);
+    require(note_at_step(events, 0u, step_frames * 4u) == 60.0f &&
+            note_at_step(events, 1u, step_frames * 4u) == 64.0f &&
+            note_at_step(events, 3u, step_frames * 4u) == 67.0f,
+        "Notes lane Advance Hits must not spend a cell on a rest");
+  }
+
+  {  // Reverse direction walks the cells backwards.
+    auto bank = make_bank(3u, 0x7u, 3u);
+    bank.variations[0].sublane_directions[kNotesSublane] = KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE;
+    const auto events = play(bank, step_frames * 3u);
+    require(note_at_step(events, 0u, step_frames * 3u) == 67.0f &&
+            note_at_step(events, 1u, step_frames * 3u) == 64.0f &&
+            note_at_step(events, 2u, step_frames * 3u) == 60.0f,
+        "Notes lane reverse must play the cells last to first");
+  }
+
+  {  // FOLLOW resolves its intent against the harmony frame: G7 in C major.
+    auto bank = make_bank(2u, 0x1u, 1u);
+    auto& cell = bank.variations[0].cells[0];
+    cell = {};
+    cell.kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FOLLOW;
+    cell.gate_beats = 0.25f;
+    cell.intent.degree = 4;
+    cell.intent.extensions = KESSHO_PRODUCT_CHORD_EXT_SEVENTH;
+    KesshoProductEngine* engine = make_engine();
+    engine->harmony.root_midi = 60.0f;
+    engine->harmony.scale_id = 1u;
+    require(kessho_product_set_sequencer_variation_bank(
+        engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, &bank) == KESSHO_PRODUCT_OK,
+        "FOLLOW cell bank rejected");
+    const auto events = renderEventsInBlocks(engine, 64u, step_frames);
+    kessho_product_destroy(engine);
+    std::vector<float> pitches;
+    for (const auto& event : events) {
+      if (event.absolute_offset < step_frames) pitches.push_back(event.event.midi_note);
+    }
+    std::sort(pitches.begin(), pitches.end());
+    require(pitches == std::vector<float>({67.0f, 71.0f, 74.0f, 77.0f}),
+        "FOLLOW degree 4 seventh in C major must play G7");
+  }
+
+  {  // The Pitch lane transposes FIXED cells in semitones.
+    auto bank = make_bank(2u, 0x1u, 1u);
+    bank.variations[0].midi_note_mask = 1u;
+    bank.variations[0].midi_notes[0] = 2.0f;
+    const auto events = play(bank, step_frames);
+    require(note_at_step(events, 0u, step_frames) == 62.0f, "Pitch lane +2 must transpose a FIXED cell");
+  }
+
+  {  // Per-note offsets and destinations are not played yet, so they are rejected.
+    bool accepted = true;
+    auto bank = make_bank(2u, 0x1u, 1u);
+    bank.variations[0].cells[0].notes[0].offset_beats = 0.5f;
+    (void)play(bank, 64u, &accepted);
+    require(!accepted, "non-zero offset_beats must be rejected");
+    bank = make_bank(2u, 0x1u, 1u);
+    bank.variations[0].cells[0].notes[0].destination_source_id = 3u;
+    (void)play(bank, 64u, &accepted);
+    require(!accepted, "non-zero destination_source_id must be rejected");
+    bank = make_bank(2u, 0x1u, 1u);
+    (void)play(bank, 64u, &accepted);
+    require(accepted, "a plain FIXED cell must be accepted");
+  }
+}
+
 using ProductSequencerTest = void (*)();
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -5373,6 +5512,7 @@ int main() {
     requireProductSequencerSynthArpRuntimeTests,
     requireProductSequencerNudgeSchedulingTests,
     requireProductSequencerVariationRuntimeTests,
+    requireNotesLaneTests,
     requirePrinted24StepTelemetryTests,
     requireNegativeFirstNudgePendingEdits,
     requireProductSequencerModeEventTests,

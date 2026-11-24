@@ -1,12 +1,11 @@
 import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
 import { SCALES, scaleDegreeToSemitone, type PitchMode } from '../../audio/drumSeqTypes';
-import { normalizeSequencerPitchBindingMode, sequencerPitchBindingModeToProductId } from '../../audio/sequencerPitchBinding';
+import { normalizeSequencerPitchBindingMode } from '../../audio/sequencerPitchBinding';
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import type {
   SynthSequenceVariation,
   SynthSequenceVariationBank,
   SynthSequenceVariationId,
-  SynthSequenceVariationMode,
 } from '../../ui/sequencer/synthSequenceVariations';
 import { normalizeSynthSequenceVariationBank } from '../../ui/sequencer/synthSequenceVariations';
 import { deserializeTriggerClip, resolveTriggerClip } from '../../ui/sequencer/triggerClip';
@@ -20,9 +19,11 @@ export const SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP = 32;
 // KesshoProductSequencerVariations.h.  The payload is copied directly into
 // the C ABI struct by the WASM/native hosts, so an omitted field corrupts every
 // following variation.
-export const SYNTH_SEQUENCE_VARIATION_STEP_BYTES = 564;
-export const SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES = 19736;
-export const SYNTH_SEQUENCE_VARIATION_BANK_BYTES = 78984;
+export const SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION_WIRE = 2;
+export const SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE = 9;
+export const SYNTH_SEQUENCE_VARIATION_CELL_BYTES = 856;
+export const SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES = 29076;
+export const SYNTH_SEQUENCE_VARIATION_BANK_BYTES = 116344;
 
 const SNAPSHOT_STEP_COUNT_OFFSET = 0;
 const SNAPSHOT_CLOCK_DIVISION_OFFSET = 4;
@@ -30,55 +31,58 @@ const SNAPSHOT_SWING_OFFSET = 8;
 const SNAPSHOT_TRIGGER_MASK_OFFSET = 12;
 const SNAPSHOT_SUBLANE_ENABLED_MASK_OFFSET = 16;
 const SNAPSHOT_SUBLANE_STEPS_OFFSET = 20;
-const SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET = 56;
-const SNAPSHOT_SUBLANE_FOLLOW_TRIGGER_HITS_MASK_OFFSET = 92;
-const SNAPSHOT_PITCH_ROOT_OFFSET = 96;
-const SNAPSHOT_PITCH_MODE_OFFSET = 100;
-const SNAPSHOT_PITCH_BINDING_MODE_OFFSET = 104;
-const SNAPSHOT_PROBABILITY_MASK_OFFSET = 108;
-const SNAPSHOT_RATCHET_MASK_OFFSET = 112;
-const SNAPSHOT_TRIG_CONDITION_MASK_OFFSET = 116;
-const SNAPSHOT_MIDI_NOTE_MASK_OFFSET = 120;
-const SNAPSHOT_EXPRESSION_MASK_OFFSET = 124;
-const SNAPSHOT_MORPH_MASK_OFFSET = 128;
-const SNAPSHOT_DISTANCE_MASK_OFFSET = 132;
-const SNAPSHOT_NUDGE_MASK_OFFSET = 136;
-const SNAPSHOT_EXPRESSION_RANGE_MASK_OFFSET = 140;
-const SNAPSHOT_MORPH_RANGE_MASK_OFFSET = 144;
-const SNAPSHOT_DISTANCE_RANGE_MASK_OFFSET = 148;
-const SNAPSHOT_PROBABILITY_OFFSET = 152;
-const SNAPSHOT_RATCHET_OFFSET = 280;
-const SNAPSHOT_TRIG_NUMERATOR_OFFSET = 408;
-const SNAPSHOT_TRIG_DENOMINATOR_OFFSET = 536;
-const SNAPSHOT_MIDI_NOTE_OFFSET = 664;
-const SNAPSHOT_EXPRESSION_OFFSET = 792;
-const SNAPSHOT_EXPRESSION_RANGE_OFFSET = 920;
-const SNAPSHOT_MORPH_OFFSET = 1048;
-const SNAPSHOT_MORPH_RANGE_OFFSET = 1176;
-const SNAPSHOT_DISTANCE_OFFSET = 1304;
-const SNAPSHOT_DISTANCE_RANGE_OFFSET = 1432;
-const SNAPSHOT_NUDGE_OFFSET = 1560;
-const SNAPSHOT_STEPS_OFFSET = 1688;
-const STEP_MODE_OFFSET = 0;
-const STEP_NOTE_COUNT_OFFSET = 4;
-const STEP_GATE_BEATS_OFFSET = 8;
-const STEP_ARP_SPAN_STEPS_OFFSET = 12;
-const STEP_ARP_DIRECTION_OFFSET = 16;
-const STEP_FOLLOW_HARMONY_OFFSET = 20;
-const STEP_ARP_RATE_X2_OFFSET = 24;
-const STEP_ARP_LENGTH_OFFSET = 28;
-const STEP_ARP_PULSE_MASK_OFFSET = 32;
-const STEP_ARP_FLOW_OFFSET = 36;
-const STEP_ARP_CONTOUR_MODE_OFFSET = 40;
-const STEP_ARP_BOUNDARY_MODE_OFFSET = 44;
-const STEP_ARP_RESET_MASK_OFFSET = 48;
-const STEP_ARP_CONTOUR_OFFSET = 52;
-const STEP_ARP_SLOT_LANE_OFFSET = 116;
-const STEP_NOTES_OFFSET = 180;
-const STEP_NOTE_BYTES = 12;
-const STEP_NOTE_MIDI_OFFSET = 0;
-const STEP_NOTE_VELOCITY_OFFSET = 4;
-const STEP_NOTE_GATE_BEATS_OFFSET = 8;
+const SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET = 60;
+const SNAPSHOT_SUBLANE_FOLLOW_TRIGGER_HITS_MASK_OFFSET = 100;
+const SNAPSHOT_PROBABILITY_MASK_OFFSET = 104;
+const SNAPSHOT_RATCHET_MASK_OFFSET = 108;
+const SNAPSHOT_TRIG_CONDITION_MASK_OFFSET = 112;
+const SNAPSHOT_MIDI_NOTE_MASK_OFFSET = 116;
+const SNAPSHOT_EXPRESSION_MASK_OFFSET = 120;
+const SNAPSHOT_MORPH_MASK_OFFSET = 124;
+const SNAPSHOT_DISTANCE_MASK_OFFSET = 128;
+const SNAPSHOT_NUDGE_MASK_OFFSET = 132;
+const SNAPSHOT_EXPRESSION_RANGE_MASK_OFFSET = 136;
+const SNAPSHOT_MORPH_RANGE_MASK_OFFSET = 140;
+const SNAPSHOT_DISTANCE_RANGE_MASK_OFFSET = 144;
+const SNAPSHOT_PROBABILITY_OFFSET = 148;
+const SNAPSHOT_RATCHET_OFFSET = 276;
+const SNAPSHOT_TRIG_NUMERATOR_OFFSET = 404;
+const SNAPSHOT_TRIG_DENOMINATOR_OFFSET = 532;
+const SNAPSHOT_MIDI_NOTE_OFFSET = 660;
+const SNAPSHOT_EXPRESSION_OFFSET = 788;
+const SNAPSHOT_EXPRESSION_RANGE_OFFSET = 916;
+const SNAPSHOT_MORPH_OFFSET = 1044;
+const SNAPSHOT_MORPH_RANGE_OFFSET = 1172;
+const SNAPSHOT_DISTANCE_OFFSET = 1300;
+const SNAPSHOT_DISTANCE_RANGE_OFFSET = 1428;
+const SNAPSHOT_NUDGE_OFFSET = 1556;
+const SNAPSHOT_CELLS_OFFSET = 1684;
+const CELL_KIND_OFFSET = 0;
+const CELL_ARTICULATION_OFFSET = 4;
+const CELL_NOTE_COUNT_OFFSET = 8;
+const CELL_GATE_BEATS_OFFSET = 12;
+const CELL_ARP_SPAN_STEPS_OFFSET = 16;
+const CELL_ARP_DIRECTION_OFFSET = 20;
+const CELL_ARP_RATE_X2_OFFSET = 24;
+const CELL_ARP_LENGTH_OFFSET = 28;
+const CELL_ARP_PULSE_MASK_OFFSET = 32;
+const CELL_ARP_FLOW_OFFSET = 36;
+const CELL_ARP_CONTOUR_MODE_OFFSET = 40;
+const CELL_ARP_BOUNDARY_MODE_OFFSET = 44;
+const CELL_ARP_RESET_MASK_OFFSET = 48;
+const CELL_ARP_CONTOUR_OFFSET = 52;
+const CELL_ARP_SLOT_LANE_OFFSET = 116;
+const CELL_INTENT_OFFSET = 180;
+const CELL_INTENT_BYTES = 36;
+const CELL_NOTES_OFFSET = 216;
+const CELL_NOTE_BYTES = 20;
+const CELL_NOTE_MIDI_OFFSET = 0;
+const CELL_NOTE_VELOCITY_OFFSET = 4;
+const CELL_NOTE_GATE_BEATS_OFFSET = 8;
+// Offset and destination (+12, +16) stay zero until per-note playback exists.
+const CELL_KIND_REST = 0;
+const CELL_KIND_HARMONY = 1;
+const CELL_KIND_FIXED = 2;
 const BANK_VARIATIONS_OFFSET = 40;
 
 type NumberArray = readonly number[] | null | undefined;
@@ -236,7 +240,12 @@ function writeSubLaneConfig(view: DataView, baseOffset: number, variation: Synth
                 : kind === 'distance' ? laneArray<number>(variation.lane.overrides, 'distance')
                   : laneArray<number>(variation.lane.overrides, 'nudge');
     if (state?.enabled || (!state && values !== null)) enabledMask |= 1 << field;
-    if (state?.followTriggerHits === true) followTriggerHitsMask |= 1 << field;
+    // Pitch Advance comes from the lane's pitch binding: Hits for
+    // polyrhythmic and linked, Steps for sequence.
+    const followHits = kind === 'pitch'
+      ? normalizeSequencerPitchBindingMode(variation.lane.state.pitchBindingMode) !== 'sequence'
+      : state?.followTriggerHits === true;
+    if (followHits) followTriggerHitsMask |= 1 << field;
     const valueLength = values && values.length > 0 ? values.length : steps;
     const subLaneSteps = state?.steps ?? valueLength;
     if (!Number.isInteger(subLaneSteps) || subLaneSteps < 1 || subLaneSteps > 64) {
@@ -250,14 +259,11 @@ function writeSubLaneConfig(view: DataView, baseOffset: number, variation: Synth
   // Field zero is the trigger lane and has no independent sub-lane state.
   view.setUint32(baseOffset + SNAPSHOT_SUBLANE_STEPS_OFFSET, steps, true);
   view.setUint32(baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET, 0, true);
-}
-
-function pitchModeValue(mode: PitchMode): number {
-  return mode === 'notes' ? 1 : mode === 'noteRange' ? 2 : 0;
-}
-
-function modeValue(mode: SynthSequenceVariationMode): number {
-  return mode === 'chord' ? 2 : mode === 'arp' ? 3 : 1;
+  // The Notes lane walks one cell per step, forward (Advance = Steps).
+  view.setUint32(
+    baseOffset + SNAPSHOT_SUBLANE_STEPS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, steps, true);
+  view.setUint32(
+    baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, 0, true);
 }
 
 const ARP_FLOWS = ['up', 'down', 'upDown', 'downUp', 'randomLiveTone', 'diceHold'] as const;
@@ -292,13 +298,13 @@ function writeArpConfig(view: DataView, offset: number, config: ProductArpConfig
   const flow = arpEnum(config.flow, ARP_FLOWS, `${label}.flow`);
   const contourMode = arpEnum(config.contourMode, ARP_CONTOUR_MODES, `${label}.contourMode`);
   const boundaryMode = arpEnum(config.boundaryMode, ARP_BOUNDARY_MODES, `${label}.boundaryMode`);
-  view.setUint32(offset + STEP_ARP_RATE_X2_OFFSET, rate, true);
-  view.setUint32(offset + STEP_ARP_LENGTH_OFFSET, length, true);
-  view.setUint32(offset + STEP_ARP_PULSE_MASK_OFFSET, pulseMask >>> 0, true);
-  view.setUint32(offset + STEP_ARP_FLOW_OFFSET, flow, true);
-  view.setUint32(offset + STEP_ARP_CONTOUR_MODE_OFFSET, contourMode, true);
-  view.setUint32(offset + STEP_ARP_BOUNDARY_MODE_OFFSET, boundaryMode, true);
-  view.setUint32(offset + STEP_ARP_RESET_MASK_OFFSET, resetMask >>> 0, true);
+  view.setUint32(offset + CELL_ARP_RATE_X2_OFFSET, rate, true);
+  view.setUint32(offset + CELL_ARP_LENGTH_OFFSET, length, true);
+  view.setUint32(offset + CELL_ARP_PULSE_MASK_OFFSET, pulseMask >>> 0, true);
+  view.setUint32(offset + CELL_ARP_FLOW_OFFSET, flow, true);
+  view.setUint32(offset + CELL_ARP_CONTOUR_MODE_OFFSET, contourMode, true);
+  view.setUint32(offset + CELL_ARP_BOUNDARY_MODE_OFFSET, boundaryMode, true);
+  view.setUint32(offset + CELL_ARP_RESET_MASK_OFFSET, resetMask >>> 0, true);
   for (let pulse = 0; pulse < 16; pulse += 1) {
     const contour = config.contour[pulse] ?? 0;
     const slot = config.slotLane[pulse] ?? -1;
@@ -306,8 +312,8 @@ function writeArpConfig(view: DataView, offset: number, config: ProductArpConfig
     if (!Number.isInteger(slot)) throw new RangeError(`${label}.slotLane[${pulse}] must be an integer`);
     requireRange(contour, -12, 12, `${label}.contour[${pulse}]`);
     requireRange(slot, -1, 7, `${label}.slotLane[${pulse}]`);
-    view.setInt32(offset + STEP_ARP_CONTOUR_OFFSET + pulse * 4, contour, true);
-    view.setInt32(offset + STEP_ARP_SLOT_LANE_OFFSET + pulse * 4, slot, true);
+    view.setInt32(offset + CELL_ARP_CONTOUR_OFFSET + pulse * 4, contour, true);
+    view.setInt32(offset + CELL_ARP_SLOT_LANE_OFFSET + pulse * 4, slot, true);
   }
 }
 
@@ -317,17 +323,17 @@ function writeStepMetadata(
   variation: SynthSequenceVariation,
   steps: number,
   clockDiv: number,
+  pitchMode: PitchMode,
+  pitchRoot: number,
 ): void {
   const mask = triggerMask(variation.lane.overrides, steps);
   for (let step = 0; step < SYNTH_SEQUENCE_VARIATION_MAX_STEPS; step += 1) {
-    const offset = baseOffset + SNAPSHOT_STEPS_OFFSET + step * SYNTH_SEQUENCE_VARIATION_STEP_BYTES;
+    const offset = baseOffset + SNAPSHOT_CELLS_OFFSET + step * SYNTH_SEQUENCE_VARIATION_CELL_BYTES;
     const metadata = variation.stepMetadata[String(step)];
     const active = (mask & (1 << step)) !== 0;
-    const mode = metadata?.mode ? modeValue(metadata.mode) : active ? 1 : 0;
     const gateBeats = metadata?.gateBeats === undefined
       ? 0
       : requireRange(metadata.gateBeats, 0, 64, `stepMetadata[${step}].gateBeats`);
-    view.setUint32(offset + STEP_MODE_OFFSET, mode, true);
     const intervals = (metadata?.mode === 'chord' || metadata?.mode === 'arp') && metadata.chord?.intervals?.length
       ? metadata.chord.intervals
       : [{ intervalSemitones: 0, velocity: 1 }];
@@ -341,43 +347,53 @@ function writeStepMetadata(
         requireRange(interval.gateBeats, 0, 64, `stepMetadata[${step}].chord.intervals[${noteIndex}].gateBeats`);
       }
     }
-    const notes = active ? intervals : [];
-    view.setUint32(offset + STEP_NOTE_COUNT_OFFSET, notes.length, true);
-    view.setFloat32(offset + STEP_GATE_BEATS_OFFSET, gateBeats, true);
     const followHarmony = metadata?.followHarmony ?? metadata?.chord?.followHarmony ?? false;
-    view.setUint32(offset + STEP_FOLLOW_HARMONY_OFFSET, followHarmony ? 1 : 0, true);
+    // Printed Notes-mode steps are absolute at the authored root; everything
+    // else rides the part's harmony pitch.
+    const fixed = pitchMode === 'notes' && !followHarmony;
+    const notes = active ? intervals : [];
+    view.setUint32(offset + CELL_KIND_OFFSET, !active ? CELL_KIND_REST : fixed ? CELL_KIND_FIXED : CELL_KIND_HARMONY, true);
+    view.setUint32(offset + CELL_ARTICULATION_OFFSET, metadata?.mode === 'arp' ? 1 : 0, true);
+    view.setUint32(offset + CELL_NOTE_COUNT_OFFSET, notes.length, true);
+    view.setFloat32(offset + CELL_GATE_BEATS_OFFSET, gateBeats, true);
     const arpSpanBeats = metadata?.arp?.spanBeats;
     const arpSpanSteps = arpSpanBeats === undefined
       ? 0
       : requireRange(arpSpanBeats / Math.max(1e-6, 4 / clockDiv), 0, SYNTH_SEQUENCE_VARIATION_MAX_STEPS, `stepMetadata[${step}].arp.spanBeats`);
-    view.setFloat32(offset + STEP_ARP_SPAN_STEPS_OFFSET, arpSpanSteps, true);
+    view.setFloat32(offset + CELL_ARP_SPAN_STEPS_OFFSET, arpSpanSteps, true);
     const arpFlow = metadata?.arp?.config?.flow;
-    view.setUint32(offset + STEP_ARP_DIRECTION_OFFSET, arpFlow === 'down' || arpFlow === 'downUp' ? 1 : 0, true);
+    view.setUint32(offset + CELL_ARP_DIRECTION_OFFSET, arpFlow === 'down' || arpFlow === 'downUp' ? 1 : 0, true);
     if (metadata?.mode === 'arp') {
       const arpConfig = metadata.arp?.config;
       if (!arpConfig) throw new RangeError(`stepMetadata[${step}].arp.config is required for arp mode`);
       writeArpConfig(view, offset, arpConfig, `stepMetadata[${step}].arp.config`);
     } else {
-      // The runtime ignores ARP fields for note/chord steps. Clear them so the
+      // The runtime ignores ARP fields for chord cells. Clear them so the
       // bytes remain deterministic if a caller reuses a backing buffer.
-      view.setUint32(offset + STEP_ARP_RATE_X2_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_LENGTH_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_PULSE_MASK_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_FLOW_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_CONTOUR_MODE_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_BOUNDARY_MODE_OFFSET, 0, true);
-      view.setUint32(offset + STEP_ARP_RESET_MASK_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_RATE_X2_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_LENGTH_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_PULSE_MASK_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_FLOW_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_CONTOUR_MODE_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_BOUNDARY_MODE_OFFSET, 0, true);
+      view.setUint32(offset + CELL_ARP_RESET_MASK_OFFSET, 0, true);
       for (let pulse = 0; pulse < 16; pulse += 1) {
-        view.setInt32(offset + STEP_ARP_CONTOUR_OFFSET + pulse * 4, 0, true);
-        view.setInt32(offset + STEP_ARP_SLOT_LANE_OFFSET + pulse * 4, -1, true);
+        view.setInt32(offset + CELL_ARP_CONTOUR_OFFSET + pulse * 4, 0, true);
+        view.setInt32(offset + CELL_ARP_SLOT_LANE_OFFSET + pulse * 4, -1, true);
       }
     }
+    // Chord intent is Follow-only and unused until the TS Chord model lands.
+    for (let byte = 0; byte < CELL_INTENT_BYTES; byte += 4) view.setUint32(offset + CELL_INTENT_OFFSET + byte, 0, true);
     for (let note = 0; note < SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP; note += 1) {
-      const noteOffset = offset + STEP_NOTES_OFFSET + note * STEP_NOTE_BYTES;
+      const noteOffset = offset + CELL_NOTES_OFFSET + note * CELL_NOTE_BYTES;
       const interval = notes[note];
-      view.setFloat32(noteOffset + STEP_NOTE_MIDI_OFFSET, interval ? interval.intervalSemitones : 0, true);
-      view.setFloat32(noteOffset + STEP_NOTE_VELOCITY_OFFSET, interval ? interval.velocity : 0, true);
-      view.setFloat32(noteOffset + STEP_NOTE_GATE_BEATS_OFFSET, interval?.gateBeats ?? 0, true);
+      // Fixed cells are validated 0..127 natively; clamp like the old playback did.
+      const midi = interval ? (fixed ? Math.min(127, Math.max(0, pitchRoot + interval.intervalSemitones)) : interval.intervalSemitones) : 0;
+      view.setFloat32(noteOffset + CELL_NOTE_MIDI_OFFSET, midi, true);
+      view.setFloat32(noteOffset + CELL_NOTE_VELOCITY_OFFSET, interval ? interval.velocity : 0, true);
+      view.setFloat32(noteOffset + CELL_NOTE_GATE_BEATS_OFFSET, interval?.gateBeats ?? 0, true);
+      view.setUint32(noteOffset + 12, 0, true);
+      view.setUint32(noteOffset + 16, 0, true);
     }
   }
 }
@@ -432,7 +448,7 @@ function writeVariation(view: DataView, offset: number, variation: SynthSequence
   // The serialized lane keeps the existing UI representation: semitone values
   // are root-relative semitones, notes values are scale degrees, and noteRange
   // values are root-relative range offsets. The wire payload stores the
-  // resolved semitone offset plus the mode/root needed by the audio resolver.
+  // resolved semitone offset; the root only bases printed Notes-mode cells.
   const pitch = laneArray<number>(overrides, 'pitch');
   const rootPitch = finiteNumber(variation.lane.state.pitchSettings?.root, 60);
   requireRange(rootPitch, 0, 127, `variation ${variation.id} pitch root`);
@@ -444,26 +460,19 @@ function writeVariation(view: DataView, offset: number, variation: SynthSequence
     ? scaleDegreeToSemitone(value, scale)
     : value) ?? null;
   validateNumberArray(pitchOffsets, -48, 48, `variation ${variation.id} pitch offsets`);
-  view.setFloat32(offset + SNAPSHOT_PITCH_ROOT_OFFSET, rootPitch, true);
-  view.setUint32(offset + SNAPSHOT_PITCH_MODE_OFFSET, pitchModeValue(pitchMode), true);
-  view.setUint32(
-    offset + SNAPSHOT_PITCH_BINDING_MODE_OFFSET,
-    sequencerPitchBindingModeToProductId(normalizeSequencerPitchBindingMode(variation.lane.state.pitchBindingMode)),
-    true,
-  );
   writeMask(view, offset + SNAPSHOT_MIDI_NOTE_MASK_OFFSET, pitch);
   writeFloatArray(view, offset + SNAPSHOT_MIDI_NOTE_OFFSET, pitchOffsets, 0);
   writeFloatArray(view, offset + SNAPSHOT_EXPRESSION_OFFSET, expression, 1);
   writeFloatArray(view, offset + SNAPSHOT_MORPH_OFFSET, morph, 0);
   writeFloatArray(view, offset + SNAPSHOT_DISTANCE_OFFSET, distance, 0);
   writeFloatArray(view, offset + SNAPSHOT_NUDGE_OFFSET, nudge, 0);
-  writeStepMetadata(view, offset, variation, steps, clockDiv);
+  writeStepMetadata(view, offset, variation, steps, clockDiv, pitchMode, rootPitch);
 }
 
 export function encodeSynthSequenceVariationBank(bank: SynthSequenceVariationBank | null): ArrayBuffer {
   if (bank === null) {
     const bytes = new ArrayBuffer(SYNTH_SEQUENCE_VARIATION_BANK_BYTES);
-    new DataView(bytes).setUint32(0, 1, true);
+    new DataView(bytes).setUint32(0, SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION_WIRE, true);
     return bytes;
   }
   const normalized = normalizeSynthSequenceVariationBank(bank);
@@ -471,7 +480,7 @@ export function encodeSynthSequenceVariationBank(bank: SynthSequenceVariationBan
   const bytes = new ArrayBuffer(SYNTH_SEQUENCE_VARIATION_BANK_BYTES);
   const view = new DataView(bytes);
   const bankClockDiv = sequencerClockDivisionToNumericValue(normalized.clockDiv, 16);
-  view.setUint32(0, normalized.schemaVersion, true);
+  view.setUint32(0, SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION_WIRE, true);
   view.setUint32(4, 1, true);
   const playId = String.fromCharCode(65 + normalized.playVariation) as SynthSequenceVariationId;
   const chain = normalized.chainEnabled ? normalized.chainOrder : [playId];

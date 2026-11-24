@@ -387,13 +387,13 @@ KesshoProductSequencerVariationBank makeNativeVariationBank() {
   variation.step_count = 2u;
   variation.clock_division = 64u;
   variation.trigger_mask = 0x3u;
-  variation.pitch_root = 60.0f;
-  variation.steps[0].mode = KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE;
-  variation.steps[0].note_count = 1u;
-  variation.steps[0].gate_beats = 0.5f;
-  variation.steps[0].notes[0].midi_note = 0.0f;
-  variation.steps[0].notes[0].velocity = 1.0f;
-  variation.steps[1] = variation.steps[0];
+  variation.sublane_steps[KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE] = 2u;
+  variation.cells[0].kind = KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FIXED;
+  variation.cells[0].note_count = 1u;
+  variation.cells[0].gate_beats = 0.5f;
+  variation.cells[0].notes[0].midi = 60.0f;
+  variation.cells[0].notes[0].velocity = 1.0f;
+  variation.cells[1] = variation.cells[0];
   return bank;
 }
 

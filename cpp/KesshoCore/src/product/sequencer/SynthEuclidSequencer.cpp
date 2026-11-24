@@ -1,5 +1,5 @@
 #include "../KesshoProductEngineInternal.h"
-
+#include "../music/ChordResolver.h"
 #include <array>
 #include <limits>
 
@@ -293,13 +293,21 @@ float nudgeValueForRelativeStep(
       1.0f);
 }
 
+// A triggered Notes-lane cell with pitches already based: `notes[i].midi` is
+// the unclamped sounding pitch (cell base + interval/absolute + Pitch lane
+// transpose), so every consumer only clamps to 0..127.
+struct ResolvedNotesCell {
+  const KesshoProductSequencerNotesCell* cell = nullptr;
+  KesshoProductChordNote notes[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP]{};
+  uint32_t count = 0u;
+};
+
 uint32_t variationArpNoteIndex(
-    const KesshoProductSequencerVariationStep& step,
+    const ResolvedNotesCell& resolved,
     uint32_t pulse,
     uint32_t lane_seed) {
-  const uint32_t note_count = std::min<uint32_t>(
-      step.note_count,
-      KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+  const auto& step = *resolved.cell;
+  const uint32_t note_count = resolved.count;
   if (note_count == 0u) return 0u;
   const uint32_t position = pulse % note_count;
   switch (step.arp_flow) {
@@ -325,25 +333,23 @@ int32_t productArpPositiveModulo(int32_t value, int32_t modulus);
 uint32_t productArpPingPongIndex(int32_t position, uint32_t length);
 
 float resolveVariationArpMidi(
-    const KesshoProductSequencerVariationStep& step,
-    float trigger_midi_note,
+    const ResolvedNotesCell& resolved,
     uint32_t pulse,
     uint32_t lane_seed) {
-  const uint32_t note_count = std::min<uint32_t>(
-      step.note_count,
-      KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+  const auto& step = *resolved.cell;
+  const uint32_t note_count = resolved.count;
   if (note_count == 0u) return -1.0f;
   uint32_t segment_start = 0u;
   for (uint32_t index = 0u; index <= pulse && index < 16u; ++index) {
     if ((step.arp_reset_mask & (1u << index)) != 0u) segment_start = index;
   }
   const uint32_t local_pulse = pulse - segment_start;
-  const uint32_t base_index = variationArpNoteIndex(step, local_pulse, lane_seed);
+  const uint32_t base_index = variationArpNoteIndex(resolved, local_pulse, lane_seed);
   const int32_t contour = step.arp_contour[pulse % 16u];
   uint32_t index = base_index;
   if (step.arp_contour_mode == 1u) {
     return clampFloat(
-        trigger_midi_note + step.notes[base_index].midi_note + static_cast<float>(contour),
+        resolved.notes[base_index].midi + static_cast<float>(contour),
         0.0f,
         127.0f);
   }
@@ -355,7 +361,7 @@ float resolveVariationArpMidi(
   } else {
     index = productArpPingPongIndex(moved, note_count);
   }
-  return clampFloat(trigger_midi_note + step.notes[index].midi_note, 0.0f, 127.0f);
+  return clampFloat(resolved.notes[index].midi, 0.0f, 127.0f);
 }
 
 uint64_t nudgedSequencerEventSample(
@@ -2249,19 +2255,10 @@ void KesshoProductEngine::generateLaneEvents(
           step_id,
           relative_step,
           hit_count_phase);
-      const auto* variation_step = variation != nullptr && step_id < variation->step_count
-          ? &variation->steps[step_id]
+      const auto* variation_step = variation != nullptr
+          ? &kessho::product::internal::variationNotesCell(*variation, step_id, hit_count_phase)
           : nullptr;
-      const bool variation_follow_harmony = variation_step != nullptr &&
-          variation_step->follow_harmony != 0u;
       float lane_pitch_note = resolveHarmonyMidi(lane, lane_index, step_id, event_sample);
-      if (variation != nullptr &&
-          variation->pitch_mode == kessho::product::internal::kSequencerPitchModeNotes &&
-          !variation_follow_harmony) {
-        // Printed Notes are already absolute at the authored root.  Bypass
-        // the live harmony resolver unless that individual cell opted in.
-        lane_pitch_note = clampFloat(variation->pitch_root, 0.0f, 127.0f);
-      }
       const bool variation_pitch_value = variation != nullptr &&
           kessho::product::internal::variationMaskHas(variation->midi_note_mask, midi_step_id);
       const float sequenced_midi_note_value = variationStepFloatValue(
@@ -2281,9 +2278,36 @@ void KesshoProductEngine::generateLaneEvents(
           ? lane.play_note_voice_masks[midi_step_id]
           : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
-      const bool variation_step_empty = variation_step != nullptr &&
-          (variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_EMPTY ||
-           variation_step->note_count == 0u);
+      // Pitch the cell is based on.  HARMONY adds intervals to the lane's
+      // harmony pitch; FIXED and FOLLOW are absolute and take only the Pitch
+      // lane's semitone offset.
+      const float transpose = variation_pitch_value ? sequenced_midi_note_value : 0.0f;
+      ResolvedNotesCell resolved_cell;
+      bool variation_step_empty = false;
+      if (variation_step != nullptr) {
+        resolved_cell.cell = variation_step;
+        const uint32_t kind = variation_step->kind;
+        if (kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FOLLOW) {
+          KesshoProductChordNote chord[KESSHO_PRODUCT_CHORD_MAX_NOTES + 1u];
+          resolved_cell.count = kessho::product::music::resolveChord(
+              variation_step->intent, nullptr, 0u,
+              {harmony.root_midi, harmony.scale_id}, {}, chord,
+              KESSHO_PRODUCT_CHORD_MAX_NOTES + 1u);
+          for (uint32_t i = 0u; i < resolved_cell.count; ++i) {
+            resolved_cell.notes[i] = {chord[i].midi + transpose, 1.0f, 0.0f, 0.0f, 0u};
+          }
+        } else if (kind != KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_REST) {
+          const float base = kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FIXED ? transpose : trigger_midi_note;
+          resolved_cell.count = std::min<uint32_t>(
+              variation_step->note_count,
+              KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
+          for (uint32_t i = 0u; i < resolved_cell.count; ++i) {
+            resolved_cell.notes[i] = variation_step->notes[i];
+            resolved_cell.notes[i].midi += base;
+          }
+        }
+        variation_step_empty = resolved_cell.count == 0u;
+      }
       // Keep the sequencer-only fallback telemetry for sessions that have not
       // received a live Harmony gesture. LiveChordGesture events update this
       // same telemetry at their control-event dispatch point and take priority.
@@ -2296,10 +2320,13 @@ void KesshoProductEngine::generateLaneEvents(
       }
       const bool synth_arp_enabled = !drum_lane &&
           (variation_step != nullptr
-              ? variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP
+              ? variation_step->articulation == KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP
               : lane.arp.enabled);
+      // A negative harmony pitch is a removed voice; FIXED and FOLLOW cells do not depend on it.
+      const bool harmony_based = variation_step == nullptr ||
+          variation_step->kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
       if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u &&
-          (trigger_midi_note < 0.0f || variation_step_empty)) {
+          ((harmony_based && trigger_midi_note < 0.0f) || variation_step_empty)) {
         lane.emitted_hit_count += 1u;
         continue;
       }
@@ -2548,18 +2575,15 @@ void KesshoProductEngine::generateLaneEvents(
         clearPendingArpRatchets(lane, event_sample);
       }
       if (variation_step != nullptr && !drum_lane &&
-          variation_step->mode != KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP) {
+          variation_step->articulation != KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP) {
         // Bank-local notes are explicit. An ARP is distributed across its
         // owning grid-step span and is replaced by the next trigger, while a
         // chord keeps every note on the parent trigger sample.
-        const uint32_t note_count = std::min<uint32_t>(
-            variation_step->note_count,
-            KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP);
         for (uint32_t ratchet_index = 0u; ratchet_index < ratchet; ++ratchet_index) {
-          for (uint32_t note_index = 0u; note_index < note_count; ++note_index) {
-            const auto& note = variation_step->notes[note_index];
+          for (uint32_t note_index = 0u; note_index < resolved_cell.count; ++note_index) {
+            const auto& note = resolved_cell.notes[note_index];
             enqueueSequencerNote(
-                clampFloat(trigger_midi_note + note.midi_note, 0.0f, 127.0f),
+                clampFloat(note.midi, 0.0f, 127.0f),
                 note.velocity,
                 0.0f,
                 note_index,
@@ -2571,7 +2595,7 @@ void KesshoProductEngine::generateLaneEvents(
       } else if (synth_arp_enabled) {
         ProductArpRuntimeState& arp = lane.arp;
         const bool variation_arp = variation_step != nullptr &&
-            variation_step->mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP;
+            variation_step->articulation == KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP;
         if (variation_arp) {
           arp.enabled = true;
           arp.length = std::max<uint32_t>(
@@ -2594,11 +2618,11 @@ void KesshoProductEngine::generateLaneEvents(
             arp.contour[pulse] = variation_step->arp_contour[pulse];
             arp.slot_lane[pulse] = variation_step->arp_slot_lane[pulse];
             const uint32_t note_index = variationArpNoteIndex(
-                *variation_step,
+                resolved_cell,
                 pulse,
                 lane.seed ^ static_cast<uint32_t>(relative_step));
-            arp.midi_notes[pulse] = note_index < variation_step->note_count
-                ? clampFloat(trigger_midi_note + variation_step->notes[note_index].midi_note, 0.0f, 127.0f)
+            arp.midi_notes[pulse] = note_index < resolved_cell.count
+                ? clampFloat(resolved_cell.notes[note_index].midi, 0.0f, 127.0f)
                 : -1.0f;
           }
           // An armed local ARP starts from its first pulse at each parent
@@ -2647,8 +2671,7 @@ void KesshoProductEngine::generateLaneEvents(
           const float arp_midi_note = arp_step_active
               ? (variation_arp
                   ? resolveVariationArpMidi(
-                      *variation_step,
-                      trigger_midi_note,
+                      resolved_cell,
                       arp_step,
                       lane.seed ^ static_cast<uint32_t>(relative_step))
                   : resolveProductArpMidi(*this, lane, lane_index, arp_step, sequenced_midi_note))
@@ -2669,9 +2692,9 @@ void KesshoProductEngine::generateLaneEvents(
                 arp_sample,
                 arp_step,
                 !variation_arp && arp.slot_lane[arp_step] >= 0 && productHarmonySlotHasPool(*this, arp.slot_lane[arp_step]),
-                variation_arp && variation_step->note_count > 0u
-                  ? variation_step->notes[variationArpNoteIndex(
-                      *variation_step,
+                variation_arp && resolved_cell.count > 0u
+                  ? resolved_cell.notes[variationArpNoteIndex(
+                      resolved_cell,
                       arp_step,
                       lane.seed ^ static_cast<uint32_t>(relative_step))].gate_beats
                   : 0.0f);

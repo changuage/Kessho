@@ -58,16 +58,8 @@ uint64_t variationLeadingNegativeNudgeFrames(
     const bool follow_trigger_hits =
         (variation.sublane_follow_trigger_hits_mask & (1u << kNudgeFieldId)) != 0u;
     const uint32_t phase = follow_trigger_hits ? 0u : first_trigger;
-    const uint32_t direction = variation.sublane_directions[kNudgeFieldId];
-    if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
-      nudge_step = steps - 1u - (phase % steps);
-    } else if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG && steps > 1u) {
-      const uint32_t period = steps * 2u - 2u;
-      const uint32_t position = phase % period;
-      nudge_step = position < steps ? position : period - position;
-    } else {
-      nudge_step = phase % steps;
-    }
+    nudge_step = kessho::product::internal::variationCyclePosition(
+        steps, variation.sublane_directions[kNudgeFieldId], phase);
   }
   if (nudge_step >= KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS ||
       (variation.nudge_mask & (1u << nudge_step)) == 0u ||
@@ -119,14 +111,13 @@ bool normalizeVariationBank(
             ? 0u
             : ~((1u << snapshot.step_count) - 1u))) != 0u ||
         (snapshot.sublane_enabled_mask & ~0x1ffu) != 0u ||
-        (snapshot.sublane_follow_trigger_hits_mask & ~0x1feu) != 0u ||
-        snapshot.pitch_mode > kessho::product::internal::kSequencerPitchModeNoteRange ||
-        snapshot.pitch_binding_mode > kessho::product::internal::kSequencerPitchBindingStep ||
-        !finiteInRange(snapshot.pitch_root, 0.0f, 127.0f)) {
+        (snapshot.sublane_follow_trigger_hits_mask & ~0x3feu) != 0u) {
       return false;
     }
-    for (uint32_t field = 0u; field < 9u; ++field) {
-      if (snapshot.sublane_enabled_mask & (1u << field)) {
+    for (uint32_t field = 0u; field < KESSHO_PRODUCT_SEQUENCER_VARIATION_SUBLANE_COUNT; ++field) {
+      // The Notes lane is always traversed, so its length is always checked.
+      if ((snapshot.sublane_enabled_mask & (1u << field)) != 0u ||
+          field == KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE) {
         if (snapshot.sublane_steps[field] == 0u || snapshot.sublane_steps[field] > 32u) return false;
       }
       if (snapshot.sublane_directions[field] > KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG) return false;
@@ -149,26 +140,48 @@ bool normalizeVariationBank(
       if (maskHas(snapshot.distance_range_mask, step) && !finiteInRange(snapshot.distance_range_maxes[step], 0.0f, 1.0f)) return false;
       if (maskHas(snapshot.nudge_mask, step) && !finiteInRange(snapshot.nudge_values[step], -1.0f, 1.0f)) return false;
     }
-    for (uint32_t step = 0u; step < snapshot.step_count; ++step) {
-      auto& cell = snapshot.steps[step];
-      if (cell.mode > KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP ||
+    for (uint32_t index = 0u;
+         index < snapshot.sublane_steps[KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE];
+         ++index) {
+      const auto& cell = snapshot.cells[index];
+      if (cell.kind > KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FOLLOW ||
+          cell.articulation > KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP ||
           cell.note_count > KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP ||
           !finiteInRange(cell.gate_beats, 0.0f, 64.0f) ||
           !finiteInRange(cell.arp_span_steps, 0.0f, 32.0f) ||
-          cell.arp_direction > 1u || cell.follow_harmony > 1u) {
+          cell.arp_direction > 1u) {
         return false;
       }
-      if (cell.mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_EMPTY && cell.note_count != 0u) return false;
-      if (cell.mode == KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP &&
+      if (cell.kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_REST && cell.note_count != 0u) return false;
+      if (cell.kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FOLLOW) {
+        const auto& intent = cell.intent;
+        if (intent.behavior != KESSHO_PRODUCT_CHORD_BEHAVIOR_FOLLOW ||
+            intent.quality >= KESSHO_PRODUCT_CHORD_QUALITY_COUNT ||
+            !finiteInRange(intent.spread, 0.0f, 1.0f) ||
+            intent.register_octave < -3 || intent.register_octave > 3 ||
+            intent.bass_mode > KESSHO_PRODUCT_CHORD_BASS_PITCH_CLASS ||
+            intent.bass_pitch_class >= 12u) {
+          return false;
+        }
+      }
+      if (cell.articulation == KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP &&
           (cell.arp_rate_x2 == 0u || cell.arp_rate_x2 > 8u ||
            cell.arp_length == 0u || cell.arp_length > 16u ||
            cell.arp_flow > 5u || cell.arp_contour_mode > 1u || cell.arp_boundary_mode > 2u)) {
         return false;
       }
+      // Per-note offsets and destinations are not played yet; reject them
+      // rather than silently ignoring authored data.
+      // HARMONY notes are intervals; FIXED notes (and the FOLLOW display cache) are absolute.
+      const bool interval = cell.kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
+      const float note_low = interval ? -48.0f : 0.0f;
+      const float note_high = interval ? 48.0f : 127.0f;
       for (uint32_t note = 0u; note < cell.note_count; ++note) {
-        if (!finiteInRange(cell.notes[note].midi_note, -48.0f, 48.0f) ||
-            !finiteInRange(cell.notes[note].velocity, 0.0f, 1.0f) ||
-            !finiteInRange(cell.notes[note].gate_beats, 0.0f, 64.0f)) return false;
+        const auto& value = cell.notes[note];
+        if (!finiteInRange(value.midi, note_low, note_high) ||
+            !finiteInRange(value.velocity, 0.0f, 1.0f) ||
+            !finiteInRange(value.gate_beats, 0.0f, 64.0f) ||
+            value.offset_beats != 0.0f || value.destination_source_id != 0u) return false;
       }
       for (uint32_t pulse = 0u; pulse < 16u; ++pulse) {
         if (cell.arp_contour[pulse] < -12 || cell.arp_contour[pulse] > 12 ||

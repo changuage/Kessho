@@ -42,23 +42,30 @@ typedef struct KesshoProductChordIntent { uint32_t behavior; int32_t degree; uin
 - **No other fields.** Recognition labels, captured context, mismatch flags and the `Auto` behaviour are not represented anywhere.
 
 ### D2 · Notes lane = a cell table with its own traversal
-Today, step content is indexed by trigger step. In M2 the Notes lane becomes a **cell table** (`cells[32]`) with its own `notes_length`, `notes_direction` and `notes_advance` (Hits / Steps), traversed by the same `subLaneStepForField` logic as every other sublane.
+Today, step content is indexed by trigger step. In M2 the variation's `steps[32]` become `cells[32]` (`KesshoProductSequencerNotesCell`). They are traversed as a tenth sublane (`KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE` = 9): `sublane_steps`, `sublane_directions` and bit 9 of `sublane_follow_trigger_hits_mask` give the Notes lane its length, direction and Advance, through the same position rule as every other sublane.
 
-Each cell is one of `rest`, `harmony` (play the current Harmony chord: today's `follow_harmony`) or `chord` (a `KesshoProductChordIntent` plus up to 32 `KesshoProductChordNote`, so a printed cell keeps dense attacks as offsets; authored chords, progression events and the Palette use at most `KESSHO_PRODUCT_CHORD_MAX_NOTES` = 8), plus an `articulation` override (`none`, `chord`, `strum` or `arp`) and the existing ARP fields.
+Each cell has a `kind`:
 
-The lane carries the default articulation and ARP config. The existing variation `steps[]` struct is renamed and reshaped into this cell, so the per-step note loop at `SynthEuclidSequencer.cpp:2549–2570` stays the playback path. It changes in three ways:
+| Kind | Plays | Notes field means |
+| --- | --- | --- |
+| `REST` | nothing | unused |
+| `HARMONY` | the part's harmony pitch (`resolveHarmonyMidi`) plus each note's interval: today's `follow_harmony` and Semitones-mode steps | semitone intervals, −48..48 |
+| `FIXED` | exactly its notes | absolute MIDI, 0..127 |
+| `FOLLOW` | `resolveChord(intent)` against the harmony frame | display cache, ignored |
 
-- It reads `offset_beats`.
-- It reads `destination_source_id`.
-- It indexes cells through the Notes traversal instead of by trigger step.
+- **Transposition:** the Pitch lane transposes every kind in semitones. For `FIXED` and `FOLLOW` it is the only base.
+- **No root bypass:** `pitch_mode` and `pitch_root` leave the native payload. The Notes-mode bypass is gone because `FIXED` notes are already absolute.
+- **Articulation:** a cell's `articulation` is `CHORD` or `ARP` and keeps the existing ARP fields. Strum is added with its renderer, not before.
+- **Notes per cell:** a cell holds up to 32 `KesshoProductChordNote`, so a printed cell keeps dense attacks as offsets. Authored chords, progression events and the Palette hold at most `KESSHO_PRODUCT_CHORD_MAX_NOTES` = 8.
+- **Not played yet:** T2 rejects non-zero `offset_beats` and `destination_source_id` in validation. T6 adds playback for them together with the printer that writes them.
+- **TS model unchanged in T2:** the TS encoder maps today's `stepMetadata` onto cells. A Notes-mode step without harmony follow becomes `FIXED` (root + interval); any other active step becomes `HARMONY`; an inactive step becomes `REST`. The Notes lane gets length = `step_count`, direction forward and Advance = Steps, so existing variations play exactly as before. The TS `Chord` model replaces `stepMetadata` in T5.
 
 ### D3 · Pitch binding collapses into Advance
-Every sublane gets one advance setting (Hits / Steps), which is `sublane_follow_trigger_hits_mask` as it already exists.
+Every sublane gets one Advance setting (Hits / Steps), which is `sublane_follow_trigger_hits_mask` as it already exists.
 
-- **Pitch:** the Pitch lane stops deriving its advance from `pitch_binding_mode`.
-- **`linked` is removed:** both its UI emulation (`SynthPage.tsx:4995–5003`) and the `PitchBindingMode` type go.
-- **`pitch_binding_mode` is removed** from the variation snapshot and the lane state.
-- **Loading old presets:** `polyrhythmic` maps to Hits, `sequence` to Steps, and `linked` to Hits with the pitch lane length set to the hit count, as the UI does today.
+- **Variations (T2):** `pitch_binding_mode` leaves the variation snapshot. The encoder writes bit 4 as Hits for `polyrhythmic` and `linked`, and Steps for `sequence`.
+- **Lane state (M4):** removing `midi_note_binding_mode`, the `PitchBindingMode` type and the `linked` UI emulation (`SynthPage.tsx:4995–5003`) touches about 40 files, including the drum lanes. It moves to M4, which rebuilds the lane model.
+- **Loading old presets (M4):** `polyrhythmic` maps to Hits, `sequence` to Steps, and `linked` to Hits with the pitch lane length set to the hit count, as the UI does today.
 
 ### D4 · Progression events hold an inline chord
 - `canonical_progression_slot_id[64]` becomes `KesshoProductChordIntent progression_chord[64]` plus `KesshoProductChordNote progression_notes[64][8]` and a note count.
@@ -118,7 +125,7 @@ These are stacked commits on one M2 branch, reviewed in order. **Agent** is the 
 | # | Task | Depends on | Agent |
 | --- | --- | --- | --- |
 | T1 | Native chord types and resolver. Add `KesshoProductChord.h` and `music/ChordResolver.{h,cpp}`, extracted from `writeHarmonyPoolFromIntent`, with unit tests (`ProductChordResolverTests.cpp`) covering Fixed passthrough, Follow resolution in several keys and scales, inversion and spread, and the Smooth common-tone case (Cmaj7 → Am7 keeps three notes). No callers changed yet. | M0 landed | Sonnet |
-| T2 | Variation payload: steps become the Notes cell table (D2) and pitch binding becomes Advance (D3). Covers the native struct, snapshot decode, playback indexing, the TS encoder and normalizer, the format version, and ABI and schema regeneration. Keep printed behaviour equal for existing variations. | T1 | Sonnet; main session designs the struct diff |
+| T2 | Variation payload: steps become the Notes cell table (D2) and variation pitch binding becomes Advance (D3). Covers the native struct, validation, playback indexing, the TS encoder mapping and the schema version. Existing variations play exactly as before. | T1 | Sonnet; main session designs the struct diff |
 | T3 | Inline progression chords (D4) in native and TS. Delete the legacy progression and the slot-sourced path. | T1 | Sonnet |
 | T4 | Delete the chord bank and slot events (native and TS), and switch every reader to the resolver or the cells. | T2, T3 | Sonnet; main session reviews the deletion list against `git grep` |
 | T5 | TS Chord model and state: `Chord` type, `harmonyPalette`, persistence keys (D6, D8), and dropping old keys on load. | T2, T3 | Haiku for keys and tests, Sonnet for the model |

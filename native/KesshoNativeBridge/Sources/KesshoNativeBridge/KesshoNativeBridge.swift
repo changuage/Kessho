@@ -240,7 +240,7 @@ public extension KesshoNativeBridgePolicy {
             KesshoNativeBridgeMethodPolicy(method: "stopNativeProductRuntime", maxOptionsBytes: 256),
             KesshoNativeBridgeMethodPolicy(method: "getNativeProductTelemetry", maxOptionsBytes: 256),
             KesshoNativeBridgeMethodPolicy(method: "setNativeProductInteractionDemand", maxOptionsBytes: 1024),
-            KesshoNativeBridgeMethodPolicy(method: "setNativeSynthSequenceVariationBank", maxOptionsBytes: 128 * 1024),
+            KesshoNativeBridgeMethodPolicy(method: "setNativeSynthSequenceVariationBank", maxOptionsBytes: 256 * 1024),
             KesshoNativeBridgeMethodPolicy(method: "selectNativeSynthSequenceVariation", maxOptionsBytes: 1024),
             KesshoNativeBridgeMethodPolicy(method: "getNativeSynthSequenceVariationRuntime", maxOptionsBytes: 1024),
             KesshoNativeBridgeMethodPolicy(method: "setNativeProductCapture", maxOptionsBytes: 8 * 1024),

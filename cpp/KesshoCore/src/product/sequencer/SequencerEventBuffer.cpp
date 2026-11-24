@@ -266,25 +266,11 @@
   bool follow_trigger_hits = true;
   if (variation_enabled) {
     follow_trigger_hits = (variation->sublane_follow_trigger_hits_mask & (1u << field_id)) != 0u;
-    if (field_id == 4u) {
-      // Pitch binding is a lane-level choice in the public model.  Keep it
-      // explicit in the bank so a variation never inherits a stale editor
-      // lane binding when it is replayed on the audio thread.
-      follow_trigger_hits = variation->pitch_binding_mode != kSequencerPitchBindingStep;
-    }
   } else if (field_id == 4u) {
     follow_trigger_hits = lane.midi_note_binding_mode != kSequencerPitchBindingStep;
   }
-  const uint64_t phase = follow_trigger_hits ? hit_count_phase : static_cast<uint64_t>(trigger_step);
-  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_REVERSE) {
-    return steps - 1u - static_cast<uint32_t>(phase % steps);
-  }
-  if (direction == KESSHO_PRODUCT_SUBLANE_DIRECTION_PINGPONG && steps > 1u) {
-    const uint32_t period = steps * 2u - 2u;
-    const uint32_t position = static_cast<uint32_t>(phase % period);
-    return position < steps ? position : period - position;
-  }
-  return static_cast<uint32_t>(phase % steps);
+  return variationCyclePosition(
+      steps, direction, follow_trigger_hits ? hit_count_phase : static_cast<uint64_t>(trigger_step));
 }
 
   void KesshoProductEngine::clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step) {

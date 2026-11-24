@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "KesshoProductChord.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,41 +13,41 @@ extern "C" {
 // sequencer boundary.  Four variations * four 32-step snapshots is the whole
 // bank; the chain only names those snapshots.
 enum {
-  KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION = 1u,
+  KESSHO_PRODUCT_SEQUENCER_VARIATION_SCHEMA_VERSION = 2u,
   KESSHO_PRODUCT_SEQUENCER_VARIATION_COUNT = 4u,
   KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS = 32u,
   KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_CHAIN_ENTRIES = 4u,
   KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_CHAIN_STEPS = 128u,
   KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP = 32u,
+  // Nine step-value sublanes (field ids 1..8, 0 = trigger) plus the Notes lane.
+  KESSHO_PRODUCT_SEQUENCER_VARIATION_SUBLANE_COUNT = 10u,
+  KESSHO_PRODUCT_SEQUENCER_VARIATION_NOTES_SUBLANE = 9u,
 };
 
-typedef enum KesshoProductSequencerVariationStepMode {
-  KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_EMPTY = 0u,
-  KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_SINGLE = 1u,
-  KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_CHORD = 2u,
-  KESSHO_PRODUCT_SEQUENCER_VARIATION_STEP_ARP = 3u,
-} KesshoProductSequencerVariationStepMode;
+typedef enum KesshoProductSequencerNotesCellKind {
+  KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_REST = 0u,
+  // Plays the part's harmony pitch plus each note's semitone interval.
+  KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY = 1u,
+  // Plays its notes as absolute MIDI.
+  KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FIXED = 2u,
+  // Resolves `intent` against the harmony frame; `notes` is a display cache.
+  KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_FOLLOW = 3u,
+} KesshoProductSequencerNotesCellKind;
 
-typedef struct KesshoProductSequencerVariationNote {
-  // Semitone offset from the lane's current pitch authority.  The lane's
-  // pitch binding, scale, harmony, and sublane cycle remain authoritative.
-  float midi_note;
-  float velocity;
-  // Optional per-note gate.  Zero means use the parent step gate.
-  float gate_beats;
-} KesshoProductSequencerVariationNote;
+typedef enum KesshoProductSequencerNotesArticulation {
+  KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_CHORD = 0u,
+  KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP = 1u,
+} KesshoProductSequencerNotesArticulation;
 
-typedef struct KesshoProductSequencerVariationStep {
-  uint32_t mode;
+typedef struct KesshoProductSequencerNotesCell {
+  uint32_t kind;
+  uint32_t articulation;
   uint32_t note_count;
   float gate_beats;
   // ARP spans this many owning grid steps.  Zero is the normal one-step span.
   float arp_span_steps;
   uint32_t arp_direction;
-  // A fixed printed pitch is the default.  Set this for an explicit harmony
-  // follow on the individual trigger cell.
-  uint32_t follow_harmony;
-  // ProductArpConfig, kept local to an ARP step so the existing audio arp
+  // ProductArpConfig, kept local to an ARP cell so the existing audio arp
   // resolver can be reused without making a second lane authority.
   uint32_t arp_rate_x2;
   uint32_t arp_length;
@@ -56,8 +58,9 @@ typedef struct KesshoProductSequencerVariationStep {
   uint32_t arp_reset_mask;
   int32_t arp_contour[16];
   int32_t arp_slot_lane[16];
-  KesshoProductSequencerVariationNote notes[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP];
-} KesshoProductSequencerVariationStep;
+  KesshoProductChordIntent intent;
+  KesshoProductChordNote notes[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP];
+} KesshoProductSequencerNotesCell;
 
 typedef struct KesshoProductSequencerVariationSnapshot {
   uint32_t step_count;
@@ -65,12 +68,9 @@ typedef struct KesshoProductSequencerVariationSnapshot {
   float swing;
   uint32_t trigger_mask;
   uint32_t sublane_enabled_mask;
-  uint32_t sublane_steps[9];
-  uint32_t sublane_directions[9];
+  uint32_t sublane_steps[KESSHO_PRODUCT_SEQUENCER_VARIATION_SUBLANE_COUNT];
+  uint32_t sublane_directions[KESSHO_PRODUCT_SEQUENCER_VARIATION_SUBLANE_COUNT];
   uint32_t sublane_follow_trigger_hits_mask;
-  float pitch_root;
-  uint32_t pitch_mode;
-  uint32_t pitch_binding_mode;
   uint32_t probability_mask;
   uint32_t ratchet_mask;
   uint32_t trig_condition_mask;
@@ -94,7 +94,7 @@ typedef struct KesshoProductSequencerVariationSnapshot {
   float distance[32];
   float distance_range_maxes[32];
   float nudge_values[32];
-  KesshoProductSequencerVariationStep steps[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS];
+  KesshoProductSequencerNotesCell cells[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_STEPS];
 } KesshoProductSequencerVariationSnapshot;
 
 typedef struct KesshoProductSequencerVariationBank {
@@ -122,15 +122,12 @@ typedef struct KesshoProductSequencerVariationRuntime {
 }
 
 static_assert(
-    sizeof(KesshoProductSequencerVariationNote) == 12u,
-    "sequencer variation note ABI changed");
+    sizeof(KesshoProductSequencerNotesCell) == 856u,
+    "sequencer notes cell ABI changed");
 static_assert(
-    sizeof(KesshoProductSequencerVariationStep) == 564u,
-    "sequencer variation step ABI changed");
-static_assert(
-    sizeof(KesshoProductSequencerVariationSnapshot) == 19736u,
+    sizeof(KesshoProductSequencerVariationSnapshot) == 29076u,
     "sequencer variation snapshot ABI changed");
 static_assert(
-    sizeof(KesshoProductSequencerVariationBank) == 78984u,
+    sizeof(KesshoProductSequencerVariationBank) == 116344u,
     "sequencer variation bank ABI changed");
 #endif
