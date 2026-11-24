@@ -75,6 +75,7 @@ export const kesshoCoreSourceFiles = Object.freeze([
   'cpp/KesshoCore/src/product/fx/ProductDynamicsTerminal.cpp',
   'cpp/KesshoCore/src/product/fx/ProductDynamicsRender.cpp',
   'cpp/KesshoCore/src/product/transport/ProductTransport.cpp',
+  'cpp/KesshoCore/src/product/transport/ProductHostPosition.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',
   'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp',
   'cpp/KesshoCore/src/product/sequencer/ProductScatterRuntime.cpp',

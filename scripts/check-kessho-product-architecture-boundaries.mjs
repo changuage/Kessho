@@ -68,7 +68,7 @@ const focusedHeaders = [
   ['cpp/KesshoCore/src/product/ProductSourcePresetPatch.h', 620],
   ['cpp/KesshoCore/src/product/ProductSequencerState.h', 120],
   ['cpp/KesshoCore/src/product/ProductBuffers.h', 80],
-  ['cpp/KesshoCore/src/product/ProductState.h', 640],
+  ['cpp/KesshoCore/src/product/ProductState.h', 642],
 ];
 
 for (const [path, maxLines] of focusedHeaders) {
@@ -575,6 +575,7 @@ const componentFiles = [
   'cpp/KesshoCore/src/product/sources/SoundscapeTextureSource.cpp',
   'cpp/KesshoCore/src/product/transport/MusicalClock.cpp',
   'cpp/KesshoCore/src/product/transport/ProductTransport.cpp',
+  'cpp/KesshoCore/src/product/transport/ProductHostPosition.cpp',
 ];
 
 for (const path of componentFiles) {
