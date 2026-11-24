@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createRandomTransportControls } from './transportRandom';
 import {
   TransportImpulseRing,
   TRANSPORT_PULSE_RISE_DRUMS,
   createTransportPulseRiseState,
   createTransportPerformanceGovernorState,
   createDefaultTransportAssignments,
-  createRandomTransportControls,
   createTransportVisualizerPresetData,
   createTransportTriggerCharacterState,
   fillTransportAssignmentSignals,
