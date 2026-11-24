@@ -1,0 +1,468 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		63283CFD4F7B3278DB0102AC /* CoreAudioKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 91D1501EFBBF3284249976EE /* CoreAudioKit.framework */; };
+		63382F6A1A1E4DE341A46B7A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 828F4FBC9230FCD92EEFB98C /* main.m */; };
+		90DA364983C59BDC960BAE3F /* KesshoAudioUnitExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 98E7D09C0E22180C1A238840 /* KesshoAudioUnitExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A66AD33A8A106A274F786A1C /* KesshoAudioUnitViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 361C73B970000AB29C5D9F18 /* KesshoAudioUnitViewController.m */; };
+		A67F773497A7B7B6D8AF7442 /* KesshoAudioUnit.mm in Sources */ = {isa = PBXBuildFile; fileRef = 619CC449A154D7D8D04BEC11 /* KesshoAudioUnit.mm */; };
+		B84DCE46E536A68DD037EDE0 /* KesshoProductCore in Frameworks */ = {isa = PBXBuildFile; productRef = 05E4BDF5122D791136445D0C /* KesshoProductCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5C887FB3F0479E16290030A4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2F309C6192848EEBF947CA7E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DBFB69932BF1746583CA5383;
+			remoteInfo = KesshoAudioUnitExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1A2C4FAA0B99115BC65A59E0 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				90DA364983C59BDC960BAE3F /* KesshoAudioUnitExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		20856F12617F7B1D060859E2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		361C73B970000AB29C5D9F18 /* KesshoAudioUnitViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KesshoAudioUnitViewController.m; sourceTree = "<group>"; };
+		45D3FECD5E9D52D60B9FFF9A /* Extension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Extension.entitlements; sourceTree = "<group>"; };
+		619CC449A154D7D8D04BEC11 /* KesshoAudioUnit.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KesshoAudioUnit.mm; sourceTree = "<group>"; };
+		735DBAE083D9BD3A3B188BEE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		828F4FBC9230FCD92EEFB98C /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		839C53296EAC188E13C1AFA3 /* KesshoAudioUnitApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KesshoAudioUnitApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8693478E24088B2D46E4B2E5 /* generativemusic */ = {isa = PBXFileReference; lastKnownFileType = folder; name = generativemusic; path = ../..; sourceTree = SOURCE_ROOT; };
+		91D1501EFBBF3284249976EE /* CoreAudioKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudioKit.framework; path = System/Library/Frameworks/CoreAudioKit.framework; sourceTree = SDKROOT; };
+		96B4ACEC0AB619C983993930 /* Host.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Host.entitlements; sourceTree = "<group>"; };
+		98E7D09C0E22180C1A238840 /* KesshoAudioUnitExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KesshoAudioUnitExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5F81D91A7C7AF0DE171766B /* KesshoAudioUnit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KesshoAudioUnit.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E33C54ABC19FE8FBFB15EA2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B84DCE46E536A68DD037EDE0 /* KesshoProductCore in Frameworks */,
+				63283CFD4F7B3278DB0102AC /* CoreAudioKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5388222053C67DC2FF211F52 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				8693478E24088B2D46E4B2E5 /* generativemusic */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		7B3A40DDF708F0C6A32929E5 /* Host */ = {
+			isa = PBXGroup;
+			children = (
+				96B4ACEC0AB619C983993930 /* Host.entitlements */,
+				735DBAE083D9BD3A3B188BEE /* Info.plist */,
+				828F4FBC9230FCD92EEFB98C /* main.m */,
+			);
+			path = Host;
+			sourceTree = "<group>";
+		};
+		D2CD87CD5D68B3AF61A200C4 = {
+			isa = PBXGroup;
+			children = (
+				F1472C65E6B52FA8CC056457 /* Extension */,
+				7B3A40DDF708F0C6A32929E5 /* Host */,
+				5388222053C67DC2FF211F52 /* Packages */,
+				DE0919572CD2C347B7C83E55 /* Frameworks */,
+				E7A15E35128F0B78ACA6862F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DE0919572CD2C347B7C83E55 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				91D1501EFBBF3284249976EE /* CoreAudioKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E7A15E35128F0B78ACA6862F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				839C53296EAC188E13C1AFA3 /* KesshoAudioUnitApp.app */,
+				98E7D09C0E22180C1A238840 /* KesshoAudioUnitExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F1472C65E6B52FA8CC056457 /* Extension */ = {
+			isa = PBXGroup;
+			children = (
+				45D3FECD5E9D52D60B9FFF9A /* Extension.entitlements */,
+				20856F12617F7B1D060859E2 /* Info.plist */,
+				B5F81D91A7C7AF0DE171766B /* KesshoAudioUnit.h */,
+				619CC449A154D7D8D04BEC11 /* KesshoAudioUnit.mm */,
+				361C73B970000AB29C5D9F18 /* KesshoAudioUnitViewController.m */,
+			);
+			path = Extension;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4A2D22FC8D4A43D9BA78CE2E /* KesshoAudioUnitApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D37C4DF67A97AB17D83B5C31 /* Build configuration list for PBXNativeTarget "KesshoAudioUnitApp" */;
+			buildPhases = (
+				BB565AE0D2A675F37EB6587D /* Sources */,
+				1A2C4FAA0B99115BC65A59E0 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				048B6749B7AB5C6EB16FB117 /* PBXTargetDependency */,
+			);
+			name = KesshoAudioUnitApp;
+			packageProductDependencies = (
+			);
+			productName = KesshoAudioUnitApp;
+			productReference = 839C53296EAC188E13C1AFA3 /* KesshoAudioUnitApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		DBFB69932BF1746583CA5383 /* KesshoAudioUnitExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CDE527E33C0521E150FEF60C /* Build configuration list for PBXNativeTarget "KesshoAudioUnitExtension" */;
+			buildPhases = (
+				369EDC557956071EFC559110 /* Sources */,
+				E33C54ABC19FE8FBFB15EA2A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KesshoAudioUnitExtension;
+			packageProductDependencies = (
+				05E4BDF5122D791136445D0C /* KesshoProductCore */,
+			);
+			productName = KesshoAudioUnitExtension;
+			productReference = 98E7D09C0E22180C1A238840 /* KesshoAudioUnitExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2F309C6192848EEBF947CA7E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = AA6ABA710C3942D295AAA625 /* Build configuration list for PBXProject "KesshoAudioUnit" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D2CD87CD5D68B3AF61A200C4;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				736C1C376DC2DA7BA879BFBA /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E7A15E35128F0B78ACA6862F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4A2D22FC8D4A43D9BA78CE2E /* KesshoAudioUnitApp */,
+				DBFB69932BF1746583CA5383 /* KesshoAudioUnitExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		369EDC557956071EFC559110 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A67F773497A7B7B6D8AF7442 /* KesshoAudioUnit.mm in Sources */,
+				A66AD33A8A106A274F786A1C /* KesshoAudioUnitViewController.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB565AE0D2A675F37EB6587D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				63382F6A1A1E4DE341A46B7A /* main.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		048B6749B7AB5C6EB16FB117 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DBFB69932BF1746583CA5383 /* KesshoAudioUnitExtension */;
+			targetProxy = 5C887FB3F0479E16290030A4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2C06F4760E243FCEEC10A0B4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Extension/Extension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "app.kessho.audio-unit.extension";
+				PRODUCT_NAME = Kessho;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		4510C4E6638CB6CFC3DE3C11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		4BDD5E7382C63DE07856CA15 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Host/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Host/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "app.kessho.audio-unit";
+				PRODUCT_NAME = "Kessho Audio Unit";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		5B961E0C451174EA959EE3D4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Host/Host.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Host/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "app.kessho.audio-unit";
+				PRODUCT_NAME = "Kessho Audio Unit";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		7CAC4F89E15307941A24A6D9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		8E46B68D88C3910923360920 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Extension/Extension.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Extension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "app.kessho.audio-unit.extension";
+				PRODUCT_NAME = Kessho;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA6ABA710C3942D295AAA625 /* Build configuration list for PBXProject "KesshoAudioUnit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4510C4E6638CB6CFC3DE3C11 /* Debug */,
+				7CAC4F89E15307941A24A6D9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CDE527E33C0521E150FEF60C /* Build configuration list for PBXNativeTarget "KesshoAudioUnitExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2C06F4760E243FCEEC10A0B4 /* Debug */,
+				8E46B68D88C3910923360920 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D37C4DF67A97AB17D83B5C31 /* Build configuration list for PBXNativeTarget "KesshoAudioUnitApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B961E0C451174EA959EE3D4 /* Debug */,
+				4BDD5E7382C63DE07856CA15 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		736C1C376DC2DA7BA879BFBA /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		05E4BDF5122D791136445D0C /* KesshoProductCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KesshoProductCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 2F309C6192848EEBF947CA7E /* Project object */;
+}

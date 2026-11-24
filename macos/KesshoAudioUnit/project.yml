@@ -1,0 +1,45 @@
+name: KesshoAudioUnit
+options:
+  bundleIdPrefix: app.kessho
+  deploymentTarget:
+    macOS: "12.0"
+  createIntermediateGroups: true
+packages:
+  KesshoProductCore:
+    path: ../..
+settings:
+  base:
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    MACOSX_DEPLOYMENT_TARGET: "12.0"
+targets:
+  KesshoAudioUnitApp:
+    type: application
+    platform: macOS
+    sources:
+      - Host
+    dependencies:
+      - target: KesshoAudioUnitExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.kessho.audio-unit
+        CODE_SIGN_ENTITLEMENTS: Host/Host.entitlements
+        INFOPLIST_FILE: Host/Info.plist
+        PRODUCT_NAME: Kessho Audio Unit
+  KesshoAudioUnitExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Extension
+    dependencies:
+      - package: KesshoProductCore
+        product: KesshoProductCore
+      - sdk: CoreAudioKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.kessho.audio-unit.extension
+        CODE_SIGN_ENTITLEMENTS: Extension/Extension.entitlements
+        INFOPLIST_FILE: Extension/Info.plist
+        PRODUCT_NAME: Kessho
+        SKIP_INSTALL: true
+
