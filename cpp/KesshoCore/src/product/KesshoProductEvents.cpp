@@ -378,7 +378,7 @@ void retimeSequencerLanePreservingPhase(
       return KESSHO_PRODUCT_OK;
     case KESSHO_PRODUCT_EVENT_KIND_SET_TRANSPORT:
       return event.value > 0.0f &&
-              (event.value2 == 0.0f || (event.value2 >= 1.0f && event.value2 <= 32.0f)) &&
+              (event.value2 == 0.0f || (event.value2 >= kMinimumBeatsPerBar && event.value2 <= kMaximumBeatsPerBar)) &&
               (event.value3 == 0.0f || (event.value3 >= 1.0f && event.value3 <= 256.0f)) &&
               event.value4 >= 0.0f
           ? KESSHO_PRODUCT_OK
@@ -1038,9 +1038,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       if ((event.flags & KESSHO_PRODUCT_TRANSPORT_APPLY_NEXT_PHRASE) != 0u && transport.running) {
         transport.stageNextPhraseTransition(
             event.value,
-            event.value2 > 0.0f
-                ? static_cast<uint32_t>(std::lround(event.value2))
-                : transport.beats_per_bar,
+            event.value2 > 0.0f ? event.value2 : transport.beats_per_bar,
             event.value3 > 0.0f
                 ? static_cast<uint32_t>(std::lround(event.value3))
                 : transport.bars_per_phrase,
@@ -1060,9 +1058,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         const float previous_bpm = transport.bpm;
         const bool transport_applied = transport.applyImmediateTransition(
             event.value,
-            event.value2 > 0.0f
-                ? static_cast<uint32_t>(std::lround(event.value2))
-                : transport.beats_per_bar,
+            event.value2 > 0.0f ? event.value2 : transport.beats_per_bar,
             event.value3 > 0.0f
                 ? static_cast<uint32_t>(std::lround(event.value3))
                 : transport.bars_per_phrase,

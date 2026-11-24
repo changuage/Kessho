@@ -29,6 +29,16 @@ void kessho_product_destroy(KesshoProductEngine* engine);
 void kessho_product_reset(KesshoProductEngine* engine);
 void kessho_product_reset_parity_fx(KesshoProductEngine* engine);
 
+/* Call between renders on the render-owning thread. Reanchors Euclidean lanes. */
+int32_t kessho_product_set_host_position(
+    KesshoProductEngine* engine,
+    uint64_t sample_frame,
+    double beat_position,
+    double beats_per_bar,
+    double measure_downbeat,
+    float bpm,
+    uint32_t running);
+
 int32_t kessho_product_load_snapshot_v2(
     KesshoProductEngine* engine,
     const void* snapshot_bytes,

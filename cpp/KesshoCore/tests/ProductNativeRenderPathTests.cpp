@@ -52,6 +52,20 @@ class NativeProductEngine {
     return kessho_product_enqueue_events(engine_, events, event_count);
   }
 
+  int32_t setHostPosition(uint64_t sample_frame, double beat_position, double beats_per_bar,
+                          double measure_downbeat, float bpm, bool running) {
+    return kessho_product_set_host_position(
+        engine_, sample_frame, beat_position, beats_per_bar, measure_downbeat, bpm, running ? 1u : 0u);
+  }
+
+  int32_t copyCaptureClock(KesshoProductCaptureClock& clock) {
+    return kessho_product_copy_capture_clock(engine_, &clock);
+  }
+
+  int32_t debugRenderEvents(KesshoSequencerEvent* events, uint32_t capacity, uint32_t frames) {
+    return kessho_product_debug_render_events(engine_, events, capacity, frames);
+  }
+
   void render(float* out_l, float* out_r, uint32_t frames) {
     kessho_product_render(engine_, out_l, out_r, frames);
   }
@@ -152,6 +166,85 @@ void runNativeRenderSmoke() {
   require(engine.copyTelemetry(telemetry) == KESSHO_PRODUCT_OK, "native wrapper failed to copy telemetry");
   require(telemetry.sample_rate == 48000.0, "native telemetry sample rate mismatch");
   require(telemetry.block_size == kBlockFrames, "native telemetry block size mismatch");
+}
+
+void runHostPositionSmoke() {
+  NativeProductEngine engine(48000.0, kBlockFrames);
+  require(engine.valid(), "host-position wrapper failed to create Product Core engine");
+  KesshoProductSnapshotV2 snapshot = makeNativeSmokeSnapshot();
+  snapshot.transport.running = 1u;
+  require(engine.loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "host-position snapshot load failed");
+  require(engine.setHostPosition(480000u, 17.5, 3.5, 14.0, 100.0f, true) == KESSHO_PRODUCT_OK,
+      "host-position sync failed");
+  KesshoProductCaptureClock clock{};
+  require(engine.copyCaptureClock(clock) == KESSHO_PRODUCT_OK, "host-position clock copy failed");
+  require(clock.current_sample == 480000u, "host-position sample mismatch");
+  require(std::fabs(clock.current_beat - 17.5) <= 0.0001, "host-position beat mismatch");
+  require(clock.current_bpm == 100.0, "host-position tempo mismatch");
+  require(engine.setHostPosition(0u, std::numeric_limits<double>::quiet_NaN(), 4.0, 0.0, 120.0f, false) ==
+      KESSHO_PRODUCT_ERROR_INVALID_PARAM, "host-position accepted a non-finite beat");
+  require(engine.setHostPosition(0u, 0.0, 0.0, 0.0, 120.0f, false) == KESSHO_PRODUCT_ERROR_INVALID_PARAM,
+      "host-position accepted an invalid meter");
+
+  NativeProductEngine phaseEngine(48000.0, kBlockFrames);
+  require(phaseEngine.valid(), "host-position phase engine create failed");
+  KesshoProductSnapshotV2 phaseSnapshot = makeNativeSmokeSnapshot();
+  phaseSnapshot.transport.running = 0u;
+  phaseSnapshot.synth_euclid.lane_count = 1u;
+  KesshoProductSequencerLaneSnapshot& lane = phaseSnapshot.synth_euclid.lanes[0];
+  lane.enabled = 1u;
+  lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  lane.step_count = 4u;
+  lane.fill_count = 1u;
+  lane.clock_division = 4u;
+  lane.probability = 1.0f;
+  lane.ratchet = 1u;
+  lane.velocity = 0.8f;
+  lane.hold_seconds = 0.1f;
+  lane.bar_reset = 1u;
+  lane.manual_step_mask_low = 1u << 2u;
+  lane.tempo_multiplier = 1.0f;
+  lane.initial_start_delay_seconds = -1.0f;
+  require(phaseEngine.loadSnapshot(phaseSnapshot) == KESSHO_PRODUCT_OK,
+      "host-position phase snapshot load failed");
+  require(phaseEngine.setHostPosition(480000u, 17.1, 4.0, 16.0, 100.0f, true) == KESSHO_PRODUCT_OK,
+      "host-position fractional-beat seek failed");
+  uint32_t renderedFrames = 0u;
+  bool foundPhaseEvent = false;
+  while (renderedFrames < 28800u && !foundPhaseEvent) {
+    KesshoSequencerEvent events[8]{};
+    const int32_t count = phaseEngine.debugRenderEvents(events, 8u, kBlockFrames);
+    require(count >= 0, "host-position phase debug render failed");
+    for (int32_t index = 0; index < count; ++index) {
+      if (events[index].step_id != 2u) continue;
+      const uint32_t eventOffset = renderedFrames + events[index].sample_offset;
+      require(std::abs(static_cast<int32_t>(eventOffset) - 25920) <= 1,
+          "host-position seek restarted the sequencer instead of preserving musical phase");
+      foundPhaseEvent = true;
+      break;
+    }
+    renderedFrames += kBlockFrames;
+  }
+  require(foundPhaseEvent, "host-position seek did not generate the expected phased sequencer event");
+
+  phaseSnapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
+  require(phaseEngine.loadSnapshot(phaseSnapshot) == KESSHO_PRODUCT_OK,
+      "host-position meter-section snapshot load failed");
+  require(phaseEngine.setHostPosition(480000u, 8.0, 3.5, 8.0, 120.0f, true) == KESSHO_PRODUCT_OK,
+      "host-position meter-section seek failed");
+  KesshoSequencerEvent downbeatEvents[8]{};
+  const int32_t downbeatCount = phaseEngine.debugRenderEvents(downbeatEvents, 8u, kBlockFrames);
+  require(downbeatCount > 0 && downbeatEvents[0].step_id == 0u && downbeatEvents[0].sample_offset == 0u,
+      "host measure downbeat did not anchor the sequencer bar phase");
+  constexpr uint32_t kSevenEighthBarFrames = 84000u;
+  require(phaseEngine.debugRenderEvents(nullptr, 0u, kSevenEighthBarFrames - kBlockFrames - 1u) >= 0,
+      "7/8 bar render failed");
+  KesshoProductTelemetry telemetry{};
+  require(phaseEngine.copyTelemetry(telemetry) == KESSHO_PRODUCT_OK && telemetry.bar_index == 2u,
+      "7/8 bar ended early");
+  require(phaseEngine.debugRenderEvents(nullptr, 0u, 1u) >= 0 &&
+      phaseEngine.copyTelemetry(telemetry) == KESSHO_PRODUCT_OK && telemetry.bar_index == 3u,
+      "7/8 bar did not end after three and a half beats");
 }
 
 void runNativeAssetSmoke() {
@@ -445,6 +538,7 @@ int main() {
   const KesshoProductCapabilityReport report = kessho_product_get_capability_report();
   require(report.supports_native_bridge == 0, "supports_native_bridge must remain 0 until BG3 signoff");
   runNativeRenderSmoke();
+  runHostPositionSmoke();
   runNativeAssetSmoke();
   runNativeRuntimeAdapterSmoke();
   runNativeCaptureClockConcurrencySmoke();

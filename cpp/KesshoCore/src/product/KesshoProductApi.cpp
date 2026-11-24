@@ -58,6 +58,29 @@ void kessho_product_reset_parity_fx(KesshoProductEngine* engine) {
   engine->resetSonicParityFxRuntime();
 }
 
+int32_t kessho_product_set_host_position(
+    KesshoProductEngine* engine,
+    uint64_t sample_frame,
+    double beat_position,
+    double beats_per_bar,
+    double measure_downbeat,
+    float bpm,
+    uint32_t running) {
+  if (engine == nullptr) {
+    return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
+  }
+  constexpr uint64_t kMaxExactSample = 1ull << 53;
+  if (sample_frame > kMaxExactSample ||
+      !(std::fabs(beat_position) <= static_cast<double>(kMaxExactSample)) ||
+      !(beats_per_bar >= kMinimumBeatsPerBar && beats_per_bar <= kMaximumBeatsPerBar) ||
+      !(std::fabs(measure_downbeat) <= static_cast<double>(kMaxExactSample)) ||
+      !std::isfinite(bpm) || bpm <= 0.0f) {
+    return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
+  }
+  engine->setHostPosition(sample_frame, beat_position, beats_per_bar, measure_downbeat, bpm, running != 0u);
+  return KESSHO_PRODUCT_OK;
+}
+
 int32_t kessho_product_load_snapshot_v2(
     KesshoProductEngine* engine,
     const void* snapshot_bytes,

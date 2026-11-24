@@ -12,6 +12,23 @@ void ProductTransport::reset() {
   transition_revision = 0;
 }
 
+void ProductTransport::setHostPosition(
+    uint64_t host_sample_frame,
+    double host_beat_position,
+    double host_measure_downbeat) {
+  // The host provides the current downbeat, but no measure number for a mixed-meter timeline.
+  const double bar_position = std::floor(host_measure_downbeat / beats_per_bar) +
+      (host_beat_position - host_measure_downbeat) / beats_per_bar;
+  sample_frame = host_sample_frame;
+  beat_origin_frame = host_sample_frame;
+  phrase_origin_frame = host_sample_frame;
+  beat_position_origin = host_beat_position;
+  bar_position_origin = bar_position;
+  phrase_position_origin = bar_position / static_cast<double>(std::max(1u, bars_per_phrase));
+  transition_pending = false;
+  pending_apply_frame = 0u;
+}
+
 double ProductTransport::samplesPerBeat(double sample_rate) const {
   return sample_rate * 60.0 / std::max(1.0f, bpm);
 }
@@ -21,9 +38,7 @@ double ProductTransport::samplesPerPhrase(double sample_rate) const {
   if (std::isfinite(explicit_seconds) && explicit_seconds > 0.0) {
     return std::max(1.0, explicit_seconds * sample_rate);
   }
-  return samplesPerBeat(sample_rate) *
-      static_cast<double>(std::max(1u, beats_per_bar)) *
-      static_cast<double>(std::max(1u, bars_per_phrase));
+  return samplesPerBeat(sample_rate) * beats_per_bar * static_cast<double>(bars_per_phrase);
 }
 
 uint64_t ProductTransport::nextPhraseBoundaryFrame(double sample_rate) const {
@@ -56,7 +71,7 @@ uint64_t ProductTransport::beatBoundaryFrameAt(double sample_rate, uint64_t samp
 }
 
 uint64_t ProductTransport::barBoundaryFrameAt(double sample_rate, uint64_t sample) const {
-  const double period = samplesPerBeat(sample_rate) * static_cast<double>(std::max(1u, beats_per_bar));
+  const double period = samplesPerBeat(sample_rate) * beats_per_bar;
   return boundaryFrameFromPosition(sample, barPositionAt(sample_rate, sample), period);
 }
 
@@ -66,18 +81,18 @@ uint64_t ProductTransport::phraseBoundaryFrameAt(double sample_rate, uint64_t sa
 
 void ProductTransport::stageNextPhraseTransition(
     float next_bpm,
-    uint32_t next_beats_per_bar,
+    double next_beats_per_bar,
     uint32_t next_bars_per_phrase,
     float next_phrase_seconds,
     double sample_rate) {
   pending_bpm = clampFloat(next_bpm, 1.0f, 400.0f);
-  pending_beats_per_bar = clampU32(next_beats_per_bar, 1u, 32u);
+  pending_beats_per_bar = std::clamp(next_beats_per_bar, kMinimumBeatsPerBar, kMaximumBeatsPerBar);
   pending_bars_per_phrase = clampU32(next_bars_per_phrase, 1u, 256u);
   pending_phrase_seconds = std::isfinite(next_phrase_seconds) && next_phrase_seconds > 0.0f
       ? clampFloat(next_phrase_seconds, 0.001f, 4096.0f)
       : static_cast<float>(
           (60.0 / static_cast<double>(pending_bpm)) *
-          static_cast<double>(pending_beats_per_bar) *
+          pending_beats_per_bar *
           static_cast<double>(pending_bars_per_phrase));
   const bool matches_active =
       std::fabs(pending_bpm - bpm) <= 0.0001f &&
@@ -105,18 +120,18 @@ bool ProductTransport::applyPendingTransition(double sample_rate) {
 
 bool ProductTransport::applyImmediateTransition(
     float next_bpm,
-    uint32_t next_beats_per_bar,
+    double next_beats_per_bar,
     uint32_t next_bars_per_phrase,
     float next_phrase_seconds,
     double sample_rate) {
   const float resolved_bpm = clampFloat(next_bpm, 1.0f, 400.0f);
-  const uint32_t resolved_beats_per_bar = clampU32(next_beats_per_bar, 1u, 32u);
+  const double resolved_beats_per_bar = std::clamp(next_beats_per_bar, kMinimumBeatsPerBar, kMaximumBeatsPerBar);
   const uint32_t resolved_bars_per_phrase = clampU32(next_bars_per_phrase, 1u, 256u);
   const float resolved_phrase_seconds = std::isfinite(next_phrase_seconds) && next_phrase_seconds > 0.0f
       ? clampFloat(next_phrase_seconds, 0.001f, 4096.0f)
       : static_cast<float>(
           (60.0 / static_cast<double>(resolved_bpm)) *
-          static_cast<double>(resolved_beats_per_bar) *
+          resolved_beats_per_bar *
           static_cast<double>(resolved_bars_per_phrase));
   const bool changed =
       std::fabs(resolved_bpm - bpm) > 0.0001f ||

@@ -279,13 +279,15 @@ constexpr uint32_t kAnchorWalkerVisualFlagWalking = 1u << 4u;
   telemetry.bar_index = transport.barIndex(sample_rate);
   telemetry.phrase_index = transport.phraseIndex(sample_rate);
   telemetry.transport_bpm = transport.bpm;
-  telemetry.transport_beats_per_bar = transport.beats_per_bar;
+  // Keep the public telemetry layout compatible. The musical clock uses the exact meter.
+  telemetry.transport_beats_per_bar = std::max(1u, static_cast<uint32_t>(transport.beats_per_bar + 0.5));
   telemetry.transport_bars_per_phrase = transport.bars_per_phrase;
   telemetry.transport_phrase_seconds = static_cast<float>(
       transport.samplesPerPhrase(sample_rate) / std::max(1.0, sample_rate));
   telemetry.transport_transition_pending = transport.transition_pending ? 1u : 0u;
   telemetry.transport_pending_bpm = transport.pending_bpm;
-  telemetry.transport_pending_beats_per_bar = transport.pending_beats_per_bar;
+  telemetry.transport_pending_beats_per_bar =
+      std::max(1u, static_cast<uint32_t>(transport.pending_beats_per_bar + 0.5));
   telemetry.transport_pending_bars_per_phrase = transport.pending_bars_per_phrase;
   telemetry.transport_pending_phrase_seconds = transport.pending_phrase_seconds;
   telemetry.transport_pending_apply_frame = transport.pending_apply_frame;

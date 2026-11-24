@@ -12,7 +12,7 @@ uint64_t ProductTransport::barIndex(double sample_rate) const {
 double ProductTransport::barPositionAt(double sample_rate, uint64_t sample) const {
   const uint64_t elapsed = sample >= beat_origin_frame ? sample - beat_origin_frame : 0u;
   const double beats = static_cast<double>(elapsed) / samplesPerBeat(sample_rate);
-  return bar_position_origin + beats / static_cast<double>(std::max(1u, beats_per_bar));
+  return bar_position_origin + beats / beats_per_bar;
 }
 
 uint64_t ProductTransport::barIndexAt(double sample_rate, uint64_t sample) const {

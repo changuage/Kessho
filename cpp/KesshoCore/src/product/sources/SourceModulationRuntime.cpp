@@ -258,7 +258,7 @@ void KesshoProductEngine::advanceModulationRanges(uint32_t frames) {
             range.sync_division);
         const double reference_frames = range.sync_reference == KESSHO_PRODUCT_MODULATION_SYNC_REFERENCE_PHRASE
             ? transport.samplesPerPhrase(sample_rate)
-            : transport.samplesPerBeat(sample_rate) * static_cast<double>(std::max(1u, transport.beats_per_bar));
+            : transport.samplesPerBeat(sample_rate) * transport.beats_per_bar;
         const double cycle_frames = std::max(1.0,
             reference_frames * static_cast<double>(kProductShapeSyncPeriods[safe_division]));
         range.shape_lfo_phase = wrapUnit(

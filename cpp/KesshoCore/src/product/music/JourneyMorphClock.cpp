@@ -16,7 +16,7 @@
   if (!journey_running || !transport.running) {
     return;
   }
-  const double samples_per_bar = transport.samplesPerBeat(sample_rate) * static_cast<double>(std::max(1u, transport.beats_per_bar));
+  const double samples_per_bar = transport.samplesPerBeat(sample_rate) * transport.beats_per_bar;
   const double period_samples = samples_per_bar * static_cast<double>(std::max(0.25f, journey_rate_bars));
   if (period_samples <= 0.0) {
     return;

@@ -29,7 +29,7 @@ float KesshoProductEngine::resolveFxRouteAmount(uint8_t from, uint8_t to) {
   const double beat = static_cast<double>(transport.sample_frame) / samples_per_beat;
   float position = 0.5f;
   if (mode == 1u) {
-    const double cycle_beats = std::max(1u, transport.beats_per_bar) * 4.0;
+    const double cycle_beats = transport.beats_per_bar * 4.0;
     const double phase = std::fmod(beat / cycle_beats, 1.0);
     position = static_cast<float>(1.0 - std::fabs(phase * 2.0 - 1.0));
   } else {

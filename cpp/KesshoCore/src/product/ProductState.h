@@ -267,6 +267,8 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void renderDynamicsNode(uint8_t node, float* out_l, float* out_r, uint32_t start, uint32_t frames);
   void loadDefaults();
   void reset();
+  void setHostPosition(uint64_t sample_frame, double beat_position, double beats_per_bar,
+      double measure_downbeat, float bpm, bool running);
   void resetSonicParityFxRuntime();
   void resetDiffuseRuntime();
   int32_t loadSnapshot(const KesshoProductSnapshotV2& snapshot);
