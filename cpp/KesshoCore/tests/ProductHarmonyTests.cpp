@@ -636,9 +636,6 @@ __attribute__((noinline)) void requireTypeScriptHarmonySequenceParity() {
   snapshot->harmony.note_pool_count = 5u;
   const float initial_chord[5] = {40.0f, 44.0f, 47.0f, 51.0f, 54.0f};
   for (uint32_t index = 0u; index < 5u; ++index) snapshot->harmony.note_pool_midi[index] = initial_chord[index];
-  snapshot->harmony.progression_steps = 4u;
-  snapshot->harmony.progression_step_enabled_mask = 0x0fu;
-  snapshot->harmony.progression_phrase_multiplier = 1u;
   snapshot->harmony.cof_home_root = 4;
   snapshot->harmony.cof_drift_rate = 2u;
   snapshot->harmony.cof_drift_range = 3u;
@@ -665,7 +662,10 @@ __attribute__((noinline)) void requireTypeScriptHarmonySequenceParity() {
       mix(static_cast<uint32_t>(std::llround(engine->harmony.note_pool_midi[index] * 1000000.0f)));
     }
   }
-  require(hash == 0xf16309e39d57bf50ull,
+  // Native auto chords keep common tones with the previous pool (the product
+  // always ran with the canonical progression present); the final state still
+  // matches the TypeScript reference.
+  require(hash == 0x74fa9cfeac0fb350ull,
       "60-minute harmony event sequence diverged from deterministic TypeScript reference");
   require(engine->harmony.note_pool_count == 5u &&
           engine->harmony.note_pool_midi[0] == 45.0f &&
@@ -676,6 +676,119 @@ __attribute__((noinline)) void requireTypeScriptHarmonySequenceParity() {
 }
 
 } // namespace
+
+void setProgressionChord(
+    KesshoProductHarmonySnapshot& harmony, uint32_t index, const KesshoProductChordIntent& intent,
+    std::initializer_list<float> notes) {
+  harmony.canonical_progression_source[index] = 1u;
+  harmony.canonical_progression_chord[index] = intent;
+  harmony.canonical_progression_note_count[index] = static_cast<uint32_t>(notes.size());
+  uint32_t note = 0u;
+  for (const float midi : notes) {
+    KesshoProductChordNote& value = harmony.canonical_progression_notes[index * KESSHO_PRODUCT_CHORD_MAX_NOTES + note++];
+    value = KesshoProductChordNote{};
+    value.midi = midi;
+    value.velocity = 1.0f;
+  }
+}
+
+void setFixedProgressionChord(
+    KesshoProductHarmonySnapshot& harmony, uint32_t index, std::initializer_list<float> notes) {
+  KesshoProductChordIntent intent{};
+  intent.behavior = KESSHO_PRODUCT_CHORD_BEHAVIOR_FIXED;
+  setProgressionChord(harmony, index, intent, notes);
+}
+
+// Loads a one-event chord progression over `previous_pool`, runs the first
+// harmony tick and returns the engine (caller destroys it).
+KesshoProductEngine* runChordEvent(
+    uint32_t root_pitch_class, const KesshoProductChordIntent& intent, std::initializer_list<float> notes,
+    std::initializer_list<float> previous_pool) {
+  auto snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f + root_pitch_class, 1u, 0.3f, 777u));
+  snapshot->harmony.chord_interval_seconds = 1.0f;
+  snapshot->harmony.phrase_length_seconds = 4.0f;
+  snapshot->harmony.progression_phrase_seconds = 4.0f;
+  snapshot->harmony.scale_mode = 1u;
+  snapshot->harmony.cof_home_root = static_cast<int32_t>(root_pitch_class);
+  snapshot->harmony.note_pool_count = static_cast<uint32_t>(previous_pool.size());
+  uint32_t pool = 0u;
+  for (const float midi : previous_pool) snapshot->harmony.note_pool_midi[pool++] = midi;
+  snapshot->harmony.canonical_progression_enabled = 1u;
+  snapshot->harmony.canonical_progression_event_count = 1u;
+  snapshot->harmony.canonical_progression_bars_per_phrase = 4u;
+  snapshot->harmony.canonical_progression_duration_unit[0] = 0u;
+  snapshot->harmony.canonical_progression_duration_value[0] = 1u;
+  setProgressionChord(snapshot->harmony, 0u, intent, notes);
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 256u, 0u);
+  require(engine != nullptr, "chord event engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, snapshot.get(), sizeof(*snapshot)) == KESSHO_PRODUCT_OK,
+      "chord event snapshot load failed");
+  engine->transport.sample_frame = engine->harmony.next_harmony_frame;
+  engine->advanceHarmonyClock();
+  return engine;
+}
+
+uint32_t poolPitchClassMask(const KesshoProductEngine& engine) {
+  uint32_t mask = 0u;
+  for (uint32_t index = 0u; index < engine.harmony.note_pool_count; ++index) {
+    mask |= 1u << positiveModulo(static_cast<int32_t>(std::llround(engine.harmony.note_pool_midi[index])), 12u);
+  }
+  return mask;
+}
+
+void requireProgressionChordEvents() {
+  const auto mask = [](std::initializer_list<uint32_t> pitch_classes) {
+    uint32_t value = 0u;
+    for (const uint32_t pc : pitch_classes) value |= 1u << pc;
+    return value;
+  };
+  // (a) A Fixed chord is the note pool, verbatim.
+  KesshoProductChordIntent fixed{};
+  fixed.behavior = KESSHO_PRODUCT_CHORD_BEHAVIOR_FIXED;
+  KesshoProductEngine* engine = runChordEvent(0u, fixed, {55.0f, 59.0f, 62.0f}, {60.0f, 64.0f, 67.0f});
+  require(engine->harmony.note_pool_count == 3u && engine->harmony.note_pool_midi[0] == 55.0f &&
+      engine->harmony.note_pool_midi[1] == 59.0f && engine->harmony.note_pool_midi[2] == 62.0f,
+      "a Fixed chord event must become the note pool exactly");
+  kessho_product_destroy(engine);
+
+  // (b) A Follow chord is derived from the key: degree 1 is D-F-A in C major
+  // and moves with the key (E-G-B in D major).
+  KesshoProductChordIntent follow{};
+  follow.degree = 1;
+  engine = runChordEvent(0u, follow, {}, {60.0f, 64.0f, 67.0f});
+  require(poolPitchClassMask(*engine) == mask({2u, 5u, 9u}), "Follow degree 1 in C major must be D-F-A");
+  require(engine->harmony.current_degree == 1, "Follow chord event must set the current degree");
+  kessho_product_destroy(engine);
+  engine = runChordEvent(2u, follow, {}, {62.0f, 66.0f, 69.0f});
+  require(poolPitchClassMask(*engine) == mask({4u, 7u, 11u}), "Follow degree 1 must move with the key");
+  kessho_product_destroy(engine);
+
+  // (c) Smooth: Am7 after Cmaj7 keeps at least three common tones.
+  KesshoProductChordIntent am7{};
+  am7.degree = 5;
+  am7.extensions = KESSHO_PRODUCT_CHORD_EXT_SEVENTH;
+  engine = runChordEvent(0u, am7, {}, {60.0f, 64.0f, 67.0f, 71.0f});
+  uint32_t common = 0u;
+  for (uint32_t index = 0u; index < engine->harmony.note_pool_count; ++index) {
+    for (const float previous : {60.0f, 64.0f, 67.0f, 71.0f}) {
+      if (engine->harmony.note_pool_midi[index] == previous) ++common;
+    }
+  }
+  require(poolPitchClassMask(*engine) == mask({9u, 0u, 4u, 7u}), "Am7 pitch classes mismatch");
+  require(common >= 3u, "Smooth Follow event must keep common tones");
+  kessho_product_destroy(engine);
+
+  // (d) Invalid chord data decodes as an auto event and still plays.
+  KesshoProductChordIntent invalid{};
+  invalid.quality = 99u;
+  engine = runChordEvent(0u, invalid, {60.0f}, {60.0f, 64.0f, 67.0f});
+  require(engine->harmony.canonical_progression_source[0] == 0u, "invalid intent must decode as an auto event");
+  require(engine->harmony.note_pool_count > 0u, "auto fallback must produce a note pool");
+  kessho_product_destroy(engine);
+  engine = runChordEvent(0u, fixed, {std::nanf(""), 64.0f}, {60.0f, 64.0f, 67.0f});
+  require(engine->harmony.canonical_progression_source[0] == 0u, "non-finite chord note must decode as an auto event");
+  kessho_product_destroy(engine);
+}
 
 void requireSemanticRecipeTableParity() {
   HarmonyState harmony{};
@@ -1600,14 +1713,13 @@ int main() {
   // Canonical progression uses fixed storage, preserves mixed durations, and
   // accepts the full 64-event endpoint without an audio-thread allocation.
   auto canonical_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.3f, 4321u));
-  canonical_snapshot->harmony.canonical_progression_version = 1u;
   canonical_snapshot->harmony.canonical_progression_enabled = 1u;
   canonical_snapshot->harmony.canonical_progression_event_count = 64u;
   canonical_snapshot->harmony.canonical_progression_current_event = 63u;
   canonical_snapshot->harmony.canonical_progression_bars_per_phrase = 4u;
   for (uint32_t index = 0u; index < 64u; ++index) {
     canonical_snapshot->harmony.canonical_progression_source[index] = index % 2u;
-    canonical_snapshot->harmony.canonical_progression_slot_id[index] = index % 8u;
+    setFixedProgressionChord(canonical_snapshot->harmony, index, {60.0f, 64.0f, 67.0f});
     canonical_snapshot->harmony.canonical_progression_duration_unit[index] = index % 2u;
     canonical_snapshot->harmony.canonical_progression_duration_value[index] = (index % 4u == 0u) ? 8u : (index % 4u == 1u ? 4u : (index % 4u == 2u ? 2u : 1u));
   }
@@ -1628,7 +1740,6 @@ int main() {
   mixed_snapshot->harmony.chord_interval_seconds = 1.0f;
   mixed_snapshot->harmony.phrase_length_seconds = 4.0f;
   mixed_snapshot->harmony.progression_phrase_seconds = 4.0f;
-  mixed_snapshot->harmony.canonical_progression_version = 1u;
   mixed_snapshot->harmony.canonical_progression_enabled = 1u;
   mixed_snapshot->harmony.canonical_progression_event_count = 8u;
   mixed_snapshot->harmony.canonical_progression_bars_per_phrase = 4u;
@@ -1636,14 +1747,10 @@ int main() {
   const uint32_t mixed_values[8] = {1u, 2u, 4u, 8u, 1u, 2u, 4u, 8u};
   for (uint32_t index = 0u; index < 8u; ++index) {
     mixed_snapshot->harmony.canonical_progression_source[index] = index == 0u ? 1u : 0u;
-    mixed_snapshot->harmony.canonical_progression_slot_id[index] = 2u;
+    if (index == 0u) setFixedProgressionChord(mixed_snapshot->harmony, index, {60.0f, 64.0f, 67.0f});
     mixed_snapshot->harmony.canonical_progression_duration_unit[index] = mixed_units[index];
     mixed_snapshot->harmony.canonical_progression_duration_value[index] = mixed_values[index];
   }
-  mixed_snapshot->harmony.harmony_slot_note_count[2] = 3u;
-  mixed_snapshot->harmony.harmony_slot_midi[16] = 60.0f;
-  mixed_snapshot->harmony.harmony_slot_midi[17] = 64.0f;
-  mixed_snapshot->harmony.harmony_slot_midi[18] = 67.0f;
   KesshoProductEngine* mixed_engine = kessho_product_create(48000.0, 256u, 0u);
   require(mixed_engine != nullptr, "mixed canonical progression engine create failed");
   require(kessho_product_load_snapshot_v2(mixed_engine, mixed_snapshot.get(), sizeof(*mixed_snapshot)) == KESSHO_PRODUCT_OK,
@@ -1691,7 +1798,6 @@ int main() {
 
   auto track_off_snapshot = std::make_unique<KesshoProductSnapshotV2>(*mixed_snapshot);
   track_off_snapshot->harmony.canonical_progression_enabled = 0u;
-  track_off_snapshot->harmony.progression_enabled = 1u;
   track_off_snapshot->harmony.progression_step = 3u;
   KesshoProductEngine* track_off_engine = kessho_product_create(48000.0, 256u, 0u);
   require(track_off_engine != nullptr, "canonical Track Off engine create failed");
@@ -1711,6 +1817,7 @@ int main() {
   requireSemanticRecipeTableParity();
   requireProductHarmonyAuthoritySemanticParity();
   requireProductHarmonyWorstCaseCpuBudget();
+  requireProgressionChordEvents();
 
   std::cout << "Kessho Product Harmony tests passed\n";
   return 0;

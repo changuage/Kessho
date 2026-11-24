@@ -376,7 +376,7 @@ class CoreProductRuntimeAdapter {
 
   private harmonyAuthorityFieldsChanged(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
     const scalarKeys = [
-      'canonicalProgressionVersion', 'canonicalProgressionEnabled', 'canonicalProgressionEventCount',
+      'canonicalProgressionEnabled', 'canonicalProgressionEventCount',
       'canonicalProgressionCurrentEvent', 'canonicalProgressionBarsPerPhrase',
       'liveGestureRevision', 'liveGestureScope', 'liveGestureTarget', 'liveGesturePhase',
       'liveGesturePlaybackBehavior', 'liveGestureIntentQuality', 'liveGestureIntentRootMode',
@@ -385,7 +385,7 @@ class CoreProductRuntimeAdapter {
       'takeoverAnchorCount', 'takeoverTargetRootMidi', 'takeoverTargetScaleId', 'takeoverProgress',
     ] as const;
     const arrayKeys = [
-      'canonicalProgressionSource', 'canonicalProgressionSlotId', 'canonicalProgressionDurationUnit',
+      'canonicalProgressionSource', 'canonicalProgressionDurationUnit',
       'canonicalProgressionDurationValue', 'harmonySlotPlaybackBehavior', 'harmonySlotIntentQuality',
       'harmonySlotIntentRootMode', 'harmonySlotIntentDegree', 'harmonySlotIntentRootNote',
       'harmonySlotIntentInversion', 'harmonySlotIntentSpread', 'harmonySlotIntentOctave',
@@ -394,6 +394,10 @@ class CoreProductRuntimeAdapter {
       'harmonySlotCapturedScaleId', 'liveGestureNotes', 'takeoverAnchorSource', 'takeoverAnchorTarget',
       'takeoverAnchorWeight',
     ] as const;
+    if (
+      JSON.stringify([previous.canonicalProgressionChord, previous.canonicalProgressionNoteCount, previous.canonicalProgressionNotes]) !==
+      JSON.stringify([next.canonicalProgressionChord, next.canonicalProgressionNoteCount, next.canonicalProgressionNotes])
+    ) return true;
     const previousShape = previous as unknown as Record<string, unknown>;
     const nextShape = next as unknown as Record<string, unknown>;
     for (const key of scalarKeys) {

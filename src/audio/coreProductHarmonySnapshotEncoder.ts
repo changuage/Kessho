@@ -45,13 +45,7 @@ export function encodeCoreProductHarmonySnapshot(
   u32(harmony.scaleMode);
   u32(harmony.phrasesUntilChange);
   i32(harmony.currentDegree);
-  u32(harmony.progressionEnabled ? 1 : 0);
-  for (let index = 0; index < 8; index += 1) i32(harmony.progressionPattern[index] ?? 0);
-  u32(harmony.progressionStepEnabledMask);
-  u32(harmony.progressionSteps);
   u32(harmony.progressionStep);
-  u32(harmony.progressionPhraseMultiplier);
-  u32(harmony.progressionPhraseCounter);
   u32(harmony.tensionArcType);
   u32(harmony.tensionArcPhrasesRemaining);
   u32(harmony.cofEnabled ? 1 : 0);
@@ -61,13 +55,32 @@ export function encodeCoreProductHarmonySnapshot(
   u32(harmony.cofDriftRate);
   u32(harmony.cofDriftDirection);
   u32(harmony.cofDriftRange);
-  u32(harmony.canonicalProgressionVersion ?? 1);
   u32(harmony.canonicalProgressionEnabled ? 1 : 0);
   u32(harmony.canonicalProgressionEventCount ?? 1);
   u32(harmony.canonicalProgressionCurrentEvent ?? 0);
   u32(harmony.canonicalProgressionBarsPerPhrase ?? 4);
   for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionSource?.[index] ?? 0);
-  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionSlotId?.[index] ?? 0);
+  for (let index = 0; index < 64; index += 1) {
+    const chord = harmony.canonicalProgressionChord?.[index];
+    u32(chord?.behavior ?? 0);
+    i32(chord?.degree ?? 0);
+    u32(chord?.quality ?? 0);
+    u32(chord?.extensions ?? 0);
+    i32(chord?.inversion ?? 0);
+    f32(chord?.spread ?? 0);
+    i32(chord?.registerOctave ?? 0);
+    u32(chord?.bassMode ?? 0);
+    u32(chord?.bassPitchClass ?? 0);
+  }
+  for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionNoteCount?.[index] ?? 0);
+  for (let index = 0; index < 64 * 8; index += 1) {
+    const note = harmony.canonicalProgressionNotes?.[index];
+    f32(note?.midi ?? 0);
+    f32(note?.velocity ?? 0);
+    f32(note?.gateBeats ?? 0);
+    f32(note?.offsetBeats ?? 0);
+    u32(note?.destinationSourceId ?? 0);
+  }
   for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationUnit?.[index] ?? 1);
   for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationValue?.[index] ?? 1);
   for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotPlaybackBehavior?.[index] ?? 0);

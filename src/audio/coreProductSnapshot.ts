@@ -945,6 +945,11 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   // Product Core owns semantic/relative/auto resolution after load.
   const harmonySlotAuthoredPools = harmonyControl.chordSlots.map((slot) => (slot.chord?.exactMidiNotes ?? []).slice(0, HARMONY_POOL_MAX_NOTES));
   const harmonySlotPools = harmonySlotAuthoredPools.map((pool) => fixedHarmonyPool(pool));
+  // Transitional: a slot event carries its slot's authored notes as a Fixed chord.
+  const progressionChordSlot = (index: number): number[] | undefined => {
+    const source = harmonyControl.progression.events[index]?.source;
+    return source?.type === 'slot' ? harmonySlotAuthoredPools[source.slotId] ?? [] : undefined;
+  };
   const endpointAControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 0 });
   const endpointBControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 100 });
   const endpointA = endpointAControl.resolvedHarmonyFrame;
@@ -1008,16 +1013,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       scaleMode: sliderState?.scaleMode === 'manual' ? 1 : 0,
       phrasesUntilChange: schedulerHarmony.phrasesUntilChange,
       currentDegree: schedulerHarmony.currentDegree,
-      // Product Core retains the legacy fixed fields for ABI compatibility,
-      // but their values are projected from the canonical progression. The
-      // old degree-pattern state is no longer a runtime authority.
-      progressionEnabled: harmonyControl.progression.enabled,
-      progressionPattern: harmonyControl.progression.events.slice(0, 8).map((event) => event.source.type === 'slot' ? event.source.slotId : 0),
-      progressionStepEnabledMask: harmonyControl.progression.events.slice(0, 8).reduce((mask, _event, index) => mask | (1 << index), 0),
-      progressionSteps: Math.min(8, harmonyControl.progression.events.length),
       progressionStep: harmonyControl.progression.currentEventIndex,
-      progressionPhraseMultiplier: 1,
-      progressionPhraseCounter: 0,
       tensionArcType: schedulerHarmony.tensionArc.type === 'building'
         ? 1
         : schedulerHarmony.tensionArc.type === 'resolving'
@@ -1035,13 +1031,20 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
           ? 2
           : 0,
       cofDriftRange: clamp(numberFromState(sliderState, 'cofDriftRange', 3), 1, 6),
-      canonicalProgressionVersion: 1,
       canonicalProgressionEnabled: harmonyControl.progression.enabled,
       canonicalProgressionEventCount: harmonyControl.progression.events.length,
       canonicalProgressionCurrentEvent: harmonyControl.progression.currentEventIndex,
       canonicalProgressionBarsPerPhrase: clamp(numberFromState(sliderState, 'transportBarsPerPhrase', 4), 1, 16),
-      canonicalProgressionSource: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.source.type === 'slot' ? 1 : 0),
-      canonicalProgressionSlotId: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.source.type === 'slot' ? harmonyControl.progression.events[index]!.source.slotId : 0),
+      canonicalProgressionSource: Array.from({ length: 64 }, (_, index) => progressionChordSlot(index) === undefined ? 0 : 1),
+      canonicalProgressionChord: Array.from({ length: 64 }, (_, index) => ({
+        behavior: progressionChordSlot(index) === undefined ? 0 : 1,
+        degree: 0, quality: 0, extensions: 0, inversion: 0, spread: 0, registerOctave: 0, bassMode: 0, bassPitchClass: 0,
+      })),
+      canonicalProgressionNoteCount: Array.from({ length: 64 }, (_, index) => (progressionChordSlot(index)?.length ?? 0)),
+      canonicalProgressionNotes: Array.from({ length: 64 * HARMONY_POOL_MAX_NOTES }, (_, index) => {
+        const midi = progressionChordSlot(Math.floor(index / HARMONY_POOL_MAX_NOTES))?.[index % HARMONY_POOL_MAX_NOTES];
+        return { midi: midi ?? 0, velocity: midi === undefined ? 0 : 1, gateBeats: 0, offsetBeats: 0, destinationSourceId: 0 };
+      }),
       canonicalProgressionDurationUnit: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.unit === 'bar' ? 0 : 1),
       canonicalProgressionDurationValue: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.value ?? 1),
       morphEndpointCount: 2,

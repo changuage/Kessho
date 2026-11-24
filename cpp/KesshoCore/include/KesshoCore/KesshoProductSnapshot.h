@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "KesshoCore/KesshoProductChord.h"
 #include "KesshoCore/KesshoProductTypes.h"
 
 #define KESSHO_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_COUNT 69u
@@ -56,13 +57,7 @@ typedef struct KesshoProductHarmonySnapshot {
   uint32_t scale_mode;
   uint32_t phrases_until_change;
   int32_t current_degree;
-  uint32_t progression_enabled;
-  int32_t progression_pattern[8];
-  uint32_t progression_step_enabled_mask;
-  uint32_t progression_steps;
   uint32_t progression_step;
-  uint32_t progression_phrase_multiplier;
-  uint32_t progression_phrase_counter;
   uint32_t tension_arc_type;
   uint32_t tension_arc_phrases_remaining;
   uint32_t cof_enabled;
@@ -73,13 +68,14 @@ typedef struct KesshoProductHarmonySnapshot {
   uint32_t cof_drift_direction;
   uint32_t cof_drift_range;
   // Canonical global Harmony progression (fixed-capacity, audio-thread safe).
-  uint32_t canonical_progression_version;
   uint32_t canonical_progression_enabled;
   uint32_t canonical_progression_event_count;
   uint32_t canonical_progression_current_event;
   uint32_t canonical_progression_bars_per_phrase;
-  uint32_t canonical_progression_source[64];
-  uint32_t canonical_progression_slot_id[64];
+  uint32_t canonical_progression_source[64];  // 0 auto, 1 chord
+  KesshoProductChordIntent canonical_progression_chord[64];  // used when source == 1 (chord)
+  uint32_t canonical_progression_note_count[64];
+  KesshoProductChordNote canonical_progression_notes[64 * KESSHO_PRODUCT_CHORD_MAX_NOTES];
   uint32_t canonical_progression_duration_unit[64];
   uint32_t canonical_progression_duration_value[64];
   uint32_t harmony_slot_playback_behavior[8];

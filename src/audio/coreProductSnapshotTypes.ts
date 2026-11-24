@@ -1,3 +1,25 @@
+/** Mirrors KesshoProductChordIntent (36 bytes). */
+export interface CoreProductChordIntent {
+  behavior: number; // 0 follow, 1 fixed
+  degree: number;
+  quality: number;
+  extensions: number;
+  inversion: number;
+  spread: number;
+  registerOctave: number;
+  bassMode: number;
+  bassPitchClass: number;
+}
+
+/** Mirrors KesshoProductChordNote (20 bytes). */
+export interface CoreProductChordNote {
+  midi: number;
+  velocity: number;
+  gateBeats: number;
+  offsetBeats: number;
+  destinationSourceId: number;
+}
+
 export type ProductSourceSnapshot = {
   enabled: boolean;
   sourceId: number;
@@ -225,13 +247,7 @@ export type ProductHarmonySnapshot = L4HarmonyStateExtension & {
   scaleMode: number;
   phrasesUntilChange: number;
   currentDegree: number;
-  progressionEnabled: boolean;
-  progressionPattern: number[];
-  progressionStepEnabledMask: number;
-  progressionSteps: number;
   progressionStep: number;
-  progressionPhraseMultiplier: number;
-  progressionPhraseCounter: number;
   tensionArcType: number;
   tensionArcPhrasesRemaining: number;
   cofEnabled: boolean;
@@ -241,13 +257,14 @@ export type ProductHarmonySnapshot = L4HarmonyStateExtension & {
   cofDriftRate: number;
   cofDriftDirection: number;
   cofDriftRange: number;
-  canonicalProgressionVersion?: number;
   canonicalProgressionEnabled?: boolean;
   canonicalProgressionEventCount?: number;
   canonicalProgressionCurrentEvent?: number;
   canonicalProgressionBarsPerPhrase?: number;
   canonicalProgressionSource?: number[];
-  canonicalProgressionSlotId?: number[];
+  canonicalProgressionChord?: CoreProductChordIntent[];
+  canonicalProgressionNoteCount?: number[];
+  canonicalProgressionNotes?: CoreProductChordNote[];
   canonicalProgressionDurationUnit?: number[];
   canonicalProgressionDurationValue?: number[];
   harmonySlotPlaybackBehavior?: number[];

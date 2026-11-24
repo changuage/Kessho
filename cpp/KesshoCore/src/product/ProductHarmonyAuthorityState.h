@@ -21,7 +21,6 @@ struct HarmonyAuthorityState {
   uint32_t authority_revision = 0u;
   uint32_t cached_scale_degree_count = 0u;
   uint32_t cached_scale_degree_map[7]{};
-  uint32_t cached_recipe_ids[8]{};
   uint32_t slot_playback_behavior[8]{};
   uint32_t slot_intent_present[8]{};
   uint32_t slot_intent_quality[8]{};

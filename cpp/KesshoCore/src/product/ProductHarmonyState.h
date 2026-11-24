@@ -45,12 +45,7 @@ struct HarmonyState : HarmonyAuthorityState {
   uint32_t phrases_until_change = 1u;
   int32_t current_degree = 0;
   bool progression_enabled = false;
-  int32_t progression_pattern[8]{};
-  uint32_t progression_step_enabled_mask = 0xffu;
-  uint32_t progression_steps = 4u;
   uint32_t progression_step = 0u;
-  uint32_t progression_phrase_multiplier = 1u;
-  uint32_t progression_phrase_counter = 0u;
   uint32_t tension_arc_type = 0u;
   uint32_t tension_arc_phrases_remaining = 0u;
   bool cof_enabled = false;
@@ -60,13 +55,14 @@ struct HarmonyState : HarmonyAuthorityState {
   uint32_t cof_drift_rate = 2u;
   uint32_t cof_drift_direction = 0u;
   uint32_t cof_drift_range = 3u;
-  bool canonical_progression_present = false;
   bool canonical_progression_enabled = false;
   uint32_t canonical_progression_event_count = 1u;
   uint32_t canonical_progression_current_event = 0u;
   uint32_t canonical_progression_bars_per_phrase = 4u;
   uint32_t canonical_progression_source[64]{};
-  uint32_t canonical_progression_slot_id[64]{};
+  KesshoProductChordIntent canonical_progression_chord[64]{};
+  uint32_t canonical_progression_note_count[64]{};
+  KesshoProductChordNote canonical_progression_notes[64 * KESSHO_PRODUCT_CHORD_MAX_NOTES]{};
   uint32_t canonical_progression_duration_unit[64]{};
   uint32_t canonical_progression_duration_value[64]{};
 

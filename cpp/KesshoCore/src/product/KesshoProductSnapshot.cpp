@@ -1,6 +1,7 @@
 #include "KesshoProductEngineInternal.h"
 
 #include <array>
+#include <cmath>
 #include <memory>
 
 namespace {
@@ -213,6 +214,39 @@ bool orbitAuthoredTimingMatches(
 namespace kessho::product::internal {
 
 namespace {
+// Copies one progression chord event; any invalid field turns the event into
+// an auto event (source 0).
+void decodeProgressionChord(const KesshoProductHarmonySnapshot& in, HarmonyState& out, uint32_t index) {
+  out.canonical_progression_source[index] = 0u;
+  out.canonical_progression_chord[index] = KesshoProductChordIntent{};
+  out.canonical_progression_note_count[index] = 0u;
+  if (in.canonical_progression_source[index] != 1u) return;
+  const KesshoProductChordIntent& chord = in.canonical_progression_chord[index];
+  const uint32_t note_count = in.canonical_progression_note_count[index];
+  const bool intent_valid = chord.behavior <= KESSHO_PRODUCT_CHORD_BEHAVIOR_FIXED &&
+      chord.quality < KESSHO_PRODUCT_CHORD_QUALITY_COUNT &&
+      std::isfinite(chord.spread) && chord.spread >= 0.0f && chord.spread <= 1.0f &&
+      chord.register_octave >= -3 && chord.register_octave <= 3 &&
+      chord.bass_mode <= KESSHO_PRODUCT_CHORD_BASS_PITCH_CLASS && chord.bass_pitch_class < 12u;
+  bool notes_valid = note_count <= KESSHO_PRODUCT_CHORD_MAX_NOTES;
+  for (uint32_t note = 0u; notes_valid && note < note_count; ++note) {
+    const KesshoProductChordNote& value = in.canonical_progression_notes[index * KESSHO_PRODUCT_CHORD_MAX_NOTES + note];
+    notes_valid = std::isfinite(value.midi) && value.midi >= 0.0f && value.midi <= 127.0f &&
+        std::isfinite(value.velocity) && value.velocity >= 0.0f && value.velocity <= 1.0f;
+  }
+  if (!intent_valid || !notes_valid) return;
+  out.canonical_progression_source[index] = 1u;
+  out.canonical_progression_chord[index] = chord;
+  out.canonical_progression_note_count[index] = note_count;
+  for (uint32_t note = 0u; note < note_count; ++note) {
+    out.canonical_progression_notes[index * KESSHO_PRODUCT_CHORD_MAX_NOTES + note] =
+        in.canonical_progression_notes[index * KESSHO_PRODUCT_CHORD_MAX_NOTES + note];
+  }
+}
+}
+
+
+namespace {
 
 void appendUniqueInterval(float* intervals, uint32_t& count, float value) {
   for (uint32_t index = 0u; index < count; ++index) {
@@ -339,9 +373,6 @@ void KesshoProductEngine::rebuildHarmonyAuthorityCache() {
     harmony.cached_scale_degree_map[index] = index < harmony.cached_scale_degree_count
         ? static_cast<uint32_t>(std::max(0, intervals[index]))
         : 0u;
-    harmony.cached_recipe_ids[index] = index < harmony.canonical_progression_event_count
-        ? harmony.canonical_progression_slot_id[index]
-        : index;
   }
   if (harmony.morph_endpoint_count >= 2u) {
     const float phase = clampFloat(harmony.morph_plan_phase, 0.0f, 1.0f);
@@ -618,18 +649,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.scale_mode = snapshot.harmony.scale_mode == 1u ? 1u : 0u;
   harmony.phrases_until_change = std::max<uint32_t>(1u, snapshot.harmony.phrases_until_change);
   harmony.current_degree = std::max(-1, std::min(7, snapshot.harmony.current_degree));
-  harmony.progression_enabled = snapshot.harmony.progression_enabled != 0u;
-  for (uint32_t index = 0u; index < 8u; ++index) {
-    harmony.progression_pattern[index] = std::max(0, std::min(7, snapshot.harmony.progression_pattern[index]));
-  }
-  harmony.progression_step_enabled_mask = snapshot.harmony.progression_step_enabled_mask & 0xffu;
-  harmony.progression_steps = clampU32(snapshot.harmony.progression_steps, 1u, 8u);
-  harmony.progression_step = snapshot.harmony.progression_step % harmony.progression_steps;
-  const uint32_t phrase_multiplier = snapshot.harmony.progression_phrase_multiplier;
-  harmony.progression_phrase_multiplier = phrase_multiplier == 2u || phrase_multiplier == 4u || phrase_multiplier == 8u
-      ? phrase_multiplier
-      : 1u;
-  harmony.progression_phrase_counter = snapshot.harmony.progression_phrase_counter;
   for (uint32_t index = 0u; index < 8u; ++index) {
     arrangement.harmony_slot_note_count[index] = clampU32(snapshot.harmony.harmony_slot_note_count[index], 0u, 8u);
   }
@@ -645,14 +664,13 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.cof_drift_rate = clampU32(snapshot.harmony.cof_drift_rate, 1u, 8u);
   harmony.cof_drift_direction = std::min<uint32_t>(snapshot.harmony.cof_drift_direction, 2u);
   harmony.cof_drift_range = clampU32(snapshot.harmony.cof_drift_range, 1u, 6u);
-  harmony.canonical_progression_present = snapshot.harmony.canonical_progression_version == 1u;
-  harmony.canonical_progression_enabled = harmony.canonical_progression_present && snapshot.harmony.canonical_progression_enabled != 0u;
+  harmony.canonical_progression_enabled = snapshot.harmony.canonical_progression_enabled != 0u;
   harmony.canonical_progression_event_count = clampU32(snapshot.harmony.canonical_progression_event_count, 1u, 64u);
   harmony.canonical_progression_current_event = snapshot.harmony.canonical_progression_current_event % harmony.canonical_progression_event_count;
+  harmony.progression_step = snapshot.harmony.progression_step % harmony.canonical_progression_event_count;
   harmony.canonical_progression_bars_per_phrase = clampU32(snapshot.harmony.canonical_progression_bars_per_phrase, 1u, 16u);
   for (uint32_t index = 0u; index < 64u; ++index) {
-    harmony.canonical_progression_source[index] = snapshot.harmony.canonical_progression_source[index] == 1u ? 1u : 0u;
-    harmony.canonical_progression_slot_id[index] = std::min<uint32_t>(snapshot.harmony.canonical_progression_slot_id[index], 7u);
+    decodeProgressionChord(snapshot.harmony, harmony, index);
     harmony.canonical_progression_duration_unit[index] = snapshot.harmony.canonical_progression_duration_unit[index] == 0u ? 0u : 1u;
     const uint32_t duration = snapshot.harmony.canonical_progression_duration_value[index];
     harmony.canonical_progression_duration_value[index] = duration == 2u || duration == 4u || duration == 8u ? duration : 1u;
@@ -733,11 +751,7 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.morph_scale_handover_to = snapshot.harmony.morph_scale_handover_to == 0u ? 1u : snapshot.harmony.morph_scale_handover_to;
   harmony.morph_scale_handover_at = clampFloat(snapshot.harmony.morph_scale_handover_at, 0.0f, 1.0f);
   rebuildHarmonyAuthorityCache();
-  // Canonical progression supersedes the legacy degree-pattern controls when
-  // present; the legacy fields remain only for old snapshot compatibility.
-  harmony.progression_enabled = harmony.canonical_progression_present
-      ? harmony.canonical_progression_enabled
-      : snapshot.harmony.progression_enabled != 0u;
+  harmony.progression_enabled = harmony.canonical_progression_enabled;
   arrangement.chord_generator_enabled = snapshot.arrangement.chord_generator_enabled != 0u;
   arrangement.chord_generator_source_id = clampU32(snapshot.arrangement.chord_generator_source_id, 1u, kSourceCount);
   arrangement.chord_generator_voice_count = clampU32(snapshot.arrangement.chord_generator_voice_count, 1u, 8u);

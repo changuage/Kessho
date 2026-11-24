@@ -349,7 +349,7 @@ const findings = [
     productionReady: snapshotFitsCurrentBridge && bridgeHasProductionControlPlane,
     summary: `The ${snapshotBytes}-byte Product snapshot cannot fit the current ${audioSessionBridgeLimitBytes}-byte audio-session options limit. A binary/chunked contract is required.`,
     evidence: [
-      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 156216', 'The native snapshot ABI is 156,216 bytes.'),
+      evidence('abiTests', 'sizeof(KesshoProductSnapshotV2) == 168704', 'The native snapshot ABI is 168,704 bytes.'),
       evidence('bridgePolicy', 'startPlayback", maxOptionsBytes: 8 * 1024', 'The current playback request permits 8 KiB of JSON options.'),
     ],
   },
