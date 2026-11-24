@@ -41,7 +41,7 @@ Order follows the design doc's phases, with the printer repair folded into the c
 
 ### M0 · Land the in-progress host-transport work *(prerequisite)*
 
-The working tree has uncommitted host-synced transport changes for the Audio Unit:
+Landed on `main` on 25 November 2026 (commits `c8664160`, `c728a463`, `56732f75`). The host-synced transport changes for the Audio Unit were:
 
 - **Engine:** fractional beats per bar and host position, in `ProductTransport`, `KesshoProductEngine`, `KesshoProductApi`, `KesshoProductCore.h` and `JourneyMorphClock`.
 - **New targets:** `macos/KesshoAudioUnit/`.
@@ -49,8 +49,8 @@ The working tree has uncommitted host-synced transport changes for the Audio Uni
 
 These files are on the path of M3, M6, M7 and M9.
 
-- [ ] Commit or merge that work to `main` (or explicitly shelve it) before M2 starts.
-- [ ] Merge the docs branch `docs/harmony-redesign-decisions` so specs and code live together.
+- [x] Commit or merge that work to `main` (or explicitly shelve it) before M2 starts.
+- [x] Merge the docs branch `docs/harmony-redesign-decisions` so specs and code live together.
 
 ### M1 · Fixtures and baselines
 
@@ -192,9 +192,9 @@ M0 ─► M1 ─► M2 ─► M3 ─► M4 ─► M8 ─► M9
 
 | Milestone | Status | PR |
 | --- | --- | --- |
-| M0 Host transport landed | Not started | — |
-| M1 Fixtures and baselines | Done on branch `m1-fixtures-baselines`, not yet merged | — |
-| M2 Chord model and printer | Designed ([m2-chord-model-design.md](m2-chord-model-design.md)); coding waits on M0 | — |
+| M0 Host transport landed | Done on `main` | — |
+| M1 Fixtures and baselines | Done on `main` | — |
+| M2 Chord model and printer | Designed ([m2-chord-model-design.md](m2-chord-model-design.md)); ready to start | — |
 | M3 Six slots, per-slot generators | Not started | — |
 | M4 Part, Overview, lane model | Not started | — |
 | M5 Global Harmony surface | Not started | — |
