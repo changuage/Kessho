@@ -35,14 +35,28 @@ type CoreProductHostLifecycleCoordinatorOptions = {
   readonly publishStateChange: (isRunning: boolean) => void;
 };
 
+function isPlaybackStartupCancelled(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 export class CoreProductHostLifecycleCoordinator {
   private generation = 0;
+  // Two callers can ask the host to start: the Product lifecycle controller
+  // (Play / Space) and a sequencer-transport state commit. The newest start
+  // wins; an older one follows it rather than reporting a cancellation.
+  // Stop, suspend, resume and dispose clear this, so they still cancel.
+  private activeStart: Promise<void> | null = null;
 
   private assertCurrent(generation: number): void {
     if (generation === this.generation) return;
     const error = new Error('Playback startup cancelled');
     error.name = 'AbortError';
     throw error;
+  }
+
+  private supersede(): number {
+    this.activeStart = null;
+    return ++this.generation;
   }
 
   constructor(private readonly options: CoreProductHostLifecycleCoordinatorOptions) {}
@@ -58,8 +72,25 @@ export class CoreProductHostLifecycleCoordinator {
     }).expectSnapshotAfterResume?.();
   }
 
-  async start(sliderState?: Record<string, unknown>): Promise<void> {
-    const generation = ++this.generation;
+  start(sliderState?: Record<string, unknown>): Promise<void> {
+    const attempt = this.runStart(++this.generation, sliderState);
+    this.activeStart = attempt;
+    return this.settleStart(attempt);
+  }
+
+  private async settleStart(attempt: Promise<void>): Promise<void> {
+    try {
+      await attempt;
+    } catch (error) {
+      const successor = this.activeStart;
+      if (isPlaybackStartupCancelled(error) && successor !== null && successor !== attempt) {
+        return this.settleStart(successor);
+      }
+      throw error;
+    }
+  }
+
+  private async runStart(generation: number, sliderState?: Record<string, unknown>): Promise<void> {
     if (sliderState) {
       this.options.setLatestSliderState({ ...sliderState });
     }
@@ -87,7 +118,7 @@ export class CoreProductHostLifecycleCoordinator {
   }
 
   async resume(): Promise<void> {
-    const generation = ++this.generation;
+    const generation = this.supersede();
     // MIDI host timestamps are relative to the current audio clock epoch.
     // Recalibrate after every explicit resume so events queued across a
     // suspend cannot inherit a stale wall-clock offset.
@@ -105,7 +136,7 @@ export class CoreProductHostLifecycleCoordinator {
   }
 
   async suspend(): Promise<void> {
-    const generation = ++this.generation;
+    const generation = this.supersede();
     this.options.sequencerChain.stop();
     this.options.arrangementBridge.stop();
     this.options.postRuntimeProductEvent(createCoreProductStopEvent());
@@ -116,7 +147,7 @@ export class CoreProductHostLifecycleCoordinator {
   }
 
   async stop(runtimeReady: boolean): Promise<void> {
-    const generation = ++this.generation;
+    const generation = this.supersede();
     this.options.sequencerChain.stop();
     this.options.arrangementBridge.stop();
     if (runtimeReady) {
@@ -129,7 +160,7 @@ export class CoreProductHostLifecycleCoordinator {
   }
 
   dispose(runtimeReady: boolean): void {
-    this.generation += 1;
+    this.supersede();
     this.options.sequencerChain.stop();
     this.options.arrangementBridge.stop();
     if (runtimeReady) {

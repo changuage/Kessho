@@ -53,3 +53,51 @@ test('stopping during startup prevents a late asset or snapshot completion from 
     assert.equal(running[running.length - 1], true, 'a late Stop receipt cannot overwrite a newer Play');
   }
 });
+
+test('a second start during startup supersedes the first without failing either caller', async () => {
+  let releaseFirstSnapshot!: () => void;
+  const firstSnapshot = new Promise<void>((resolve) => { releaseFirstSnapshot = resolve; });
+  let snapshotLoads = 0;
+  const loadedStates: unknown[] = [];
+  let latestState: Record<string, unknown> | null = null;
+  const startEvents: unknown[] = [];
+  const running: boolean[] = [];
+  const noop = () => undefined;
+  const coordinator = new CoreProductHostLifecycleCoordinator({
+    runtime: { resume: async () => undefined, suspend: async () => undefined, setOutputGain: noop },
+    assetRegistrar: { ensureDefaultAssetsForState: async () => ({ status: 'ready' }) },
+    loadLatestSnapshot: async () => {
+      loadedStates.push(latestState);
+      snapshotLoads += 1;
+      if (snapshotLoads === 1) await firstSnapshot;
+    },
+    sequencerChain: { start: noop, stop: noop },
+    arrangementBridge: { start: noop, stop: noop },
+    realtimeTimestampMapper: { reset: noop },
+    sequencerVisuals: { reset: noop },
+    modulationRangeBridge: { flushModulationRanges: noop },
+    setLatestSliderState: (state: Record<string, unknown> | null) => { latestState = state; },
+    latestSliderState: () => latestState, adapterState: () => ({}),
+    flushRuntimeProductEvents: noop, setRuntimeReady: noop,
+    resetSequencerEvolveState: noop, resetSynthNoteRangeOverrides: noop,
+    updateRuntimeTelemetryPolling: noop, publishStateChange: noop,
+    setRunning: (value: boolean) => running.push(value), postRuntimeProductEvent: (event: unknown) => startEvents.push(event),
+  } as unknown as ConstructorParameters<typeof CoreProductHostLifecycleCoordinator>[0]);
+
+  // Play (lifecycle controller) and a sequencer-transport state commit can both start the host.
+  const play = coordinator.start({ drumEuclidMasterEnabled: true, revision: 1 });
+  while (snapshotLoads === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+  const transportCommit = coordinator.start({ drumEuclidMasterEnabled: true, revision: 2 });
+  await transportCommit;
+  releaseFirstSnapshot();
+  await play;
+
+  assert.deepEqual(loadedStates.map((state) => (state as { revision: number }).revision), [1, 2], 'the newest start loads the newest state');
+  assert.deepEqual(running, [true], 'only the newest start brings up the running surfaces');
+  assert.equal(startEvents.length, 1, 'exactly one runtime start event');
+
+  const replay = coordinator.start({ revision: 3 });
+  const stop = coordinator.stop(false);
+  await assert.rejects(replay, { name: 'AbortError' }, 'Stop still cancels a pending start');
+  await stop;
+});
