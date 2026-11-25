@@ -97,9 +97,32 @@ Captured notes become cells in the chosen variation, with Notes advance = Steps 
 It also fixes single-note velocity. Fixed-window capture becomes a policy beside rolling capture, and Random producer taps join the native generated-capture ring.
 
 ### D8 · Persistence: new keys, no chord decoders
-- **New keys:** `harmonyProgression` with inline chords (version 2), `harmonyPalette`, and the Notes-lane cells inside `synthSequenceVariations` (format version bump).
-- **Old chord keys are ignored on load:** `harmonyChordSlots*`, `harmonyChordSequence*`, `chordProgression*`, `synthPlayConfigs`, legacy arp and chord lane keys, and slot-sourced progression events. They are also dropped on save, with no decoders.
-- **Pitch binding:** this is not a chord field, so the D3 mapping is applied when old variations load.
+- **New keys:** `harmonyProgression` (and its A/B endpoints) at version 2, whose events are `{ type: 'auto' }` or `{ type: 'chord', chord: Chord }`, plus `harmonyPalette`. In T7, the Notes-lane cells replace `stepMetadata` inside `synthSequenceVariations`, with a format version bump.
+- **Old chord keys are ignored on load:** `harmonyChordSlots*`, `harmonyChordSequence*`, `chordProgression*` and `synthPlayConfigs`, plus the legacy ARP and chord-lane keys. They are also dropped on save, with no decoders. A version 1 progression loads with its slot events turned into `auto`.
+- **Pitch binding:** this is not a chord field, so the D3 mapping applies when old variations load (M4).
+
+### D9 · TS `Chord` type
+One module, `src/audio/harmony/chord.ts`, owns the type and its pure helpers. Nothing else defines a chord shape.
+
+```ts
+type ChordQuality = 'diatonic' | 'major' | 'minor' | 'diminished' | 'augmented' | 'sus2' | 'sus4';
+type ChordExtension = '6' | '7' | '9' | '11' | '13' | 'dominant';
+type ChordNote = { midi: number; velocity?: number; offset?: number; gate?: number; destination?: number };
+type Chord = {
+  behavior: 'follow' | 'fixed';
+  degree: number; quality: ChordQuality; extensions: ChordExtension[];
+  voicing: { inversion: number; spread: number; register: number; bass: 'inversion' | 'root' | number };
+  notes: ChordNote[];
+};
+```
+
+The helpers are:
+- `normalizeChord`, which validates and clamps the value;
+- `encodeChordIntent` and `encodeChordNotes`, which produce the native `KesshoProductChordIntent` and `KesshoProductChordNote` bytes;
+- `chordName`, a computed display name;
+- `recognizeChord`, which turns Fixed notes into the nearest degree and quality for the Follow toggle.
+
+The display preview of a Follow chord comes from native, not a TS resolver.
 
 ## Deletions (in the same PR)
 
@@ -128,9 +151,9 @@ These are stacked commits on one M2 branch, reviewed in order. **Agent** is the 
 | T2 | Variation payload: steps become the Notes cell table (D2) and variation pitch binding becomes Advance (D3). Covers the native struct, validation, playback indexing, the TS encoder mapping and the schema version. Existing variations play exactly as before. | T1 | Sonnet; main session designs the struct diff |
 | T3 | Inline progression chords (D4) in native and TS. Delete the legacy progression and the slot-sourced path. | T1 | Sonnet |
 | T4 | Delete the chord bank and slot events (native and TS), and switch every reader to the resolver or the cells. | T2, T3 | Sonnet; main session reviews the deletion list against `git grep` |
-| T5 | TS Chord model and state: `Chord` type, `harmonyPalette`, persistence keys (D6, D8), and dropping old keys on load. | T2, T3 | Haiku for keys and tests, Sonnet for the model |
+| T5 | TS Chord model and Harmony-side deletion. Adds the `Chord` module (D9), progression version 2 with inline chords, `harmonyPalette` and the persistence rules (D6, D8). Deletes the TS chord bank: slot state and keys, the legacy progression keys, bank analysis, Manage Pool, the slot strip, Draft/Capture, recognition resolution and live slot triggers. Progression editing becomes Auto-only until T7. | T4 | Sonnet; main session reviews the deletion list |
 | T6 | Printer repair (D7) and the fixed-window capture policy; Random producer taps into the generated-capture ring; delete `useGeneratedSequenceCapture`. | T2 | Sonnet |
-| T7 | UI. Covers the Notes editor (Follow/Fixed, Harmony, Rest, articulation override, Copy/Place, Undo); the Notes-lane settings (length, direction, Advance, articulation); and Palette placement. Delete `src/ui/synth/chord/*`, Draft/Capture and the slot strip. Uses Kessho tokens and the "Avoid generic UI patterns" rules. | T5 | Sonnet; main session reviews screenshots against the M1 baselines |
+| T7 | UI. Covers the Notes editor (Follow/Fixed, Harmony, Rest, articulation override, Copy/Place, Undo); the Notes-lane settings (length, direction, Advance, articulation); and Palette placement. Delete `src/ui/synth/chord/*`, `synthPlayConfigs` and the Play chord sequencer. Uses Kessho tokens and the "Avoid generic UI patterns" rules. | T5 | Sonnet; main session reviews screenshots against the M1 baselines |
 | T8 | Gate run: `core:product:ci`, `core:product:harmony`, `test:generated-sequencer-capture`, `ProductSequencerTests`, `ProductHarmonyTests`, `core:product:abi`, `core:product:schema`, `core:product:legacy-boundary`, `core:product:no-temporary-runtime-compat`, `test:m1-arrangement-statistics`; then `git grep` for every deleted symbol. | T1–T7 | Haiku runs it; main session triages failures |
 
 ## Review checklist per task
