@@ -871,37 +871,11 @@ void requireSemanticRecipeTableParity() {
 
 void requireProductHarmonyAuthoritySemanticParity() {
   auto snapshot = makeSnapshot(60.0f, 1u, 0.3f, 9007u);
-  snapshot.harmony.active_slot_id = 0;
-  snapshot.harmony.harmony_slot_note_count[0] = 3u;
-  snapshot.harmony.harmony_slot_midi[0] = 60.0f;
-  snapshot.harmony.harmony_slot_midi[1] = 64.0f;
-  snapshot.harmony.harmony_slot_midi[2] = 67.0f;
-  snapshot.harmony.harmony_slot_captured_root_midi[0] = 60.0f;
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
   auto engine = std::make_unique<KesshoProductEngine>(48000.0, 256u, 0u);
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority exact snapshot load failed");
+  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority snapshot load failed");
   LaneState lane{};
   lane.target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
   lane.midi_note = 60.0f;
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Exact playback must bypass root movement");
-
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
-  snapshot.harmony.root_midi = 62.0f;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority relative snapshot load failed");
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 62.0f, 0.01f, "Relative playback must transpose once");
-
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 0u;
-  snapshot.harmony.root_midi = 68.0f;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto snapshot load failed");
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 68.0f, 0.01f, "Auto playback must use semantic movement beyond threshold");
-
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 0u;
-  snapshot.harmony.root_midi = 60.0f;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto near snapshot load failed");
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Auto playback near capture mismatch");
-  snapshot.harmony.root_midi = 66.0f;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "authority auto threshold snapshot load failed");
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Auto playback threshold mismatch");
 
   snapshot.harmony.morph_endpoint_count = 2u;
   snapshot.harmony.morph_endpoint_root_midi[0] = 60.0f;
@@ -931,7 +905,6 @@ void requireProductHarmonyAuthoritySemanticParity() {
   // Morph triggers stay on valid integer-MIDI anchors on both sides of the
   // scale-aware handover. Existing Harmony-resolved held voices use the
   // bounded render fade below, while unrelated voices retain native envelopes.
-  snapshot.harmony.active_slot_id = -1;
   snapshot.harmony.morph_voice_pair_count = 1u;
   snapshot.harmony.morph_voice_pair_source[0] = 60.0f;
   snapshot.harmony.morph_voice_pair_target[0] = 72.0f;
@@ -1144,37 +1117,14 @@ void requireProductHarmonyAuthoritySemanticParity() {
   require(unrelated_voice.active, "unmarked same-note voice was incorrectly silenced by Harmony morph");
   requireNear(unrelated_voice.harmony_fade_gain, 1.0f, 0.01f, "unmarked same-note voice received Harmony fade");
 
-  snapshot.harmony.active_slot_id = 0;
-  snapshot.harmony.harmony_slot_intent_quality[0] = 5u; // maj7
-  snapshot.harmony.harmony_slot_intent_present[0] = 1u;
-  snapshot.harmony.harmony_slot_intent_root_mode[0] = 1u;
-  snapshot.harmony.harmony_slot_intent_root_note[0] = 2.0f;
-  snapshot.harmony.harmony_slot_intent_octave[0] = 4;
-  snapshot.harmony.harmony_slot_intent_extension_mask[0] = 1u << 3u; // 9
-  snapshot.harmony.harmony_slot_intent_alteration_mask[0] = 1u << 0u; // b5
-  snapshot.harmony.root_midi = 62.0f;
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "native semantic recipe snapshot load failed");
-  require(engine->harmony.cached_voice_leading_candidate_note_counts[0] >= 4u, "native semantic recipe was not cached");
-  requireNear(engine->harmony.cached_voice_leading_candidates[0][0], 62.0f, 0.01f, "native semantic root mismatch");
-
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
   snapshot.harmony.takeover_anchor_count = 1u;
   snapshot.harmony.takeover_anchor_source[0] = 60.0f;
   snapshot.harmony.takeover_anchor_target[0] = 72.0f;
   snapshot.harmony.takeover_anchor_weight[0] = 1.0f;
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
   snapshot.harmony.takeover_progress = 0.25f;
   snapshot.harmony.root_midi = 60.0f;
   require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "takeover source-anchor snapshot load failed");
   requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "takeover must not glide through chromatic cents");
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 2u;
-  snapshot.harmony.takeover_progress = 1.0f;
-  require(engine->loadSnapshot(snapshot) == KESSHO_PRODUCT_OK, "exact takeover bypass snapshot load failed");
-  requireNear(engine->resolveHarmonyMidi(lane, 0u, 0u, 0u), 60.0f, 0.01f, "Exact slot must bypass takeover");
-
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
-  snapshot.harmony.active_slot_id = -1;
   snapshot.harmony.takeover_progress = 0.0f;
   snapshot.harmony.live_gesture_scope = kessho::product::generated::KESSHO_PRODUCT_HARMONY_GESTURE_SCOPE_SUGGESTION;
   snapshot.harmony.live_gesture_target = kessho::product::generated::KESSHO_PRODUCT_HARMONY_TAKEOVER_TARGET_SEQ1;
@@ -1286,11 +1236,6 @@ void requireProductHarmonyAuthoritySemanticParity() {
 
 void requireProductHarmonyWorstCaseCpuBudget() {
   auto snapshot = makeSnapshot(60.0f, 1u, 0.8f, 7711u);
-  snapshot.harmony.active_slot_id = -1;
-  snapshot.harmony.harmony_slot_note_count[0] = 8u;
-  for (uint32_t index = 0u; index < 8u; ++index) snapshot.harmony.harmony_slot_midi[index] = 48.0f + static_cast<float>(index * 3u);
-  snapshot.harmony.harmony_slot_captured_root_midi[0] = 60.0f;
-  snapshot.harmony.harmony_slot_playback_behavior[0] = 1u;
   snapshot.harmony.takeover_anchor_count = 8u;
   snapshot.harmony.takeover_progress = 0.5f;
   for (uint32_t index = 0u; index < 8u; ++index) {

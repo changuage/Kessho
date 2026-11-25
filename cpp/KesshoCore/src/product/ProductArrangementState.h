@@ -31,8 +31,6 @@ struct ProductArrangementState {
   int32_t synth_octave = 0;
   int32_t requested_synth_octave = 0;
   float lead_chord_bias = 0.78f;
-  uint32_t harmony_slot_note_count[8]{};
-  float harmony_slot_midi[64]{};
   uint32_t synth_voice_mask = 63u;
   uint32_t pad2_voice_assign = 0u;
   uint32_t pad_euclid_owned_voice_mask = 0u;

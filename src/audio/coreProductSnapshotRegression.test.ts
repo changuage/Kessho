@@ -86,7 +86,7 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
       edges: [{ from: 'delayA', to: 'reverb', amount: 0.5, mode: 'sampleHold', min: 0.2, max: 0.8 }],
     },
   });
-  assert.equal(encodeCoreProductSnapshot(modulated).byteLength, 168704, 'web snapshot size must match the native ABI');
+  assert.equal(encodeCoreProductSnapshot(modulated).byteLength, 167836, 'web snapshot size must match the native ABI');
   const edge = 5;
   assert.equal(modulated.routing.fxRouteMode[edge], 3, 'FX Sample & Hold mode did not reach the snapshot');
   assert.equal(modulated.routing.fxRouteMin[edge], 0.2, 'FX route minimum did not reach the snapshot');

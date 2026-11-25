@@ -66,30 +66,16 @@ export interface ProductChordResolvedStep {
   strumOrder: number[];
 }
 
-export interface ProductPlayNoteEvent {
-  step: number;
-  sourceStep: number;
-  slotId: number | null;
-  midi: number;
-  offsetMs: number;
-  velocity: number;
-  voiceIndex: number;
-}
-
 export type ProductPlayResolvedStep =
   | { mode: 'arp'; arp: ProductArpResolvedStep }
   | { mode: 'chord'; chord: ProductChordResolvedStep };
 
 export interface ProductPlayEnginePattern {
   midiPattern: number[];
-  playNotes: ProductPlayNoteEvent[] | null;
   steps: number;
 }
 
 type ChordToneRole = 'root' | 'third' | 'seventh' | 'top' | 'fifth' | 'extension';
-
-/** Compatibility fallback when a caller does not provide its clock interval. */
-const MONO_GATE_WINDOW_MS = 100;
 
 const PRODUCT_PLAY_MODES: readonly ProductPlayMode[] = ['arp', 'chord'];
 const PRODUCT_CHORD_STYLES: readonly ProductChordStyle[] = ['straight', 'strum'];
@@ -287,20 +273,6 @@ function hashU32(value: number): number {
   return x >>> 0;
 }
 
-function strumOffsetMs(index: number, count: number, spreadMs: number, curve: number): number {
-  if (count <= 1) return 0;
-  const phase = index / (count - 1);
-  const curved = curve >= 0
-    ? Math.pow(phase, 1 + curve * 2)
-    : 1 - Math.pow(1 - phase, 1 + Math.abs(curve) * 2);
-  return Math.max(0, spreadMs) * curved;
-}
-
-function monoStraightOffsetMs(index: number, count: number, gate: number, triggerIntervalMs = MONO_GATE_WINDOW_MS): number {
-  if (count <= 1) return 0;
-  return Math.max(0, triggerIntervalMs) * clamp(gate, 0.05, 1) * (index / (count - 1));
-}
-
 function pitchClass(value: number): number {
   return ((Math.round(value) % 12) + 12) % 12;
 }
@@ -450,51 +422,6 @@ export function resolveProductChordPlayPatternDetails(options: {
   });
 }
 
-export function resolveProductChordPlayEvents(options: {
-  config: ProductChordPlayConfig;
-  harmony: ProductArpHarmonyContext;
-  sourceId?: number | null;
-  triggerIntervalMs?: number;
-}): ProductPlayNoteEvent[] {
-  const config = normalizeProductChordPlayConfig(options.config);
-  const mono = isProductSourceMonophonic(options.sourceId ?? options.harmony.sourceId);
-  return resolveProductChordPlayPatternDetails({ config, harmony: options.harmony, sourceId: options.sourceId, triggerIntervalMs: options.triggerIntervalMs }).flatMap((detail) => {
-    if (detail.notes.length === 0) return [];
-    const ordered = config.style === 'strum' ? detail.strumOrder : detail.notes;
-    return ordered.map((midi, index) => ({
-      step: detail.step,
-      sourceStep: detail.sourceStep,
-      slotId: detail.slotId,
-      midi,
-      offsetMs: mono
-        ? config.style === 'strum'
-          ? strumOffsetMs(index, ordered.length, config.strum.spreadMs, config.strum.curve)
-          : monoStraightOffsetMs(index, ordered.length, config.gate, options.triggerIntervalMs)
-        : config.style === 'strum'
-          ? strumOffsetMs(index, ordered.length, config.strum.spreadMs, config.strum.curve)
-          : 0,
-      velocity: clamp(1 - index * config.strum.velocityFalloff, 0.05, 1),
-      voiceIndex: index,
-    }));
-  });
-}
-
-export function resolveProductPlayNoteEvents(options: {
-  config: ProductPlayConfig;
-  harmony: ProductArpHarmonyContext;
-  sourceId?: number | null;
-  triggerIntervalMs?: number;
-}): ProductPlayNoteEvent[] | null {
-  const config = normalizeProductPlayConfig(options.config);
-  if (!config.enabled || config.mode !== 'chord') return null;
-  return resolveProductChordPlayEvents({
-    config: config.chord,
-    harmony: options.harmony,
-    sourceId: options.sourceId,
-    triggerIntervalMs: options.triggerIntervalMs,
-  });
-}
-
 export function resolveProductPlayPatternDetails(options: {
   config: ProductPlayConfig;
   harmony: ProductArpHarmonyContext;
@@ -566,41 +493,7 @@ export function resolveProductPlayEnginePattern(options: {
     ? chordChoices.map((choice) => choice.notes[0] ?? -1)
     : resolveProductPlayMidiPattern({ ...options, config });
   if (!midiPattern || midiPattern.length === 0) return null;
-  const playNotes = chordChoices
-    ? chordChoices.flatMap((detail) => {
-      if (detail.notes.length === 0) return [];
-      const ordered = config.chord.style === 'strum' ? detail.strumOrder : detail.notes;
-      return ordered.map((midi, voiceIndex) => ({
-        step: detail.step,
-        sourceStep: detail.sourceStep,
-        slotId: detail.slotId,
-        midi,
-        offsetMs: isProductSourceMonophonic(options.sourceId ?? options.harmony.sourceId)
-          ? config.chord.style === 'strum'
-            ? strumOffsetMs(voiceIndex, ordered.length, config.chord.strum.spreadMs, config.chord.strum.curve)
-            : monoStraightOffsetMs(voiceIndex, ordered.length, config.chord.gate, options.triggerIntervalMs)
-          : config.chord.style === 'strum'
-            ? strumOffsetMs(voiceIndex, ordered.length, config.chord.strum.spreadMs, config.chord.strum.curve)
-            : 0,
-        velocity: clamp(1 - voiceIndex * config.chord.strum.velocityFalloff, 0.05, 1),
-        // The native slot resolver indexes the authored pool; strum order is
-        // represented by offsetMs and therefore must not change that index.
-        voiceIndex: Math.max(0, detail.notes.indexOf(midi)),
-      }));
-    })
-    : resolveProductPlayNoteEvents({ config, harmony: options.harmony, sourceId: options.sourceId, triggerIntervalMs: options.triggerIntervalMs });
-  if (config.mode === 'arp') {
-    return {
-      midiPattern,
-      playNotes: null,
-      steps: midiPattern.length,
-    };
-  }
-  return {
-    midiPattern,
-    playNotes,
-    steps: midiPattern.length,
-  };
+  return { midiPattern, steps: midiPattern.length };
 }
 
 export function productPlayPulseValues(config: ProductPlayConfig): number[] {

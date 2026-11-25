@@ -50,15 +50,15 @@ function cellOffset(snapshot: number, cell: number): number {
   return snapshot + 1684 + cell * SYNTH_SEQUENCE_VARIATION_CELL_BYTES;
 }
 
-const CELL_NOTES = 216;
+const CELL_NOTES = 152;
 const CELL_NOTE_BYTES = 20;
 
 test('encodes native ABI sizes, offsets, independent sub-lane lengths, and printed fixed cells', () => {
   const bank = printedBank();
   const bytes = encodeSynthSequenceVariationBank(bank);
   assert.equal(bytes.byteLength, SYNTH_SEQUENCE_VARIATION_BANK_BYTES);
-  assert.equal(SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES, 29076);
-  assert.equal(SYNTH_SEQUENCE_VARIATION_CELL_BYTES, 856);
+  assert.equal(SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES, 27028);
+  assert.equal(SYNTH_SEQUENCE_VARIATION_CELL_BYTES, 792);
   const view = new DataView(bytes);
   assert.equal(view.getUint32(0, true), 2);
   assert.equal(view.getUint32(4, true), 1);
@@ -191,7 +191,6 @@ test('encodes local chord intervals and full per-step ARP configuration', () => 
   arp.pulseMask = 0b111;
   arp.resetMask = 0b001;
   arp.contour = [0, 2, -1];
-  arp.slotLane = [-1, 2, 1];
   variation.stepMetadata = {
     ...variation.stepMetadata,
     '0': {
@@ -220,7 +219,6 @@ test('encodes local chord intervals and full per-step ARP configuration', () => 
   assert.equal(view.getUint32(step + 44, true), 0);
   assert.equal(view.getUint32(step + 48, true), 1);
   assert.equal(view.getInt32(step + 52 + 4, true), 2);
-  assert.equal(view.getInt32(step + 116 + 4, true), 2);
   // Fixed cells store root (61) + interval.
   assert.equal(view.getFloat32(step + CELL_NOTES, true), 61);
   assert.equal(view.getFloat32(step + CELL_NOTES + 8, true), 3);

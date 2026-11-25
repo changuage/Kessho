@@ -2353,14 +2353,12 @@
     "maxPhrasesPerCycle": 4096
   },
   "harmonyAuthority": {
-    "sharedSlotCount": 8,
     "progressionCapacity": 64,
     "playLaneCount": 4,
     "maxVoicingNotes": 8,
     "liveGestureCapacity": 8,
     "takeoverAnchorCount": 12,
     "morphEndpointCount": 2,
-    "morphPlanSlotCapacity": 8,
     "playbackBehaviors": [
       "auto",
       "relative",
@@ -2393,7 +2391,6 @@
     "maxVoices": 64,
     "maxAssets": 128,
     "maxStemFrames": 4096,
-    "maxHarmonySlots": 8,
     "maxHarmonyProgressionEvents": 64,
     "maxHarmonyLiveGestures": 8,
     "maxHarmonyTakeoverAnchors": 12

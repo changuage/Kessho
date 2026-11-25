@@ -695,7 +695,6 @@ await runCheckWithReport({
 
     const harmonySlotBase = clone(base);
     harmonySlotBase.harmony.activeSource = 0;
-    harmonySlotBase.harmony.activeSlotId = -1;
     harmonySlotBase.harmony.notePoolCount = 3;
     harmonySlotBase.harmony.notePoolMidi = [60, 64, 67, 0, 0, 0, 0, 0];
     harmonySlotBase.harmony.nextNotePoolCount = 3;
@@ -706,7 +705,6 @@ await runCheckWithReport({
     harmonySlotNext.harmony.controlMode = 3;
     harmonySlotNext.harmony.controlStrength = 1;
     harmonySlotNext.harmony.activeSource = 2;
-    harmonySlotNext.harmony.activeSlotId = 2;
     harmonySlotNext.harmony.notePoolCount = 4;
     harmonySlotNext.harmony.notePoolMidi = [67, 70, 74, 77, 0, 0, 0, 0];
     harmonySlotNext.harmony.nextNotePoolCount = 4;
@@ -714,15 +712,9 @@ await runCheckWithReport({
     harmonySlotNext.harmony.resolvedHarmonyFrame = { degree: 4, quality: 'min7' };
     harmonySlotNext.harmony.manualControl = { strength: 'force' };
     const harmonySlotDiff = adapterHarness.buildCoreProductSnapshotDiff(harmonySlotBase, harmonySlotNext);
-    assert(harmonySlotDiff.applied === true, 'harmony slot triggers must dirty-diff without a full snapshot reload');
     assert(
-      harmonySlotDiff.events.some((event) =>
-        event.type === 'harmony-slot-set' &&
-          event.slotId === 2 &&
-          event.degree === 4 &&
-          event.quality === 'min7' &&
-          event.strength === 'force'),
-      'harmony slot trigger dirty diff did not emit the selected slot-set event',
+      harmonySlotDiff.applied === false && harmonySlotDiff.reason === 'harmony-mode-change',
+      'slot-sourced note pool changes must full-reload now that no native event can carry them',
     );
 
     const assetNext = clone(base);
@@ -1013,7 +1005,7 @@ await runCheckWithReport({
         legacyPadExactReloadReason: legacyPadExactDiff.reason,
         legacyLeadExactReloadReason: legacyLeadExactDiff.reason,
         legacyDrumExactReloadReason: legacyDrumExactDiff.reason,
-        harmonySlotDiffEvents: harmonySlotDiff.events.length,
+        harmonySlotDiffReloaded: harmonySlotDiff.applied === false,
         padOverrideReloadReason: padOverrideDiff.reason,
         leadOverrideReloadReason: leadOverrideDiff.reason,
         endpointReloadReason: endpointDiff.reason,

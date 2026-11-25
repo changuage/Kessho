@@ -48,7 +48,6 @@ const SYNTH_STEP_OVERRIDE_KEYS = new Set([
   'morphDirection',
   'distanceDirection',
   'nudgeDirection',
-  'playNotes',
 ]);
 
 type ProductArpEngineLane = {
@@ -62,9 +61,7 @@ type ProductArpEngineLane = {
   contourMode: 'pool' | 'semitone';
   boundaryMode: 'fold' | 'wrap' | 'clamp';
   contour: number[];
-  slotLane: number[];
   midiPattern: number[];
-  playNotes: Array<{ step: number; midi: number; offsetMs: number; velocity: number; voiceIndex: number; slotId: number }>;
 };
 
 export function createCoreProductSynthSequencerStepOverrideEvents(
@@ -72,16 +69,12 @@ export function createCoreProductSynthSequencerStepOverrideEvents(
   subLaneStates?: readonly (SequencerSubLaneConfigState | null | undefined)[],
 ): CoreProductEvent[] {
   const hasStepOverrides = hasSynthSequencerStepOverridePayload(overrides, subLaneStates);
-  // Nested Product Play chord notes are serialized by the play-arps event
-  // builder below. Keep them out of the generic step-value pass so each
-  // authored voice produces exactly one native PLAY_NOTE record.
-  const stepOverrideInput = stripNestedProductPlayNotes(overrides);
   const stepEvents = hasStepOverrides
     ? createCoreProductSequencerStepOverrideEvents(
         'synth',
-        normalizeSequencerStepToggleOverrides(stepOverrideInput, emptyLaneState()),
-        normalizeSequencerStepValueOverrides(stepOverrideInput, emptyLaneState(), true),
-        normalizeSequencerStepValueConfigs(stepOverrideInput, emptyLaneState(), true, subLaneStates),
+        normalizeSequencerStepToggleOverrides(overrides, emptyLaneState()),
+        normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true),
+        normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates),
       )
     : [];
   return [
@@ -97,12 +90,11 @@ export function createCoreProductSynthSequencerLaneStepOverrideEvents(
 ): CoreProductEvent[] {
   const safeLaneIndex = Math.max(0, Math.min(15, Math.round(laneIndex)));
   const hasStepOverrides = hasSynthSequencerStepOverridePayload(overrides, subLaneStates);
-  const stepOverrideInput = stripNestedProductPlayNotes(overrides);
   let stepEvents: CoreProductEvent[] = [];
   if (hasStepOverrides) {
-    const toggles = normalizeSequencerStepToggleOverrides(stepOverrideInput, emptyLaneState());
-    const values = normalizeSequencerStepValueOverrides(stepOverrideInput, emptyLaneState(), true);
-    const configs = normalizeSequencerStepValueConfigs(stepOverrideInput, emptyLaneState(), true, subLaneStates);
+    const toggles = normalizeSequencerStepToggleOverrides(overrides, emptyLaneState());
+    const values = normalizeSequencerStepValueOverrides(overrides, emptyLaneState(), true);
+    const configs = normalizeSequencerStepValueConfigs(overrides, emptyLaneState(), true, subLaneStates);
     stepEvents = createCoreProductSequencerLaneStepOverrideEvents(
       'synth',
       safeLaneIndex,
@@ -122,18 +114,6 @@ function hasSynthSequencerStepOverridePayload(
   if (Array.isArray(overrides) || overrides instanceof Map) return true;
   if (!overrides || typeof overrides !== 'object') return false;
   return Object.keys(overrides as Record<string, unknown>).some((key) => SYNTH_STEP_OVERRIDE_KEYS.has(key));
-}
-
-function stripNestedProductPlayNotes(overrides: unknown): unknown {
-  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides) || overrides instanceof Map) {
-    return overrides;
-  }
-  const source = overrides as Record<string, unknown>;
-  if (!Array.isArray(source.playArps) || !Object.prototype.hasOwnProperty.call(source, 'playNotes')) {
-    return overrides;
-  }
-  const { playNotes: _ignored, ...withoutPlayNotes } = source;
-  return withoutPlayNotes;
 }
 
 export function createCoreProductDrumSequencerStepOverrideEvents(
@@ -211,11 +191,7 @@ function createStepValueEvent(
   value: SequencerStepValueOverride,
   stateFlags: number,
 ): CoreProductEvent {
-  const packedPlayNoteVoice = value.harmonySlotId === undefined || value.field !== CORE_PRODUCT_STEP_VALUE_FIELDS.playNote
-    ? value.value4 ?? 0
-    : (Math.max(0, Math.min(7, Math.round(value.harmonySlotId))) + 1) * 32 +
-      Math.max(0, Math.min(31, Math.round(value.value4 ?? 0)));
-  if (value.value3 !== undefined || value.value4 !== undefined || value.harmonySlotId !== undefined) {
+  if (value.value3 !== undefined || value.value4 !== undefined) {
     return createCoreProductSequencerExtendedStepValueEvent(
       sequencer,
       laneIndex,
@@ -224,7 +200,7 @@ function createStepValueEvent(
       value.value,
       value.value2 ?? 0,
       value.value3 ?? 0,
-      packedPlayNoteVoice,
+      value.value4 ?? 0,
       valueFlags(value, stateFlags),
     );
   }
@@ -279,24 +255,8 @@ function createCoreProductSynthArpEvents(overrides: unknown, onlyLaneIndex?: num
           midi,
           active,
           contour: lane.contour[step] ?? 0,
-          slot: lane.slotLane[step] ?? -1,
           reset: (lane.resetMask & (1 << step)) !== 0,
         }));
-      }
-    }
-    if (!arpEnabled) {
-      for (const note of lane.playNotes) {
-        const packedVoice = (note.slotId + 1) * 32 + note.voiceIndex;
-        events.push(createCoreProductSequencerExtendedStepValueEvent(
-          'synth',
-          laneIndex,
-          note.step,
-          CORE_PRODUCT_STEP_VALUE_FIELDS.playNote,
-          note.midi,
-          note.offsetMs,
-          note.velocity,
-          packedVoice,
-        ));
       }
     }
     events.push(createCoreProductSynthArpCommitEvent(laneIndex));
@@ -324,11 +284,6 @@ function normalizeProductArpEngineLane(value: unknown): ProductArpEngineLane {
     : Array.isArray(arpRecord.midiPattern)
       ? arpRecord.midiPattern
       : [];
-  const playNotesSource = Array.isArray(record.playNotes)
-    ? record.playNotes
-    : Array.isArray(arpRecord.playNotes)
-      ? arpRecord.playNotes
-      : null;
   return {
     enabled: record.enabled === true || arpRecord.enabled === true,
     mode: record.mode === 'chord' ? 'chord' : 'arp',
@@ -347,25 +302,9 @@ function normalizeProductArpEngineLane(value: unknown): ProductArpEngineLane {
     contour: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
       clampInteger(Array.isArray(arpRecord.contour) ? arpRecord.contour[step] : 0, -12, 12, 0)
     ),
-    slotLane: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
-      clampInteger(Array.isArray(arpRecord.slotLane) ? arpRecord.slotLane[step] : -1, -1, 7, -1)
-    ),
     midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) =>
       clampNumber(midiPatternSource[step], -1, 127, -1)
     ),
-    playNotes: playNotesSource
-      ? playNotesSource.slice(0, 256).flatMap((entry: unknown) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
-        const note = entry as Record<string, unknown>;
-        const step = clampInteger(note.step, 0, 63, 0);
-        const midi = clampNumber(note.midi, -1, 127, -1);
-        const slotId = clampInteger(note.slotId, 0, 7, 0);
-        const voiceIndex = clampInteger(note.voiceIndex, 0, 31, 0);
-        const offsetMs = clampNumber(note.offsetMs, 0, 16000, 0);
-        const velocity = clampNumber(note.velocity, 0.05, 1, 1);
-        return [{ step, midi, slotId, voiceIndex, offsetMs, velocity }];
-      })
-      : [],
   };
 }
 
@@ -381,9 +320,7 @@ function emptyProductArpEngineLane(): ProductArpEngineLane {
     contourMode: 'pool',
     boundaryMode: 'fold',
     contour: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => 0),
-    slotLane: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => -1),
     midiPattern: Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, () => -1),
-    playNotes: [],
   };
 }
 

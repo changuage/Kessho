@@ -530,14 +530,12 @@ const drumSourcePresetRows = sourcePresetIds
 const groups = schema.groups;
 const limits = schema.limits;
 const harmonyAuthority = schema.harmonyAuthority ?? {
-  sharedSlotCount: 8,
   progressionCapacity: 64,
   playLaneCount: 4,
   maxVoicingNotes: 8,
   liveGestureCapacity: 8,
   takeoverAnchorCount: 12,
   morphEndpointCount: 2,
-  morphPlanSlotCapacity: 8,
   playbackBehaviors: ['auto', 'relative', 'exact'],
   gestureScopes: ['detail', 'overview', 'suggestion', 'seqDraft', 'seqLive'],
   takeoverTargets: ['global', 'detail', 'overview', 'seq1', 'seq2', 'seq3', 'seq4'],
@@ -630,7 +628,6 @@ inline constexpr uint32_t KESSHO_PRODUCT_MAX_DRUM_LANES = ${limits.maxDrumLanes}
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_VOICES = ${limits.maxVoices}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_ASSETS = ${limits.maxAssets}u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_STEM_FRAMES = ${limits.maxStemFrames}u;
-inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_SHARED_SLOT_COUNT = ${harmonyAuthority.sharedSlotCount}u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PROGRESSION_CAPACITY = ${harmonyAuthority.progressionCapacity}u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PLAY_LANE_COUNT = ${harmonyAuthority.playLaneCount}u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES = ${harmonyAuthority.maxVoicingNotes}u;

@@ -653,7 +653,6 @@ void enqueueMusicalSynthArpPattern(
     const std::vector<int32_t>& contour,
     uint32_t active_mask = 0x0fu,
     uint32_t reset_mask = 0u,
-    const std::vector<int32_t>& slot_lane = {},
     uint32_t length = 4u,
     float rate = 1.0f) {
   KesshoProductEvent config{};
@@ -679,7 +678,6 @@ void enqueueMusicalSynthArpPattern(
     event.value = -1.0f;
     event.value2 = (active_mask & (1u << step)) != 0u ? 1.0f : 0.0f;
     event.value3 = step < contour.size() ? static_cast<float>(contour[step]) : 0.0f;
-    event.value4 = step < slot_lane.size() ? static_cast<float>(slot_lane[step]) : -1.0f;
     event.flags = (reset_mask & (1u << step)) != 0u ? KESSHO_PRODUCT_ARP_STEP_RESET : 0u;
     require(kessho_product_enqueue_event(engine, &event) == KESSHO_PRODUCT_OK, "musical arp step enqueue failed");
   }
@@ -758,30 +756,6 @@ void requireProductSequencerSynthArpRuntimeTests() {
   }
 
   {
-    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
-    require(engine != nullptr, "musical arp harmony-slot engine create failed");
-    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(1u, 1u, 60.0f);
-    snapshot.harmony.note_pool_count = 3u;
-    snapshot.harmony.note_pool_midi[0] = 60.0f;
-    snapshot.harmony.note_pool_midi[1] = 62.0f;
-    snapshot.harmony.note_pool_midi[2] = 64.0f;
-    snapshot.harmony.harmony_slot_note_count[0] = 2u;
-    snapshot.harmony.harmony_slot_midi[0] = 72.0f;
-    snapshot.harmony.harmony_slot_midi[1] = 76.0f;
-    snapshot.harmony.harmony_slot_note_count[1] = 2u;
-    snapshot.harmony.harmony_slot_midi[8] = 79.0f;
-    snapshot.harmony.harmony_slot_midi[9] = 83.0f;
-    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
-        "musical arp harmony-slot snapshot load failed");
-    enqueueMusicalSynthArpPattern(
-        engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
-        {0, 0}, 0x03u, 0u, {0, 1}, 2u);
-    const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
-    expectRenderedMidiNotes(events, {72.0f, 83.0f}, "musical arp harmony-slot lane mismatch");
-    kessho_product_destroy(engine);
-  }
-
-  {
     struct FlowFixture {
       ProductArpFlow flow;
       std::vector<float> expected;
@@ -833,7 +807,7 @@ void requireProductSequencerSynthArpRuntimeTests() {
       snapshot.harmony.note_pool_midi[2] = 64.0f;
       require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp boundary snapshot load failed");
       enqueueMusicalSynthArpPattern(
-          engine, ProductArpFlow::Up, ProductArpContourMode::Pool, fixture.boundary, {4}, 0x01u, 0u, {}, 1u);
+          engine, ProductArpFlow::Up, ProductArpContourMode::Pool, fixture.boundary, {4}, 0x01u, 0u, 1u);
       const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
       expectRenderedMidiNotes(events, {fixture.expected}, "musical arp boundary mismatch");
       kessho_product_destroy(engine);
@@ -852,13 +826,13 @@ void requireProductSequencerSynthArpRuntimeTests() {
     require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp contour/reset snapshot load failed");
     enqueueMusicalSynthArpPattern(
         engine, ProductArpFlow::Up, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
-        {0, 0, 0, 0, 0}, 0x1fu, 1u << 3u, {}, 5u);
+        {0, 0, 0, 0, 0}, 0x1fu, 1u << 3u, 5u);
     std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 6000u);
     expectRenderedMidiNotes(events, {60.0f, 62.0f, 64.0f, 60.0f, 62.0f}, "musical arp reset traversal mismatch");
 
     enqueueMusicalSynthArpPattern(
         engine, ProductArpFlow::Up, ProductArpContourMode::Semitone, ProductArpBoundaryMode::Fold,
-        {1, -2, 12}, 0x07u, 0u, {}, 3u);
+        {1, -2, 12}, 0x07u, 0u, 3u);
     events = renderEventsInBlocks(engine, block_size, 6000u);
     expectRenderedMidiNotes(events, {61.0f, 58.0f, 72.0f}, "musical arp semitone contour mismatch");
     kessho_product_destroy(engine);
@@ -878,7 +852,7 @@ void requireProductSequencerSynthArpRuntimeTests() {
       require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "musical arp random snapshot load failed");
       enqueueMusicalSynthArpPattern(
           engine, flow, ProductArpContourMode::Pool, ProductArpBoundaryMode::Fold,
-          {0, 0, 0, 0, 0, 0, 0, 0}, 0xffu, 0u, {}, 8u);
+          {0, 0, 0, 0, 0, 0, 0, 0}, 0xffu, 0u, 8u);
       const std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 12000u);
       std::vector<float> notes;
       for (const RenderedSequencerEvent& event : events) notes.push_back(event.event.midi_note);
@@ -6527,137 +6501,6 @@ int main() {
       "morph sentinel snapshot load failed");
   event_count = kessho_product_debug_render_events(engine, events, 16, 512);
   require(event_count == 0, "removed Harmony morph voices must not enqueue a clamped MIDI 0 note");
-
-  kessho_product_reset(engine);
-  snapshot = makeSnapshot();
-  snapshot.drum_euclid.lane_count = 0;
-  snapshot.synth_euclid.lanes[0].step_count = 1;
-  snapshot.synth_euclid.lanes[0].fill_count = 1;
-  snapshot.synth_euclid.lanes[0].clock_division = 4u;
-  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "play-note snapshot load failed");
-  enqueueSequencerStep(
-      engine,
-      KESSHO_PRODUCT_SEQUENCER_SYNTH,
-      0u,
-      KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE >> KESSHO_PRODUCT_STEP_FIELD_SHIFT,
-      KESSHO_PRODUCT_STEP_FIELD_SUBLANE_CONFIG,
-      1.0f,
-      1.0f,
-      static_cast<float>(KESSHO_PRODUCT_SUBLANE_DIRECTION_FORWARD));
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_MIDI_NOTE, 60.0f);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 60.0f, 0.0f, 0.8f, 0u, 0.0f);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 64.0f, 5.0f, 0.5f, 0u, 1.0f);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u, KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, 67.0f, 450.0f, 0.4f, 0u, 8.0f);
-  event_count = kessho_product_debug_render_events(engine, events, 16, 22000);
-  require(event_count == 3, "play-note override should fan one pitch step into three note events");
-  require(events[0].sample_offset == 0u, "first play note should keep the trigger sample");
-  require(events[1].sample_offset == 240u, "second play note should apply a 5 ms strum offset at 48 kHz");
-  require(events[2].sample_offset == 21600u, "third play note should preserve a 450 ms continuous-arp offset at 48 kHz");
-  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f, "first play note should use its stored MIDI note");
-  require(std::fabs(events[1].midi_note - 64.0f) < 0.001f, "second play note should use its stored MIDI note");
-  require(std::fabs(events[2].midi_note - 67.0f) < 0.001f, "third play note should use the stored high-index voice MIDI note");
-  require(events[1].velocity < events[0].velocity, "play-note velocity scale should affect emitted velocity");
-
-  // Chord play-note records carry a Harmony slot reference in value4 and a
-  // sentinel MIDI value. Product Core resolves the authored tone index from
-  // the current slot pool at trigger time, so a host-side preview cannot own
-  // the audible pitch.
-  kessho_product_reset(engine);
-  snapshot = makeSnapshot();
-  snapshot.drum_euclid.lane_count = 0;
-  snapshot.synth_euclid.lanes[0].step_count = 1;
-  snapshot.synth_euclid.lanes[0].fill_count = 1;
-  snapshot.synth_euclid.lanes[0].clock_division = 4u;
-  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
-  snapshot.harmony.harmony_slot_note_count[2] = 3u;
-  snapshot.harmony.harmony_slot_midi[16] = 60.0f;
-  snapshot.harmony.harmony_slot_midi[17] = 64.0f;
-  snapshot.harmony.harmony_slot_midi[18] = 67.0f;
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
-      "harmony slot play-note snapshot load failed");
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 5.0f, 0.6f, 0u, 3u * 32u + 1u);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 10.0f, 0.4f, 0u, 3u * 32u + 2u);
-  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
-  require(event_count == 3, "harmony slot play-note override should fan out exactly one note per authored tone");
-  require(std::fabs(events[0].midi_note - 60.0f) < 0.001f &&
-      std::fabs(events[1].midi_note - 64.0f) < 0.001f &&
-      std::fabs(events[2].midi_note - 67.0f) < 0.001f,
-      "harmony slot play-note overrides should resolve tone indices from the native slot pool");
-  require(events[0].sample_offset == 0u && events[1].sample_offset == 240u && events[2].sample_offset == 480u,
-      "harmony slot play-note offsets should preserve native strum timing");
-  require(events[0].velocity > events[1].velocity && events[1].velocity > events[2].velocity,
-      "harmony slot play-note velocity should preserve authored articulation");
-
-  // Sequence-step edits own the live sequence pool, not the saved Harmony
-  // slot rows. They must never rewrite a referenced chord slot implicitly.
-  KesshoProductEvent sequence_step_set{};
-  sequence_step_set.event_kind = KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID;
-  sequence_step_set.index = 0u;
-  sequence_step_set.value = 0.0f;
-  sequence_step_set.value2 = 3.0f;
-  sequence_step_set.value3 = 0.0f;
-  sequence_step_set.value4 = 1.0f;
-  require(kessho_product_enqueue_event(engine, &sequence_step_set) == KESSHO_PRODUCT_OK,
-      "runtime Harmony sequence-step enqueue failed");
-  (void)kessho_product_debug_render_events(engine, events, 16, 64);
-  require(engine->arrangement.harmony_slot_note_count[2] == 3u &&
-      std::fabs(engine->arrangement.harmony_slot_midi[16] - 60.0f) < 0.001f &&
-      std::fabs(engine->arrangement.harmony_slot_midi[17] - 64.0f) < 0.001f &&
-      std::fabs(engine->arrangement.harmony_slot_midi[18] - 67.0f) < 0.001f,
-      "Harmony sequence-step edits must not mutate saved slot authority rows");
-
-  // A subsequent trigger must read the latest native slot cache without
-  // rebuilding the host's preview MIDI payload.
-  kessho_product_reset(engine);
-  snapshot = makeSnapshot();
-  snapshot.drum_euclid.lane_count = 0;
-  snapshot.synth_euclid.lanes[0].step_count = 1;
-  snapshot.synth_euclid.lanes[0].fill_count = 1;
-  snapshot.synth_euclid.lanes[0].clock_division = 4u;
-  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
-  snapshot.harmony.root_midi = 72.0f;
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
-      "updated harmony slot play-note snapshot load failed");
-  KesshoProductEvent harmony_slot_set{};
-  harmony_slot_set.event_kind = KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID;
-  harmony_slot_set.index = 2u;
-  harmony_slot_set.value = 0.0f;
-  harmony_slot_set.value2 = 3.0f;
-  harmony_slot_set.value3 = 0.0f;
-  harmony_slot_set.value4 = 1.0f;
-  require(kessho_product_enqueue_event(engine, &harmony_slot_set) == KESSHO_PRODUCT_OK,
-      "runtime Harmony slot set enqueue failed");
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 5.0f, 0.6f, 0u, 3u * 32u + 1u);
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 10.0f, 0.4f, 0u, 3u * 32u + 2u);
-  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
-  require(event_count == 3, "harmony slot play-note override should resolve exactly one note per updated tone");
-  require(std::fabs(events[0].midi_note - 72.0f) < 0.001f &&
-      std::fabs(events[1].midi_note - 76.0f) < 0.001f &&
-      std::fabs(events[2].midi_note - 79.0f) < 0.001f,
-      "harmony slot play-note overrides should resolve the latest native slot pool at trigger time");
-
-  kessho_product_reset(engine);
-  snapshot = makeSnapshot();
-  snapshot.drum_euclid.lane_count = 0;
-  snapshot.synth_euclid.lanes[0].step_count = 1;
-  snapshot.synth_euclid.lanes[0].fill_count = 1;
-  snapshot.synth_euclid.lanes[0].clock_division = 4u;
-  snapshot.synth_euclid.lanes[0].manual_step_mask_low = 1u;
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
-      "empty harmony slot play-note snapshot load failed");
-  enqueueSequencerStep(engine, KESSHO_PRODUCT_SEQUENCER_SYNTH, 0u, 0u,
-      KESSHO_PRODUCT_STEP_FIELD_PLAY_NOTE, -1.0f, 0.0f, 0.8f, 0u, 3u * 32u + 0u);
-  event_count = kessho_product_debug_render_events(engine, events, 16, 6000);
-  require(event_count == 0, "slot-backed play-note records must rest when their native Harmony slot pool is empty");
 
   setup_pitch_binding_fixture();
   KesshoProductEvent pitch_binding_mode{};

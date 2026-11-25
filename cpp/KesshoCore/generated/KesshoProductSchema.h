@@ -47,7 +47,6 @@ inline constexpr uint32_t KESSHO_PRODUCT_MAX_DRUM_LANES = 16u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_VOICES = 64u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_ASSETS = 128u;
 inline constexpr uint32_t KESSHO_PRODUCT_MAX_STEM_FRAMES = 4096u;
-inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_SHARED_SLOT_COUNT = 8u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PROGRESSION_CAPACITY = 64u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_PLAY_LANE_COUNT = 4u;
 inline constexpr uint32_t KESSHO_PRODUCT_HARMONY_MAX_VOICING_NOTES = 8u;

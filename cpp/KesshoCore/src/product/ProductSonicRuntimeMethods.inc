@@ -1,5 +1,5 @@
   void clearStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step);
-  void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, float value3 = 0.0f, float value4 = 0.0f, uint32_t flags = 0u);
+  void setStepFieldOverride(LaneState& lane, uint32_t field, uint32_t step, float value, float value2, uint32_t flags = 0u);
   void applySequencerStepEvent(const KesshoProductEvent& event);
   void applySynthArpConfigEvent(const KesshoProductEvent& event);
   void applySynthArpStepEvent(const KesshoProductEvent& event);

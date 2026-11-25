@@ -35,9 +35,6 @@ export const KESSHO_PRODUCT_EVENT_IDS = Object.freeze({
   HarmonyControlSetStrength: 32,
   HarmonyControlSetManualIntent: 33,
   HarmonyControlClearManualIntent: 34,
-  HarmonySlotSet: 35,
-  HarmonySlotTrigger: 36,
-  HarmonySlotClear: 37,
   HarmonySequenceSetStep: 38,
   HarmonySequenceSetEnabled: 39,
   HarmonySequenceSetActiveStep: 40,
@@ -216,18 +213,6 @@ export const KESSHO_PRODUCT_EVENTS = Object.freeze([
   {
     "name": "HarmonyControlClearManualIntent",
     "id": 34
-  },
-  {
-    "name": "HarmonySlotSet",
-    "id": 35
-  },
-  {
-    "name": "HarmonySlotTrigger",
-    "id": 36
-  },
-  {
-    "name": "HarmonySlotClear",
-    "id": 37
   },
   {
     "name": "HarmonySequenceSetStep",

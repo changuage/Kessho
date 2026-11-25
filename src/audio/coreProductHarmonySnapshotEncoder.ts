@@ -20,13 +20,10 @@ export function encodeCoreProductHarmonySnapshot(
   u32(harmony.controlMode);
   u32(harmony.controlStrength);
   u32(harmony.activeSource);
-  i32(harmony.activeSlotId);
   i32(harmony.activeStepIndex);
   u32(harmony.manualControlAvailable ? 1 : 0);
   u32(harmony.notePoolCount);
   for (let index = 0; index < 8; index += 1) f32(harmony.notePoolMidi[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotNoteCount?.[index] ?? 0);
-  for (let index = 0; index < 64; index += 1) f32(harmony.harmonySlotMidi?.[index] ?? 0);
   f32(harmony.bassMidi);
   u32(harmony.nextNotePoolCount);
   for (let index = 0; index < 8; index += 1) f32(harmony.nextNotePoolMidi[index] ?? 0);
@@ -83,23 +80,6 @@ export function encodeCoreProductHarmonySnapshot(
   }
   for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationUnit?.[index] ?? 1);
   for (let index = 0; index < 64; index += 1) u32(harmony.canonicalProgressionDurationValue?.[index] ?? 1);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotPlaybackBehavior?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentPresent?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentQuality?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentRootMode?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) i32(harmony.harmonySlotIntentDegree?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) f32(harmony.harmonySlotIntentRootNote?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) i32(harmony.harmonySlotIntentInversion?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) f32(harmony.harmonySlotIntentSpread?.[index] ?? 0.5);
-  for (let index = 0; index < 8; index += 1) i32(harmony.harmonySlotIntentOctave?.[index] ?? 4);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentBassMode?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) f32(harmony.harmonySlotIntentBassNote?.[index] ?? -1);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentStrength?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentSource?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentExtensionMask?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotIntentAlterationMask?.[index] ?? 0);
-  for (let index = 0; index < 8; index += 1) f32(harmony.harmonySlotCapturedRootMidi?.[index] ?? 60);
-  for (let index = 0; index < 8; index += 1) u32(harmony.harmonySlotCapturedScaleId?.[index] ?? 1);
   u32(harmony.liveGestureRevision ?? 0); u32(harmony.liveGestureScope ?? 0); u32(harmony.liveGestureTarget ?? 0); u32(harmony.liveGesturePhase ?? 0);
   u32(harmony.liveGesturePlaybackBehavior ?? 0); u32(harmony.liveGestureIntentPresent ?? 0); u32(harmony.liveGestureIntentQuality ?? 0); u32(harmony.liveGestureIntentRootMode ?? 0); i32(harmony.liveGestureIntentDegree ?? 0);
   f32(harmony.liveGestureIntentRootNote ?? 0); i32(harmony.liveGestureIntentInversion ?? 0); f32(harmony.liveGestureIntentSpread ?? 0.5); i32(harmony.liveGestureIntentOctave ?? 4);
@@ -117,7 +97,6 @@ export function encodeCoreProductHarmonySnapshot(
   for (let index = 0; index < 2; index += 1) u32(harmony.morphEndpointScaleId?.[index] ?? 1);
   for (let index = 0; index < 2; index += 1) f32(harmony.morphEndpointTension?.[index] ?? 0.35);
   u32(harmony.morphPlanRevision ?? 0); f32(harmony.morphPlanPhase ?? 0);
-  for (let index = 0; index < 8; index += 1) u32(harmony.morphPlanSlotPlaybackBehavior?.[index] ?? 0);
   u32(harmony.morphCommonPairCount ?? 0); for (let index = 0; index < 8; index += 1) f32(harmony.morphCommonPairSource?.[index] ?? 0); for (let index = 0; index < 8; index += 1) f32(harmony.morphCommonPairTarget?.[index] ?? 0);
   u32(harmony.morphVoicePairCount ?? 0); for (let index = 0; index < 8; index += 1) f32(harmony.morphVoicePairSource?.[index] ?? 0); for (let index = 0; index < 8; index += 1) f32(harmony.morphVoicePairTarget?.[index] ?? 0);
   u32(harmony.morphUnmatchedACount ?? 0); for (let index = 0; index < 8; index += 1) f32(harmony.morphUnmatchedA?.[index] ?? 0);

@@ -21,9 +21,9 @@ export const SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP = 32;
 // following variation.
 export const SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION_WIRE = 2;
 export const SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE = 9;
-export const SYNTH_SEQUENCE_VARIATION_CELL_BYTES = 856;
-export const SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES = 29076;
-export const SYNTH_SEQUENCE_VARIATION_BANK_BYTES = 116344;
+export const SYNTH_SEQUENCE_VARIATION_CELL_BYTES = 792;
+export const SYNTH_SEQUENCE_VARIATION_SNAPSHOT_BYTES = 27028;
+export const SYNTH_SEQUENCE_VARIATION_BANK_BYTES = 108152;
 
 const SNAPSHOT_STEP_COUNT_OFFSET = 0;
 const SNAPSHOT_CLOCK_DIVISION_OFFSET = 4;
@@ -71,10 +71,9 @@ const CELL_ARP_CONTOUR_MODE_OFFSET = 40;
 const CELL_ARP_BOUNDARY_MODE_OFFSET = 44;
 const CELL_ARP_RESET_MASK_OFFSET = 48;
 const CELL_ARP_CONTOUR_OFFSET = 52;
-const CELL_ARP_SLOT_LANE_OFFSET = 116;
-const CELL_INTENT_OFFSET = 180;
+const CELL_INTENT_OFFSET = 116;
 const CELL_INTENT_BYTES = 36;
-const CELL_NOTES_OFFSET = 216;
+const CELL_NOTES_OFFSET = 152;
 const CELL_NOTE_BYTES = 20;
 const CELL_NOTE_MIDI_OFFSET = 0;
 const CELL_NOTE_VELOCITY_OFFSET = 4;
@@ -292,9 +291,6 @@ function writeArpConfig(view: DataView, offset: number, config: ProductArpConfig
   if (!Array.isArray(config.contour) || config.contour.length > 16) {
     throw new RangeError(`${label}.contour must contain at most 16 values`);
   }
-  if (!Array.isArray(config.slotLane) || config.slotLane.length > 16) {
-    throw new RangeError(`${label}.slotLane must contain at most 16 values`);
-  }
   const flow = arpEnum(config.flow, ARP_FLOWS, `${label}.flow`);
   const contourMode = arpEnum(config.contourMode, ARP_CONTOUR_MODES, `${label}.contourMode`);
   const boundaryMode = arpEnum(config.boundaryMode, ARP_BOUNDARY_MODES, `${label}.boundaryMode`);
@@ -307,13 +303,9 @@ function writeArpConfig(view: DataView, offset: number, config: ProductArpConfig
   view.setUint32(offset + CELL_ARP_RESET_MASK_OFFSET, resetMask >>> 0, true);
   for (let pulse = 0; pulse < 16; pulse += 1) {
     const contour = config.contour[pulse] ?? 0;
-    const slot = config.slotLane[pulse] ?? -1;
     if (!Number.isInteger(contour)) throw new RangeError(`${label}.contour[${pulse}] must be an integer`);
-    if (!Number.isInteger(slot)) throw new RangeError(`${label}.slotLane[${pulse}] must be an integer`);
     requireRange(contour, -12, 12, `${label}.contour[${pulse}]`);
-    requireRange(slot, -1, 7, `${label}.slotLane[${pulse}]`);
     view.setInt32(offset + CELL_ARP_CONTOUR_OFFSET + pulse * 4, contour, true);
-    view.setInt32(offset + CELL_ARP_SLOT_LANE_OFFSET + pulse * 4, slot, true);
   }
 }
 
@@ -379,7 +371,6 @@ function writeStepMetadata(
       view.setUint32(offset + CELL_ARP_RESET_MASK_OFFSET, 0, true);
       for (let pulse = 0; pulse < 16; pulse += 1) {
         view.setInt32(offset + CELL_ARP_CONTOUR_OFFSET + pulse * 4, 0, true);
-        view.setInt32(offset + CELL_ARP_SLOT_LANE_OFFSET + pulse * 4, -1, true);
       }
     }
     // Chord intent is Follow-only and unused until the TS Chord model lands.

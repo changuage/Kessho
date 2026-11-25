@@ -29,9 +29,6 @@ struct ProductArpPatternState {
   ProductArpBoundaryMode boundary_mode = ProductArpBoundaryMode::Fold;
   bool fixed_midi_mode = false;
   int32_t contour[kMaxProductArpSteps]{};
-  int32_t slot_lane[kMaxProductArpSteps] = {
-      -1, -1, -1, -1, -1, -1, -1, -1,
-      -1, -1, -1, -1, -1, -1, -1, -1};
   float midi_notes[kMaxProductArpSteps]{};
 };
 

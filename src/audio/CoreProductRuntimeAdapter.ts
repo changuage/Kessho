@@ -1,5 +1,5 @@
 import type { CoreProductEvent } from './coreProductEvents';
-import { CORE_PRODUCT_SOURCE_IDS, CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductHarmonySlotSetEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent, createCoreProductTransportTransitionEvent } from './coreProductEvents';
+import { CORE_PRODUCT_SOURCE_IDS, CORE_PRODUCT_SOUNDSCAPE_MODULE_PARAM_TARGET_BASE, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ASSET_ID_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_ENABLED_PARAM_OFFSET, CORE_PRODUCT_SOUNDSCAPE_TEXTURE_PARAM_TARGET_BASE, createCoreProductHarmonyControlClearManualIntentEvent, createCoreProductHarmonyControlSetManualIntentEvent, createCoreProductHarmonySequenceSetEnabledEvent, createCoreProductHarmonySequenceSetStepEvent, createCoreProductJourneyStateEvent, createCoreProductParamEvent, createCoreProductSequencerLaneParamEvent, createCoreProductSourceOverrideCommitEvent, createCoreProductSourceOverrideSlotEvent, createCoreProductSourcePresetEvent, createCoreProductTransportTransitionEvent } from './coreProductEvents';
 import { usesLegacyGranularRuntimeSeed, type CoreProductSnapshot } from './coreProductSnapshot';
 import {
   appendCoreProductSourcePresetEndpointDiffs,
@@ -113,6 +113,7 @@ class CoreProductRuntimeAdapter {
     if (!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
+    if (this.slotPoolNeedsReload(previous.harmony, next.harmony)) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
     for (let index = 0; index < next.sources.length; index += 1) {
       const previousSource = previous.sources[index];
@@ -147,6 +148,7 @@ class CoreProductRuntimeAdapter {
     if (!this.canApplySoundscapeParamDiff(previous, next)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
+    if (this.slotPoolNeedsReload(previous.harmony, next.harmony)) return false;
     // Harmony authority fields are consumed by the native cache as one atomic
     // snapshot.  Do not emit a partial dirty diff that would leave the audio
     // thread with stale semantic/playback/gesture inputs.
@@ -342,12 +344,6 @@ class CoreProductRuntimeAdapter {
           quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
           strength: next.harmony.manualControl.strength,
         }));
-      } else if (next.harmony.activeSource === 2 && next.harmony.activeSlotId >= 0) {
-        events.push(createCoreProductHarmonySlotSetEvent(next.harmony.activeSlotId, {
-          degree: next.harmony.resolvedHarmonyFrame.degree,
-          quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
-          strength: next.harmony.manualControl.strength,
-        }));
       } else if (next.harmony.activeSource === 1 && next.harmony.activeStepIndex >= 0) {
         events.push(createCoreProductHarmonySequenceSetEnabledEvent(next.harmony.chordSequenceEnabled));
         events.push(createCoreProductHarmonySequenceSetStepEvent(next.harmony.activeStepIndex, {
@@ -361,9 +357,13 @@ class CoreProductRuntimeAdapter {
     }
   }
 
+  // The native chord bank is gone, so no event can carry a slot-sourced note pool; a changed pool reloads the snapshot.
+  private slotPoolNeedsReload(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
+    return next.activeSource === 2 && this.harmonyPoolFrameChanged(previous, next);
+  }
+
   private harmonyPoolFrameChanged(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
     if (previous.activeSource !== next.activeSource) return true;
-    if (previous.activeSlotId !== next.activeSlotId) return true;
     if (previous.activeStepIndex !== next.activeStepIndex) return true;
     if (previous.notePoolCount !== next.notePoolCount) return true;
     if (previous.nextNotePoolCount !== next.nextNotePoolCount) return true;
@@ -386,12 +386,7 @@ class CoreProductRuntimeAdapter {
     ] as const;
     const arrayKeys = [
       'canonicalProgressionSource', 'canonicalProgressionDurationUnit',
-      'canonicalProgressionDurationValue', 'harmonySlotPlaybackBehavior', 'harmonySlotIntentQuality',
-      'harmonySlotIntentRootMode', 'harmonySlotIntentDegree', 'harmonySlotIntentRootNote',
-      'harmonySlotIntentInversion', 'harmonySlotIntentSpread', 'harmonySlotIntentOctave',
-      'harmonySlotIntentBassMode', 'harmonySlotIntentStrength', 'harmonySlotIntentSource',
-      'harmonySlotIntentExtensionMask', 'harmonySlotIntentAlterationMask', 'harmonySlotCapturedRootMidi',
-      'harmonySlotCapturedScaleId', 'liveGestureNotes', 'takeoverAnchorSource', 'takeoverAnchorTarget',
+      'canonicalProgressionDurationValue', 'liveGestureNotes', 'takeoverAnchorSource', 'takeoverAnchorTarget',
       'takeoverAnchorWeight',
     ] as const;
     if (

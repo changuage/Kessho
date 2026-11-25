@@ -15,7 +15,6 @@ struct HarmonyState : HarmonyAuthorityState {
   uint32_t control_mode = 0;
   uint32_t control_strength = 0;
   uint32_t active_source = 0;
-  int32_t active_slot_id = -1;
   int32_t active_step_index = -1;
   bool manual_control_available = true;
   uint32_t note_pool_count = 0;

@@ -5213,12 +5213,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
           enabled: playConfig.enabled,
           mode: playConfig.mode,
           arp: playConfig.arp,
-          // Chord mode sends bounded Harmony slot references plus articulation;
-          // native Product Core resolves the slot pool at trigger time.
+          // Chord mode no longer has a native play-note path; only ARP sends a pattern.
           midiPattern: playConfig.mode === 'chord' ? [] : pattern?.midiPattern ?? [],
-          ...(playConfig.mode === 'chord' && pattern?.playNotes
-            ? { playNotes: pattern.playNotes.map((note) => ({ ...note, midi: -1 })) }
-            : {}),
         };
       });
       const arpPatternSignature = JSON.stringify(playArps);

@@ -83,8 +83,6 @@ struct LaneState {
   float distance_range_maxes[64]{};
   uint32_t nudge_override_set_low = 0, nudge_override_set_high = 0;
   float nudge_overrides[64]{};
-  uint32_t play_note_voice_masks[64]{};
-  ProductPlayNoteOverride play_note_overrides[64][kMaxProductPlayVoicesPerStep]{};
   ProductArpRuntimeState arp{};
   ProductArpPatternState pending_arp{};
   StepValueSubLaneConfig step_value_configs[9]{};

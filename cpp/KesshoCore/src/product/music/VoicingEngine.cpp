@@ -116,9 +116,7 @@ int nearestOctaveOffset(float center, float root_midi) {
     return clampFloat(gesture_notes[best], 0.0f, 127.0f);
   }
 
-  const bool activeSlotExact = harmony.active_slot_id >= 0 && harmony.active_slot_id < 8 &&
-      harmony.slot_playback_behavior[static_cast<uint32_t>(harmony.active_slot_id)] == 2u;
-  if (harmony.takeover_progress > 0.0f && harmony.takeover_anchor_count > 0u && !activeSlotExact) {
+  if (harmony.takeover_progress > 0.0f && harmony.takeover_anchor_count > 0u) {
     uint32_t best = 0u;
     float distance = std::abs(harmony.takeover_anchor_source[0] - lane.midi_note);
     for (uint32_t index = 1u; index < harmony.takeover_anchor_count; ++index) {
@@ -130,7 +128,7 @@ int nearestOctaveOffset(float center, float root_midi) {
     return clampFloat(harmony.takeover_progress < 0.5f ? source : target, 0.0f, 127.0f);
   }
 
-  if (harmony.morph_plan_phase > 0.0f && !activeSlotExact) {
+  if (harmony.morph_plan_phase > 0.0f) {
     // The plan chooses a musical handover point (normally 0.5, or the
     // scale-aware point selected by the offline projection). New triggers use
     // one valid integer-MIDI voicing or the other; there is deliberately no
@@ -175,23 +173,6 @@ int nearestOctaveOffset(float center, float root_midi) {
         if (next_distance < distance) { best = index; distance = next_distance; }
       }
       return clampFloat(candidates[best], 0.0f, 127.0f);
-    }
-  }
-
-  if (harmony.active_slot_id >= 0 && harmony.active_slot_id < 8 &&
-      static_cast<uint32_t>(harmony.active_slot_id) < harmony.cached_voice_leading_candidate_count) {
-    const uint32_t slot = static_cast<uint32_t>(harmony.active_slot_id);
-    const uint32_t count = harmony.cached_voice_leading_candidate_note_counts[slot];
-    if (count > 0u) {
-      uint32_t best = 0u;
-      const float first = harmony.cached_voice_leading_candidates[slot][0];
-      float distance = std::abs(first - lane.midi_note);
-      for (uint32_t index = 1u; index < count; ++index) {
-        const float candidate = harmony.cached_voice_leading_candidates[slot][index];
-        const float next_distance = std::abs(candidate - lane.midi_note);
-        if (next_distance < distance) { best = index; distance = next_distance; }
-      }
-      return clampFloat(harmony.cached_voice_leading_candidates[slot][best], 0.0f, 127.0f);
     }
   }
 

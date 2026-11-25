@@ -398,51 +398,6 @@ void KesshoProductEngine::rebuildHarmonyAuthorityCache() {
       harmony.cached_scale_degree_map[index] = static_cast<uint32_t>(std::max(0, intervals[index]));
     }
   }
-  harmony.cached_voice_leading_candidate_count = 0u;
-  for (uint32_t slot = 0u; slot < 8u; ++slot) {
-    const uint32_t count = std::min<uint32_t>(arrangement.harmony_slot_note_count[slot], 8u);
-    harmony.cached_voice_leading_candidate_note_counts[slot] = count;
-    float semantic_root = harmony.root_midi;
-    // Native playback owns semantic intent resolution.  Captured/exact rows
-    // remain untouched, while degree/absolute intent roots feed relative and
-    // auto playback before the bounded candidate row is cached.
-    if (harmony.slot_intent_present[slot] != 0u) {
-      const uint32_t root_mode = harmony.slot_intent_root_mode[slot];
-      if (root_mode == 0u && harmony.cached_scale_degree_count > 0u) {
-        const uint32_t degree = static_cast<uint32_t>(std::max(0, harmony.slot_intent_degree[slot])) % harmony.cached_scale_degree_count;
-        semantic_root += static_cast<float>(harmony.cached_scale_degree_map[degree]);
-      } else {
-        semantic_root = 60.0f + static_cast<float>(positiveModulo(static_cast<int>(std::round(harmony.slot_intent_root_note[slot])), 12u));
-      }
-      semantic_root += static_cast<float>(harmony.slot_intent_octave[slot] - 4) * 12.0f;
-    }
-    const float delta = semantic_root - harmony.slot_captured_root_midi[slot];
-    const float movement_delta = harmony.root_midi - harmony.slot_captured_root_midi[slot];
-    const bool exact = harmony.slot_playback_behavior[slot] == 2u ||
-        (harmony.slot_playback_behavior[slot] == 0u && std::abs(movement_delta) <= 6.0f);
-    float semantic_notes[8]{};
-    const HarmonyIntentRecipe recipe{
-      harmony.slot_intent_present[slot],
-      harmony.slot_intent_quality[slot],
-      harmony.slot_intent_inversion[slot],
-      harmony.slot_intent_spread[slot],
-      harmony.slot_intent_bass_mode[slot],
-      harmony.slot_intent_bass_note[slot],
-      harmony.slot_intent_extension_mask[slot],
-      harmony.slot_intent_alteration_mask[slot],
-    };
-    const uint32_t semantic_count = !exact
-        ? buildSemanticHarmonyVoicing(harmony, recipe, semantic_root, semantic_notes)
-        : 0u;
-    if (semantic_count > 0u) harmony.cached_voice_leading_candidate_note_counts[slot] = semantic_count;
-    for (uint32_t note = 0u; note < 8u; ++note) {
-      const float captured = note < count ? arrangement.harmony_slot_midi[slot * 8u + note] : 0.0f;
-      harmony.cached_voice_leading_candidates[slot][note] = semantic_count > 0u
-          ? (note < semantic_count ? semantic_notes[note] : 0.0f)
-          : (exact ? captured : captured + delta);
-    }
-    if (count > 0u || semantic_count > 0u) harmony.cached_voice_leading_candidate_count = slot + 1u;
-  }
   if (harmony.takeover_anchor_count == 0u) {
     harmony.takeover_anchor_count = std::min<uint32_t>(std::min(harmony.note_pool_count, harmony.next_note_pool_count), 12u);
     for (uint32_t index = 0u; index < 12u; ++index) {
@@ -613,7 +568,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.control_mode = snapshot.harmony.control_mode;
   harmony.control_strength = snapshot.harmony.control_strength;
   harmony.active_source = snapshot.harmony.active_source;
-  harmony.active_slot_id = snapshot.harmony.active_slot_id;
   harmony.active_step_index = snapshot.harmony.active_step_index;
   harmony.manual_control_available = snapshot.harmony.manual_control_available != 0u;
   harmony.note_pool_count = std::min<uint32_t>(snapshot.harmony.note_pool_count, 8u);
@@ -649,12 +603,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.scale_mode = snapshot.harmony.scale_mode == 1u ? 1u : 0u;
   harmony.phrases_until_change = std::max<uint32_t>(1u, snapshot.harmony.phrases_until_change);
   harmony.current_degree = std::max(-1, std::min(7, snapshot.harmony.current_degree));
-  for (uint32_t index = 0u; index < 8u; ++index) {
-    arrangement.harmony_slot_note_count[index] = clampU32(snapshot.harmony.harmony_slot_note_count[index], 0u, 8u);
-  }
-  for (uint32_t index = 0u; index < 64u; ++index) {
-    arrangement.harmony_slot_midi[index] = clampFloat(snapshot.harmony.harmony_slot_midi[index], 0.0f, 127.0f);
-  }
   harmony.tension_arc_type = std::min<uint32_t>(snapshot.harmony.tension_arc_type, 2u);
   harmony.tension_arc_phrases_remaining = snapshot.harmony.tension_arc_phrases_remaining;
   harmony.cof_enabled = snapshot.harmony.cof_enabled != 0u;
@@ -676,23 +624,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
     harmony.canonical_progression_duration_value[index] = duration == 2u || duration == 4u || duration == 8u ? duration : 1u;
   }
   harmony.live_gesture_revision = snapshot.harmony.live_gesture_revision;
-  for (uint32_t index = 0u; index < 8u; ++index) {
-    harmony.slot_playback_behavior[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_playback_behavior[index], 2u);
-    harmony.slot_intent_present[index] = snapshot.harmony.harmony_slot_intent_present[index] == 0u ? 0u : 1u;
-    harmony.slot_intent_quality[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_quality[index], 14u);
-    harmony.slot_intent_root_mode[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_root_mode[index], 2u);
-    harmony.slot_intent_degree[index] = std::max(0, std::min(6, snapshot.harmony.harmony_slot_intent_degree[index]));
-    harmony.slot_intent_root_note[index] = clampFloat(snapshot.harmony.harmony_slot_intent_root_note[index], 0.0f, 11.0f);
-    harmony.slot_intent_inversion[index] = std::max(-4, std::min(4, snapshot.harmony.harmony_slot_intent_inversion[index]));
-    harmony.slot_intent_spread[index] = clampFloat(snapshot.harmony.harmony_slot_intent_spread[index], 0.0f, 1.0f);
-    harmony.slot_intent_octave[index] = std::max(0, std::min(8, snapshot.harmony.harmony_slot_intent_octave[index]));
-    harmony.slot_intent_bass_mode[index] = std::min<uint32_t>(snapshot.harmony.harmony_slot_intent_bass_mode[index], 3u);
-    harmony.slot_intent_bass_note[index] = clampFloat(snapshot.harmony.harmony_slot_intent_bass_note[index], -1.0f, 127.0f);
-    harmony.slot_intent_extension_mask[index] = snapshot.harmony.harmony_slot_intent_extension_mask[index];
-    harmony.slot_intent_alteration_mask[index] = snapshot.harmony.harmony_slot_intent_alteration_mask[index];
-    harmony.slot_captured_root_midi[index] = clampFloat(snapshot.harmony.harmony_slot_captured_root_midi[index], 0.0f, 127.0f);
-    harmony.slot_captured_scale_id[index] = snapshot.harmony.harmony_slot_captured_scale_id[index] == 0u ? 1u : snapshot.harmony.harmony_slot_captured_scale_id[index];
-  }
   harmony.live_gesture_scope = snapshot.harmony.live_gesture_scope;
   harmony.live_gesture_target = snapshot.harmony.live_gesture_target;
   harmony.live_gesture_phase = snapshot.harmony.live_gesture_phase;
@@ -733,7 +664,6 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   }
   harmony.morph_plan_revision = snapshot.harmony.morph_plan_revision;
   harmony.morph_plan_phase = clampFloat(snapshot.harmony.morph_plan_phase, 0.0f, 1.0f);
-  for (uint32_t index = 0u; index < 8u; ++index) harmony.morph_plan_slot_playback_behavior[index] = std::min<uint32_t>(snapshot.harmony.morph_plan_slot_playback_behavior[index], 2u);
   harmony.morph_common_pair_count = std::min<uint32_t>(snapshot.harmony.morph_common_pair_count, 8u);
   harmony.morph_voice_pair_count = std::min<uint32_t>(snapshot.harmony.morph_voice_pair_count, 8u);
   harmony.morph_unmatched_a_count = std::min<uint32_t>(snapshot.harmony.morph_unmatched_a_count, 8u);

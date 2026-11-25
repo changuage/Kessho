@@ -65,7 +65,6 @@ void writeHarmonyPoolFromIntent(
     uint32_t quality,
     uint32_t strength,
     uint32_t root_note,
-    int32_t slot_id,
     int32_t step_index) {
   int intervals[kMaxScaleNotes]{};
   const uint32_t scale_count = std::max(1u, scaleIntervals(harmony.scale_id, intervals));
@@ -108,7 +107,6 @@ void writeHarmonyPoolFromIntent(
   harmony.control_mode = source == 1u ? 1u : source == 3u ? 2u : source == 2u ? 3u : 0u;
   harmony.control_strength = strength > 0u ? 1u : 0u;
   harmony.active_source = source;
-  harmony.active_slot_id = slot_id;
   harmony.active_step_index = step_index;
   harmony.note_pool_count = std::min<uint32_t>(quality_count, 8u);
   for (uint32_t i = 0u; i < 8u; ++i) {
@@ -120,47 +118,6 @@ void writeHarmonyPoolFromIntent(
   harmony.manual_control_available = true;
   harmony.next_source = harmony.next_source == 0u ? source : harmony.next_source;
   (void)root_note;
-}
-
-// Runtime Harmony edits arrive as bounded control events, so mirror the
-// resulting note pool into the fixed-capacity slot authority row immediately.
-// This keeps sequencer slot references sample-accurate without rebuilding a
-// snapshot or allocating on the audio thread, while leaving the authored
-// semantic intent fields untouched for later authority rebuilds.
-void syncHarmonySlotAuthorityRow(KesshoProductEngine& engine, uint32_t slot_id) {
-  if (slot_id >= 8u) return;
-  HarmonyState& harmony = engine.harmony;
-  ProductArrangementState& arrangement = engine.arrangement;
-  const uint32_t count = std::min<uint32_t>(harmony.note_pool_count, 8u);
-  arrangement.harmony_slot_note_count[slot_id] = count;
-  harmony.cached_voice_leading_candidate_note_counts[slot_id] = count;
-  for (uint32_t note = 0u; note < 8u; ++note) {
-    const float midi = note < count ? clampFloat(harmony.note_pool_midi[note], 0.0f, 127.0f) : 0.0f;
-    arrangement.harmony_slot_midi[slot_id * 8u + note] = midi;
-    harmony.cached_voice_leading_candidates[slot_id][note] = midi;
-  }
-  harmony.cached_voice_leading_candidate_count = 0u;
-  for (uint32_t row = 0u; row < 8u; ++row) {
-    if (harmony.cached_voice_leading_candidate_note_counts[row] > 0u) {
-      harmony.cached_voice_leading_candidate_count = row + 1u;
-    }
-  }
-}
-
-void clearHarmonySlotAuthorityRow(KesshoProductEngine& engine, uint32_t slot_id) {
-  if (slot_id >= 8u) return;
-  engine.arrangement.harmony_slot_note_count[slot_id] = 0u;
-  engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] = 0u;
-  for (uint32_t note = 0u; note < 8u; ++note) {
-    engine.arrangement.harmony_slot_midi[slot_id * 8u + note] = 0.0f;
-    engine.harmony.cached_voice_leading_candidates[slot_id][note] = 0.0f;
-  }
-  engine.harmony.cached_voice_leading_candidate_count = 0u;
-  for (uint32_t row = 0u; row < 8u; ++row) {
-    if (engine.harmony.cached_voice_leading_candidate_note_counts[row] > 0u) {
-      engine.harmony.cached_voice_leading_candidate_count = row + 1u;
-    }
-  }
 }
 
 using GranularVoiceParamApplier = void (*)(GranularVoiceState&, float);
@@ -717,13 +674,6 @@ void retimeSequencerLanePreservingPhase(
               event.value4 >= 0.0f && event.value4 <= 1.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID:
-      return event.index < 8u && event.value >= 0.0f && event.value <= 6.0f && event.value2 >= 0.0f && event.value2 <= 14.0f
-          ? KESSHO_PRODUCT_OK
-          : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_TRIGGER_ID:
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_CLEAR_ID:
-      return event.index < 8u ? KESSHO_PRODUCT_OK : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID:
       return event.index < 8u && event.value >= 0.0f && event.value <= 6.0f && event.value2 >= 0.0f && event.value2 <= 14.0f
           ? KESSHO_PRODUCT_OK
@@ -1308,7 +1258,6 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
             static_cast<uint32_t>(std::lround(event.value2)),
             event.value4 >= 0.5f ? 1u : 0u,
             static_cast<uint32_t>(std::lround(event.value3)),
-            -1,
             -1);
       }
       break;
@@ -1316,44 +1265,7 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       harmony.note_pool_count = 0u;
       harmony.active_source = 0u;
       harmony.control_mode = 0u;
-      harmony.active_slot_id = -1;
       harmony.active_step_index = -1;
-      break;
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_SET_ID:
-      if (manualHarmonyAllowed(journey_phase)) {
-        writeHarmonyPoolFromIntent(
-            harmony,
-            2u,
-            static_cast<uint32_t>(std::lround(event.value)),
-            static_cast<uint32_t>(std::lround(event.value2)),
-            event.value4 >= 0.5f ? 1u : 0u,
-            static_cast<uint32_t>(std::lround(event.value3)),
-            static_cast<int32_t>(event.index),
-            -1);
-        syncHarmonySlotAuthorityRow(*this, event.index);
-      }
-      break;
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_TRIGGER_ID:
-      harmony.manual_control_available = manualHarmonyAllowed(journey_phase);
-      if (harmony.manual_control_available) {
-        harmony.active_source = 2u;
-        harmony.control_mode = 3u;
-        harmony.active_slot_id = static_cast<int32_t>(event.index);
-      }
-      break;
-    case KESSHO_PRODUCT_EVENT_HARMONY_SLOT_CLEAR_ID:
-      {
-        const bool was_active_slot = harmony.active_slot_id == static_cast<int32_t>(event.index);
-        if (was_active_slot) {
-          harmony.note_pool_count = 0u;
-          harmony.active_source = 0u;
-          harmony.control_mode = 0u;
-          harmony.active_slot_id = -1;
-        }
-        if (event.index < 8u) {
-          clearHarmonySlotAuthorityRow(*this, event.index);
-        }
-      }
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_STEP_ID:
       writeHarmonyPoolFromIntent(
@@ -1363,7 +1275,6 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
           static_cast<uint32_t>(std::lround(event.value2)),
           event.value4 >= 0.5f ? 1u : 0u,
           static_cast<uint32_t>(std::lround(event.value3)),
-          -1,
           static_cast<int32_t>(event.index));
       break;
     case KESSHO_PRODUCT_EVENT_HARMONY_SEQUENCE_SET_ENABLED_ID:

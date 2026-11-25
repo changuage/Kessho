@@ -13,7 +13,6 @@ import {
 } from './productArpeggiator';
 import {
   normalizeProductPlayConfig,
-  resolveProductChordPlayEvents,
   resolveProductChordPlayPatternDetails,
   resolveProductPlayEnginePattern,
   resolveProductPlayMidiPattern,
@@ -41,7 +40,7 @@ import {
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
-import { editSharedChordIntent, legacyHarmonySlotToSharedSlot } from './harmony/harmonyChordAdapters';
+import { editSharedChordIntent } from './harmony/harmonyChordAdapters';
 import {
   createCoreProductSynthSequencerLaneStepOverrideEvents,
   createCoreProductSynthSequencerStepOverrideEvents,
@@ -482,11 +481,6 @@ assert.deepEqual(
   [60, 60],
   'Product Play chord choices should retain one engine position per choice',
 );
-assert.deepEqual(
-  resolveProductChordPlayEvents({ config: chordPlayConfig.chord, harmony: chordPlayHarmony }).map((event) => event.step),
-  [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
-  'Product Play chord note fan-out should attach voices to each trigger choice',
-);
 const sparseChordPlayConfig = normalizeProductPlayConfig({
   enabled: true,
   mode: 'chord',
@@ -524,11 +518,6 @@ assert.deepEqual(
   [60, 60],
   'chord Product Play should keep choice-length pitch pattern for hit-count binding',
 );
-assert.deepEqual(
-  sequenceBoundChordEnginePattern?.playNotes?.map((event) => event.step),
-  [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
-  'chord Product Play should fan out voices by choice index for hit-count binding',
-);
 const continuousArpPlayConfig = normalizeProductPlayConfig({
   enabled: true,
   mode: 'arp',
@@ -551,11 +540,6 @@ assert.deepEqual(
   continuousArpEnginePattern?.midiPattern,
   [60, 64, 67, 71],
   'Product Play ARP should pass the resolved arp pitch lane to Product Core in hit-bound mode',
-);
-assert.equal(
-  continuousArpEnginePattern?.playNotes,
-  null,
-  'Product Play ARP should leave continuous timing to Product Core instead of host play-note fan-out',
 );
 const arpOverrideEvents = createCoreProductSynthSequencerStepOverrideEvents({
   playArps: [
@@ -615,32 +599,6 @@ assert.deepEqual(
   [60, 64, 67, 71],
   'sequence-bound Product Play ARP should still pass the compact arp pitch lane to Product Core',
 );
-assert.equal(
-  sequenceBoundArpEnginePattern?.playNotes,
-  null,
-  'sequence-bound Product Play ARP should not host-schedule continuous arp notes',
-);
-const strumPlayEvents = resolveProductChordPlayEvents({
-  config: normalizeProductPlayConfig({
-    enabled: true,
-    mode: 'chord',
-    chord: {
-      style: 'strum',
-      length: 1,
-      strum: { direction: 'down', spreadMs: 120, curve: 0, velocityFalloff: 0.1 },
-      steps: [{ active: true, slotId: 0 }],
-    },
-  }).chord,
-  harmony: chordPlayHarmony,
-});
-assert.deepEqual(
-  strumPlayEvents.map((event) => event.midi),
-  [74, 70, 67, 64, 60],
-  'Product Play strum should order down strums high to low',
-);
-const lastStrumPlayEvent = strumPlayEvents[strumPlayEvents.length - 1];
-assert(strumPlayEvents[0]?.offsetMs === 0 && (lastStrumPlayEvent?.offsetMs ?? 0) > 0, 'Product Play strum should add delayed offsets after the first note');
-assert((strumPlayEvents[0]?.velocity ?? 0) > (lastStrumPlayEvent?.velocity ?? 1), 'Product Play strum should apply velocity falloff');
 
 const contourHarmony = productArpTestHarmony([60, 62, 64, 67, 69]);
 assert.deepEqual(
@@ -1624,64 +1582,6 @@ const harmonySlotTriggerSnapshot = createCoreProductSnapshot({
   }],
 });
 assert.equal(harmonySlotTriggerSnapshot.harmony.activeSource, 2, 'Product snapshot should encode slot trigger as active slot source');
-assert.equal(harmonySlotTriggerSnapshot.harmony.harmonySlotNoteCount?.[2], expectedSlotTriggerPool.length, 'Product snapshot should encode resolved shared harmony slot note count');
-assert.deepEqual(
-  harmonySlotTriggerSnapshot.harmony.harmonySlotMidi?.slice(2 * 8, 2 * 8 + expectedSlotTriggerPool.length),
-  expectedSlotTriggerPool,
-  'Product snapshot should encode resolved shared harmony slot MIDI pool',
-);
-const relativeSnapshotSlot = legacyHarmonySlotToSharedSlot({ id: 0, intent: { ...defaultHarmonyIntent('slot', 0), quality: 'maj' } }, { rootMidi: 60 }).chord!;
-const exactSnapshotSlot = { ...relativeSnapshotSlot, playbackBehavior: 'exact' as const };
-const slotPlaybackSnapshot = createCoreProductSnapshot({
-  rootMidi: 62,
-  scaleMode: 'manual',
-  manualScale: 'Major (Ionian)',
-  harmonyChordSlots: [
-    { id: 0, chord: { ...relativeSnapshotSlot, playbackBehavior: 'relative' as const } },
-    { id: 1, chord: exactSnapshotSlot },
-  ],
-});
-assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(0, relativeSnapshotSlot.exactMidiNotes.length), relativeSnapshotSlot.exactMidiNotes, 'relative harmony slot should preserve authored exact MIDI for native resolution');
-assert.deepEqual(slotPlaybackSnapshot.harmony.harmonySlotMidi?.slice(8, 11), exactSnapshotSlot.exactMidiNotes, 'exact harmony slot should preserve literal MIDI');
-
-const semanticWireIntent: ReturnType<typeof defaultHarmonyIntent> = {
-  ...defaultHarmonyIntent('slot', 3),
-  rootMode: 'absolute' as const,
-  rootNote: 2,
-  quality: 'quartal' as const,
-  extensions: ['9', 'add13'],
-  alterations: ['b5', '#11'] as HarmonyChordAlteration[],
-  inversion: -2,
-  spread: 0.8,
-  octave: 5,
-  bassMode: 'captured' as const,
-  bassNote: 47,
-  strength: 'force' as const,
-};
-const semanticWireChord = {
-  ...relativeSnapshotSlot,
-  intent: semanticWireIntent,
-  intentSource: 'confirmed' as const,
-  playbackBehavior: 'relative' as const,
-};
-const semanticWireSnapshot = createCoreProductSnapshot({
-  rootMidi: 60,
-  scaleMode: 'manual',
-  manualScale: 'Major (Ionian)',
-  harmonyChordSlots: [{ id: 3, chord: semanticWireChord }],
-});
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentPresent?.[3], 1, 'semantic slot intent presence should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentQuality?.[3], 12, 'quartal quality should retain its stable native wire id');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentRootMode?.[3], 1, 'absolute semantic root should retain its wire mode');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentRootNote?.[3], 2, 'absolute semantic pitch class should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentInversion?.[3], -2, 'negative semantic inversion should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentSpread?.[3], 0.8, 'semantic spread should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentOctave?.[3], 5, 'semantic octave should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentBassMode?.[3], 3, 'captured bass mode should retain its native wire id');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentBassNote?.[3], 47, 'captured bass note should cross the Product snapshot boundary');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentExtensionMask?.[3], (1 << 3) | (1 << 12), 'semantic extensions should retain stable native mask bits');
-assert.equal(semanticWireSnapshot.harmony.harmonySlotIntentAlterationMask?.[3], (1 << 0) | (1 << 4), 'semantic alterations should retain stable native mask bits');
-
 const idleLiveWireSnapshot = createCoreProductSnapshot({
   rootMidi: 60,
   tension: 0.35,
@@ -1695,7 +1595,6 @@ assert.equal(idleLiveWireSnapshot.harmony.liveGestureScope, 0, 'snapshot live sc
 assert.equal(idleLiveWireSnapshot.harmony.liveGestureTarget, 0, 'snapshot live target must start idle');
 assert.equal(idleLiveWireSnapshot.harmony.liveGestureNoteCount, 0, 'snapshot live notes must start empty');
 assert.equal(harmonySlotTriggerSnapshot.harmony.controlMode, 3, 'Product snapshot should encode slot trigger as slot control mode');
-assert.equal(harmonySlotTriggerSnapshot.harmony.activeSlotId, 2, 'Product snapshot should encode the triggered slot id');
 assert.deepEqual(
   harmonySlotTriggerSnapshot.harmony.notePoolMidi.slice(0, harmonySlotTriggerSnapshot.harmony.notePoolCount),
   expectedSlotTriggerPool,

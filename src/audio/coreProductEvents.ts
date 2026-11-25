@@ -45,7 +45,6 @@ import {
   HARMONY_BASS_MODE_IDS,
   HARMONY_EXTENSION_IDS,
   HARMONY_ALTERATION_IDS,
-  HARMONY_SLOT_COUNT,
   HARMONY_SEQUENCE_STEP_COUNT,
   HARMONY_STRENGTH_IDS,
   type HarmonyChordQuality,
@@ -733,7 +732,6 @@ export const CORE_PRODUCT_STEP_VALUE_FIELDS = Object.freeze({
   distance: 7 << 8,
   nudge: 8 << 8,
   subLaneConfig: 9 << 8,
-  playNote: 10 << 8,
 } as const);
 
 export const CORE_PRODUCT_SUBLANE_DIRECTIONS = Object.freeze({
@@ -2516,36 +2514,6 @@ export function createCoreProductHarmonyControlClearManualIntentEvent(): CorePro
   return { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyControlClearManualIntent };
 }
 
-export function createCoreProductHarmonySlotSetEvent(slotId: number, args: {
-  degree: number;
-  quality?: HarmonyChordQuality;
-  rootNote?: number;
-  strength?: HarmonyControlStrength;
-}): CoreProductEvent {
-  return {
-    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotSet,
-    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
-    value: requireIntegerInRange(args.degree, 'degree', 0, 6),
-    value2: HARMONY_QUALITY_IDS[args.quality ?? 'auto'],
-    value3: requireIntegerInRange(args.rootNote ?? 0, 'rootNote', 0, 11),
-    value4: HARMONY_STRENGTH_IDS[args.strength ?? 'bias'],
-  };
-}
-
-export function createCoreProductHarmonySlotTriggerEvent(slotId: number): CoreProductEvent {
-  return {
-    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotTrigger,
-    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
-  };
-}
-
-export function createCoreProductHarmonySlotClearEvent(slotId: number): CoreProductEvent {
-  return {
-    eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonySlotClear,
-    index: requireIntegerInRange(slotId, 'slotId', 0, HARMONY_SLOT_COUNT - 1),
-  };
-}
-
 export function createCoreProductHarmonySequenceSetStepEvent(stepId: number, args: {
   degree: number;
   quality?: HarmonyChordQuality;
@@ -2811,7 +2779,6 @@ export function createCoreProductSynthArpStepEvent(
     midi: number;
     active: boolean;
     contour?: number;
-    slot?: number;
     reset?: boolean;
   },
 ): CoreProductEvent {
@@ -2823,7 +2790,6 @@ export function createCoreProductSynthArpStepEvent(
     value: requireNumberInRange(options.midi, 'midi', -1, 127),
     value2: options.active ? 1 : 0,
     value3: requireIntegerInRange(options.contour ?? 0, 'contour', -12, 12),
-    value4: requireIntegerInRange(options.slot ?? -1, 'slot', -1, 7),
     flags: options.reset ? 1 : 0,
   };
 }

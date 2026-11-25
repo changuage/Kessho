@@ -21,24 +21,6 @@ struct HarmonyAuthorityState {
   uint32_t authority_revision = 0u;
   uint32_t cached_scale_degree_count = 0u;
   uint32_t cached_scale_degree_map[7]{};
-  uint32_t slot_playback_behavior[8]{};
-  uint32_t slot_intent_present[8]{};
-  uint32_t slot_intent_quality[8]{};
-  uint32_t slot_intent_root_mode[8]{};
-  int32_t slot_intent_degree[8]{};
-  float slot_intent_root_note[8]{};
-  int32_t slot_intent_inversion[8]{};
-  float slot_intent_spread[8]{};
-  int32_t slot_intent_octave[8]{};
-  uint32_t slot_intent_bass_mode[8]{};
-  float slot_intent_bass_note[8]{};
-  uint32_t slot_intent_extension_mask[8]{};
-  uint32_t slot_intent_alteration_mask[8]{};
-  float slot_captured_root_midi[8]{};
-  uint32_t slot_captured_scale_id[8]{};
-  uint32_t cached_voice_leading_candidate_count = 0u;
-  uint32_t cached_voice_leading_candidate_note_counts[8]{};
-  float cached_voice_leading_candidates[8][8]{};
 
   uint32_t takeover_anchor_count = 0u;
   float takeover_anchor_source[12]{};
@@ -57,7 +39,6 @@ struct HarmonyAuthorityState {
   float morph_endpoint_tension[2] = {0.35f, 0.35f};
   uint32_t morph_plan_revision = 0u;
   float morph_plan_phase = 0.0f;
-  uint32_t morph_plan_slot_playback_behavior[8]{};
   uint32_t morph_common_pair_count = 0u;
   float morph_common_pair_source[8]{};
   float morph_common_pair_target[8]{};

@@ -449,25 +449,8 @@ float resolveProductArpMidi(
   if (arp.fixed_midi_mode) return arp.midi_notes[step];
 
   float pool[8]{};
-  uint32_t pool_count = 0u;
-  const int32_t slot = arp.slot_lane[step];
-  if (slot >= 0 && slot < 8 && engine.harmony.cached_voice_leading_candidate_note_counts[slot] > 0u) {
-    // Arpeggiation consumes the precomputed native authority row.  The
-    // arrangement MIDI values are only a compatibility fallback for snapshots
-    // produced before the authority cache existed.
-    pool_count = std::min<uint32_t>(engine.harmony.cached_voice_leading_candidate_note_counts[slot], 8u);
-    for (uint32_t index = 0u; index < pool_count; ++index) {
-      pool[index] = engine.harmony.cached_voice_leading_candidates[slot][index];
-    }
-  } else if (slot >= 0 && slot < 8 && engine.arrangement.harmony_slot_note_count[slot] > 0u) {
-    pool_count = std::min<uint32_t>(engine.arrangement.harmony_slot_note_count[slot], 8u);
-    for (uint32_t index = 0u; index < pool_count; ++index) {
-      pool[index] = engine.arrangement.harmony_slot_midi[static_cast<uint32_t>(slot) * 8u + index];
-    }
-  } else {
-    pool_count = std::min<uint32_t>(engine.harmony.note_pool_count, 8u);
-    for (uint32_t index = 0u; index < pool_count; ++index) pool[index] = engine.harmony.note_pool_midi[index];
-  }
+  const uint32_t pool_count = std::min<uint32_t>(engine.harmony.note_pool_count, 8u);
+  for (uint32_t index = 0u; index < pool_count; ++index) pool[index] = engine.harmony.note_pool_midi[index];
   if (pool_count == 0u) return anchor_midi;
 
   int32_t anchor_index = -1;
@@ -504,35 +487,6 @@ float resolveProductArpMidi(
     output_index = productArpPingPongIndex(moved_index, pool_count);
   }
   return pool[output_index];
-}
-
-float resolveProductHarmonySlotNote(
-    KesshoProductEngine& engine,
-    int32_t slot_id,
-    uint32_t tone_index,
-    float fallback_midi) {
-  using namespace kessho::product::internal;
-  if (slot_id < 0 || slot_id >= 8) return fallback_midi;
-  float pool[8]{};
-  uint32_t pool_count = 0u;
-  if (engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] > 0u) {
-    pool_count = std::min<uint32_t>(engine.harmony.cached_voice_leading_candidate_note_counts[slot_id], 8u);
-    for (uint32_t index = 0u; index < pool_count; ++index) {
-      pool[index] = engine.harmony.cached_voice_leading_candidates[slot_id][index];
-    }
-  } else if (engine.arrangement.harmony_slot_note_count[slot_id] > 0u) {
-    pool_count = std::min<uint32_t>(engine.arrangement.harmony_slot_note_count[slot_id], 8u);
-    for (uint32_t index = 0u; index < pool_count; ++index) {
-      pool[index] = engine.arrangement.harmony_slot_midi[static_cast<uint32_t>(slot_id) * 8u + index];
-    }
-  }
-  return pool_count == 0u ? fallback_midi : clampFloat(pool[tone_index % pool_count], 0.0f, 127.0f);
-}
-
-bool productHarmonySlotHasPool(const KesshoProductEngine& engine, int32_t slot_id) {
-  if (slot_id < 0 || slot_id >= 8) return false;
-  return engine.harmony.cached_voice_leading_candidate_note_counts[slot_id] > 0u ||
-      engine.arrangement.harmony_slot_note_count[slot_id] > 0u;
 }
 
 uint32_t productArpSlotsPerWindow(
@@ -2274,9 +2228,6 @@ void KesshoProductEngine::generateLaneEvents(
       const float sequenced_midi_note = variation_pitch_value
           ? clampFloat(lane_pitch_note + sequenced_midi_note_value, 0.0f, 127.0f)
           : sequenced_midi_note_value;
-      const uint32_t play_note_mask = !drum_lane && midi_step_id < 64u
-          ? lane.play_note_voice_masks[midi_step_id]
-          : 0u;
       const float trigger_midi_note = drum_lane ? drum_midi_note : sequenced_midi_note;
       // Pitch the cell is based on.  HARMONY adds intervals to the lane's
       // harmony pitch; FIXED and FOLLOW are absolute and take only the Pitch
@@ -2325,7 +2276,7 @@ void KesshoProductEngine::generateLaneEvents(
       // A negative harmony pitch is a removed voice; FIXED and FOLLOW cells do not depend on it.
       const bool harmony_based = variation_step == nullptr ||
           variation_step->kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
-      if (!drum_lane && !synth_arp_enabled && play_note_mask == 0u &&
+      if (!drum_lane && !synth_arp_enabled &&
           ((harmony_based && trigger_midi_note < 0.0f) || variation_step_empty)) {
         lane.emitted_hit_count += 1u;
         continue;
@@ -2506,7 +2457,6 @@ void KesshoProductEngine::generateLaneEvents(
           uint32_t ratchet_count,
           uint64_t note_sample,
           uint32_t arp_step_index = UINT32_MAX,
-          bool harmony_resolved = false,
           float note_gate_beats = 0.0f) {
         const uint64_t offset_samples = offset_ms > 0.0f
             ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
@@ -2548,7 +2498,6 @@ void KesshoProductEngine::generateLaneEvents(
             padVoiceIndexFromMask(lane.target_pad_voice_mask, pad_voice_phase);
         event.flags =
             sequencerPadVoiceEventFlags(pad_voice_index) |
-            (harmony_resolved ? kSequencerEventHarmonyResolvedFlag : 0u) |
             ratchet_index |
             (voice_ordinal << 8u);
         PendingRatchetEvent pending{};
@@ -2564,9 +2513,9 @@ void KesshoProductEngine::generateLaneEvents(
         pending.event = event;
         pushPendingRatchet(lane, pending);
       };
-      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, bool harmony_resolved = false, float note_gate_beats = 0.0f) {
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, float note_gate_beats = 0.0f) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
-        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, harmony_resolved, note_gate_beats);
+        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, note_gate_beats);
       };
       // Every accepted variation trigger ends any pending ARP phrase.  This
       // keeps ARP->Note/Chord transitions bounded at the next trigger rather
@@ -2588,7 +2537,6 @@ void KesshoProductEngine::generateLaneEvents(
                 0.0f,
                 note_index,
                 ratchet_index,
-                false,
                 note.gate_beats);
           }
         }
@@ -2616,7 +2564,6 @@ void KesshoProductEngine::generateLaneEvents(
           arp.fixed_midi_mode = true;
           for (uint32_t pulse = 0u; pulse < kMaxProductArpSteps; ++pulse) {
             arp.contour[pulse] = variation_step->arp_contour[pulse];
-            arp.slot_lane[pulse] = variation_step->arp_slot_lane[pulse];
             const uint32_t note_index = variationArpNoteIndex(
                 resolved_cell,
                 pulse,
@@ -2691,7 +2638,6 @@ void KesshoProductEngine::generateLaneEvents(
                 1u,
                 arp_sample,
                 arp_step,
-                !variation_arp && arp.slot_lane[arp_step] >= 0 && productHarmonySlotHasPool(*this, arp.slot_lane[arp_step]),
                 variation_arp && resolved_cell.count > 0u
                   ? resolved_cell.notes[variationArpNoteIndex(
                       resolved_cell,
@@ -2705,28 +2651,10 @@ void KesshoProductEngine::generateLaneEvents(
         arp.next_event_sample = window_end;
       } else {
         for (uint32_t ratchet_index = 0; ratchet_index < ratchet; ++ratchet_index) {
-          if (play_note_mask != 0u) {
-            uint32_t voice_ordinal = 0u;
-            for (uint32_t voice = 0u; voice < kMaxProductPlayVoicesPerStep; ++voice) {
-              if ((play_note_mask & (1u << voice)) == 0u) {
-                continue;
-              }
-              const ProductPlayNoteOverride& note = lane.play_note_overrides[midi_step_id][voice];
-              const bool harmony_resolved = note.harmony_slot_id >= 0 && productHarmonySlotHasPool(*this, note.harmony_slot_id);
-              const float resolved_note = note.harmony_slot_id >= 0
-                  ? resolveProductHarmonySlotNote(*this, note.harmony_slot_id, voice, note.midi_note)
-                  : note.midi_note;
-              if (resolved_note >= 0.0f) {
-                enqueueSequencerNote(resolved_note, note.velocity, note.offset_ms, voice_ordinal, ratchet_index, harmony_resolved);
-              }
-              ++voice_ordinal;
-            }
-          } else {
-            // Harmony morphs can intentionally return a negative sentinel for
-            // a removed voice. Never turn that rest into MIDI 0.
-            if (trigger_midi_note >= 0.0f) {
-              enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
-            }
+          // Harmony morphs can intentionally return a negative sentinel for
+          // a removed voice. Never turn that rest into MIDI 0.
+          if (trigger_midi_note >= 0.0f) {
+            enqueueSequencerNote(trigger_midi_note, 1.0f, 0.0f, 0u, ratchet_index);
           }
         }
       }

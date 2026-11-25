@@ -184,8 +184,7 @@ bool normalizeVariationBank(
             value.offset_beats != 0.0f || value.destination_source_id != 0u) return false;
       }
       for (uint32_t pulse = 0u; pulse < 16u; ++pulse) {
-        if (cell.arp_contour[pulse] < -12 || cell.arp_contour[pulse] > 12 ||
-            cell.arp_slot_lane[pulse] < -1 || cell.arp_slot_lane[pulse] > 7) return false;
+        if (cell.arp_contour[pulse] < -12 || cell.arp_contour[pulse] > 12) return false;
       }
     }
   }

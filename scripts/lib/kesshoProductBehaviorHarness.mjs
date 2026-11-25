@@ -1758,8 +1758,6 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       event('harmony-sequence-enabled', { enabled }),
     createCoreProductHarmonySequenceSetStepEvent: (stepId, args) =>
       event('harmony-sequence-step', { stepId, ...args }),
-    createCoreProductHarmonySlotSetEvent: (slotId, args) =>
-      event('harmony-slot-set', { slotId, ...args }),
     createCoreProductParamEvent: (paramId, value, targetId = 0, index = 0) =>
       event('param', { paramId, value, targetId, index }),
 	    createCoreProductSequencerLaneParamEvent: (sequencer, laneIndex, paramId, value, flags = 0) =>

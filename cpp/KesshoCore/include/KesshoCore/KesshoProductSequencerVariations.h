@@ -57,7 +57,6 @@ typedef struct KesshoProductSequencerNotesCell {
   uint32_t arp_boundary_mode;
   uint32_t arp_reset_mask;
   int32_t arp_contour[16];
-  int32_t arp_slot_lane[16];
   KesshoProductChordIntent intent;
   KesshoProductChordNote notes[KESSHO_PRODUCT_SEQUENCER_VARIATION_MAX_NOTES_PER_STEP];
 } KesshoProductSequencerNotesCell;
@@ -122,12 +121,12 @@ typedef struct KesshoProductSequencerVariationRuntime {
 }
 
 static_assert(
-    sizeof(KesshoProductSequencerNotesCell) == 856u,
+    sizeof(KesshoProductSequencerNotesCell) == 792u,
     "sequencer notes cell ABI changed");
 static_assert(
-    sizeof(KesshoProductSequencerVariationSnapshot) == 29076u,
+    sizeof(KesshoProductSequencerVariationSnapshot) == 27028u,
     "sequencer variation snapshot ABI changed");
 static_assert(
-    sizeof(KesshoProductSequencerVariationBank) == 116344u,
+    sizeof(KesshoProductSequencerVariationBank) == 108152u,
     "sequencer variation bank ABI changed");
 #endif
