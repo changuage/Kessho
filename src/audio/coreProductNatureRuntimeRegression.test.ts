@@ -216,6 +216,7 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
   const registeredAssetIds: number[] = [];
   const runtime = {
     audioContext: {} as BaseAudioContext,
+    ensureStarted: async () => {},
     registerAsset: async (asset: DecodedCoreProductAsset) => {
       registeredAssetIds.push(asset.assetId);
     },
