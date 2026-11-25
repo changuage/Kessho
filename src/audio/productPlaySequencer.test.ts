@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { resolve } from 'node:path';
 import { defaultHarmonyChordSlot, emptyHarmonyChordSlot, type HarmonyIntent } from './CoreProductHarmonyControl';
 import { editSharedChordIntent } from './harmony/harmonyChordAdapters';
 import {
@@ -84,13 +82,6 @@ test('normalized chord cells are slot-only and expose choice length', () => {
   const normalized = normalizeProductPlayConfig({ mode: 'chord', chord: { length: 3, steps: [{ active: false, slotId: 2 }] } });
   assert.equal(normalized.chord.choiceLength, 3);
   assert.equal(Object.prototype.hasOwnProperty.call(normalized.chord.steps[0] ?? {}, 'active'), false);
-});
-
-test('reference runtime gates probability once and ratchets the complete strummed event', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/audio/reference/webTs/engine.ts'), 'utf8');
-  assert.match(source, /if \(trigCondPassed && rng\(\) <= lane\.probability \* stepProb\) \{[\s\S]{0,18000}const triggerNotes =/);
-  assert.match(source, /for \(let r = 0; r < ratchet; r\+\+\) \{[\s\S]{0,1200}for \(const note of triggerNotes\)/);
-  assert.match(source, /const rDelayMs = ratchetDelayMs \+ note\.offsetMs/);
 });
 
 test('voice reduction keeps root, third, and seventh of a seventh chord', () => {

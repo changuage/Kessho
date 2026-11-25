@@ -133,7 +133,7 @@ struct Voice {
   double sample_position = 0.0;
   double sample_step = 1.0;
   float frequency = 0.0f;
-  float midi_note = 60.0f, amplitude = 0.0f, harmony_fade_gain = 1.0f, harmony_fade_target = 1.0f, harmony_fade_step = 0.0f; uint32_t harmony_fade_frames_remaining = 0u; bool harmony_resolved_voice = false;
+  float midi_note = 60.0f, amplitude = 0.0f;
   float pan = 0.0f;
   uint32_t age_frames = 0;
   uint32_t remaining_frames = 0;

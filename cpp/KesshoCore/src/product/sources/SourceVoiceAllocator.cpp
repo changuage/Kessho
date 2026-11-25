@@ -44,7 +44,6 @@ uint32_t KesshoProductEngine::triggerVoice(
     float drum_ratchet_attack_cap,
     uint32_t pad_voice_index,
     float synth_ratchet_factor,
-    bool harmony_resolved,
     bool allow_disabled_source) {
   if (source_id < 1u || source_id > kSourceCount) {
     telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SOURCE;
@@ -262,8 +261,7 @@ uint32_t KesshoProductEngine::triggerVoice(
           synth_ratchet_factor,
           resolved_seed,
           pad_voice_index,
-          &module_voice_index,
-          harmony_resolved)) {
+          &module_voice_index)) {
     return module_voice_index;
   }
   const uint32_t voice_index = allocateVoice();
@@ -277,7 +275,6 @@ uint32_t KesshoProductEngine::triggerVoice(
   markActiveVoiceListDirty();
   voice.source_id = source_id;
   voice.midi_note = clampFloat(midi_note, 0.0f, 127.0f);
-  voice.harmony_resolved_voice = harmony_resolved;
   voice.frequency = midiToFrequency(clampFloat(midi_note, 0.0f, 127.0f));
   voice.amplitude = clampFloat(velocity * expression, 0.0f, 1.0f);
   voice.remaining_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(hold_seconds * sample_rate));

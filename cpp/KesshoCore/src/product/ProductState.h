@@ -470,8 +470,7 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
       float synth_ratchet_factor,
       uint32_t sample_seed,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
-      uint32_t* out_module_voice_index = nullptr,
-      bool harmony_resolved = false);
+      uint32_t* out_module_voice_index = nullptr);
   uint32_t triggerVoice(
       uint32_t source_id,
       float midi_note,
@@ -488,7 +487,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
       float drum_ratchet_attack_cap = 1.0e10f,
       uint32_t pad_voice_index = kPadVoiceNoPreference,
       float synth_ratchet_factor = 1.0f,
-      bool harmony_resolved = false,
       bool allow_disabled_source = false);
   bool applySourceExactRuntimeRanges(uint32_t source_id, uint32_t param_id_base, float* params, uint32_t param_count, uint32_t sample_seed);
   void configurePianoSampleVoiceEnvelope(Voice& voice, const SourceState& source, float velocity, float distance, uint32_t resolved_seed, uint32_t asset_slot);
@@ -520,7 +518,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   void schedulePadVoiceRelease(uint32_t pad_index, uint32_t voice_index, float hold_seconds);
   void clearPadVoiceReleases(uint32_t source_id);
   void advancePadVoiceReleases(uint32_t frames);
-  void advanceHarmonyModuleVoiceFades(uint32_t frames);
   void resetPadPostChains();
   float resolveSourcePostLpfHz(uint32_t source_id) const;
   float resolveSourceStereoWidth(uint32_t source_id) const;

@@ -2767,7 +2767,6 @@ void KesshoProductEngine::triggerSequencerEvent(const KesshoSequencerEvent& even
       event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? event.send_delay_b : 1.0e10f,
       padVoiceIndexFromSequencerEventFlags(event.flags),
       event.source_id == KESSHO_PRODUCT_SOURCE_DRUM ? 1.0f : event.send_delay_a,
-      (event.flags & kSequencerEventHarmonyResolvedFlag) != 0u,
       transient_audition);
   if (triggered_voice != kProductInvalidVoiceIndex) {
     emitVoiceInteractionEvent(event.source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_SEQUENCER,

@@ -31,7 +31,6 @@ constexpr uint32_t kPadVoiceNoPreference = 0xffffffffu;
 constexpr uint32_t kSequencerEventPadVoiceFlag = 0x80000000u;
 constexpr uint32_t kSequencerEventPadVoiceMask = 0x0f000000u;
 constexpr uint32_t kSequencerEventPadVoiceShift = 24u;
-constexpr uint32_t kSequencerEventHarmonyResolvedFlag = 0x40000000u; // Outside the pad-voice nibble.
 constexpr uint32_t kSequencerEventTransientAuditionFlag = 0x20000000u;
 constexpr uint32_t kProductMidiEventTransientAuditionFlag = 0x80000000u;
 constexpr uint32_t kProductManualNoteTransientAuditionFlag = 0x20000000u;

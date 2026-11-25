@@ -1191,7 +1191,6 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
           1.0e10f,
           padVoiceIndexFromSequencerEventFlags(event.flags),
           1.0f,
-          false,
           transient_audition);
       if (triggered_voice != kProductInvalidVoiceIndex) {
         emitVoiceInteractionEvent(source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_MANUAL,
@@ -1474,7 +1473,6 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
         1.0e10f,
         pad_voice_index,
         1.0f,
-        false,
         transient_audition);
     if (trigger_voice_index != kProductInvalidVoiceIndex) {
       emitVoiceInteractionEvent(source_id, KESSHO_PRODUCT_INTERACTION_ORIGIN_MIDI,

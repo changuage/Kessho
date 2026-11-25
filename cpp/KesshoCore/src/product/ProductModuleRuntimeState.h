@@ -19,15 +19,6 @@ struct SoundscapeFamilyGainState {
   uint64_t frame = 0u;
 };
 
-struct HarmonyModuleVoiceState {
-  float midi_note = 60.0f;
-  float gain = 1.0f;
-  float target_gain = 1.0f;
-  uint32_t fade_frames_remaining = 0u;
-  bool active = false;
-  bool harmony_resolved = false;
-};
-
 struct ProductModuleRuntimeState {
   bool modules_ready = false;
   std::unique_ptr<kessho::core::IKesshoModule> pad_module{};
@@ -52,8 +43,6 @@ struct ProductModuleRuntimeState {
   uint64_t product_render_frame = 0u;
   uint32_t pad_voice_cursors[2]{};
   uint32_t pad_voice_release_frames[PAD_NUM_PADS][PAD_NUM_VOICES]{};
-  HarmonyModuleVoiceState pad_harmony_voice_states[PAD_NUM_VOICES]{};
-  HarmonyModuleVoiceState lead_harmony_voice_states[2][LEAD_FM_MAX_POLYPHONY]{};
   MidiNoteRuntimeSlot midi_note_slots[kMaxProductMidiNoteSlots]{};
   MidiControllerRuntimeState midi_controller_state[kSourceCount][kProductMidiChannelCount]{};
   bool midi_sustain_down[kSourceCount][kProductMidiChannelCount]{};

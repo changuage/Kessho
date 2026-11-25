@@ -385,9 +385,6 @@ uint32_t KesshoProductEngine::drainInteractionEvents(
           soundscapeLayerRouteSend(soundscape_source, layer, route, soundscape_route_fallbacks[route]);
     }
   }
-  const uint32_t harmony_fade_total_frames = std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(sample_rate * 0.02)));
-  const float harmony_morph_handover = clampFloat(harmony.morph_scale_handover_at, 0.05f, 0.95f);
-  const bool harmony_morph_target_side = harmony.morph_plan_phase >= harmony_morph_handover;
   float texture_level_start[kSoundscapeTextureSlotCount]{};
   float texture_level_delta[kSoundscapeTextureSlotCount]{};
   uint32_t texture_level_ramp_frames[kSoundscapeTextureSlotCount]{};
@@ -444,44 +441,6 @@ uint32_t KesshoProductEngine::drainInteractionEvents(
         active_voice_list_dirty = true;
         continue;
       }
-      // Existing voices removed by a Harmony morph are crossfaded out over a
-      // bounded 20 ms window. New target-side triggers retain integer MIDI
-      // anchors and their normal attack envelope; no pitch interpolation is
-      // performed. All state is fixed-capacity per voice and audio-thread safe.
-      bool removed_harmony_voice = false;
-      if (harmony.morph_plan_phase > 0.0f && harmony_morph_target_side && harmony.morph_unmatched_a_count > 0u) {
-        for (uint32_t note_index = 0u; note_index < harmony.morph_unmatched_a_count; ++note_index) {
-          if (voice.harmony_resolved_voice &&
-              std::abs(voice.midi_note - harmony.morph_unmatched_a[note_index]) <= 0.01f) {
-            removed_harmony_voice = true;
-            break;
-          }
-        }
-      }
-      if (removed_harmony_voice) {
-        if (voice.harmony_fade_target > 0.0f) {
-          voice.harmony_fade_target = 0.0f;
-          voice.harmony_fade_frames_remaining = harmony_fade_total_frames;
-          voice.harmony_fade_step = -voice.harmony_fade_gain / static_cast<float>(harmony_fade_total_frames);
-        }
-      } else if (voice.harmony_fade_target < 1.0f) {
-        voice.harmony_fade_target = 1.0f;
-        voice.harmony_fade_frames_remaining = harmony_fade_total_frames;
-        voice.harmony_fade_step = (1.0f - voice.harmony_fade_gain) / static_cast<float>(harmony_fade_total_frames);
-      }
-      if (voice.harmony_fade_frames_remaining > 0u) {
-        voice.harmony_fade_gain = std::max(0.0f, std::min(1.0f,
-            voice.harmony_fade_gain + voice.harmony_fade_step));
-        --voice.harmony_fade_frames_remaining;
-        if (voice.harmony_fade_frames_remaining == 0u) {
-          voice.harmony_fade_gain = voice.harmony_fade_target;
-        }
-      }
-      if (removed_harmony_voice && voice.harmony_fade_gain <= 0.0f) {
-        voice.active = false;
-        active_voice_list_dirty = true;
-        continue;
-      }
       float value_l = 0.0f;
       float value_r = 0.0f;
       if (voice.soundscape_texture_voice &&
@@ -494,8 +453,6 @@ uint32_t KesshoProductEngine::drainInteractionEvents(
             voice.soundscape_texture_slice_id);
       }
       renderVoiceSample(voice, value_l, value_r);
-      value_l *= voice.harmony_fade_gain;
-      value_r *= voice.harmony_fade_gain;
       SourceState& source = sources[voice.source_id - 1u];
       float source_gate = source_gates[voice.source_id - 1u];
       if (voice.source_id == KESSHO_PRODUCT_SOURCE_SOUNDSCAPE) {
