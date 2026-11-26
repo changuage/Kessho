@@ -170,8 +170,8 @@ bool normalizeVariationBank(
            cell.arp_flow > 5u || cell.arp_contour_mode > 1u || cell.arp_boundary_mode > 2u)) {
         return false;
       }
-      // Per-note offsets and destinations are not played yet; reject them
-      // rather than silently ignoring authored data.
+      // offset_beats is a finite [0, 64) delay; destination_source_id is 0 (inherit)
+      // or a non-drum source id.
       // HARMONY notes are intervals; FIXED notes (and the FOLLOW display cache) are absolute.
       const bool interval = cell.kind == KESSHO_PRODUCT_SEQUENCER_NOTES_CELL_HARMONY;
       const float note_low = interval ? -48.0f : 0.0f;
@@ -181,7 +181,9 @@ bool normalizeVariationBank(
         if (!finiteInRange(value.midi, note_low, note_high) ||
             !finiteInRange(value.velocity, 0.0f, 1.0f) ||
             !finiteInRange(value.gate_beats, 0.0f, 64.0f) ||
-            value.offset_beats != 0.0f || value.destination_source_id != 0u) return false;
+            !std::isfinite(value.offset_beats) || value.offset_beats < 0.0f || value.offset_beats >= 64.0f ||
+            value.destination_source_id > kSourceCount ||
+            value.destination_source_id == KESSHO_PRODUCT_SOURCE_DRUM) return false;
       }
       for (uint32_t pulse = 0u; pulse < 16u; ++pulse) {
         if (cell.arp_contour[pulse] < -12 || cell.arp_contour[pulse] > 12) return false;

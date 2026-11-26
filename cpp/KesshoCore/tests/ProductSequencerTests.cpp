@@ -5450,16 +5450,48 @@ void requireNotesLaneTests() {
     require(note_at_step(events, 0u, step_frames) == 62.0f, "Pitch lane +2 must transpose a FIXED cell");
   }
 
-  {  // Per-note offsets and destinations are not played yet, so they are rejected.
+  {  // Per-note offset_beats delays each note from the trigger; destination_source_id re-routes it.
+    constexpr uint32_t window = 20000u;  // 120 BPM at 48 kHz: 0.5 beat = 12000 frames
+    auto bank = make_bank(32u, 0x1u, 1u);
+    auto& cell = bank.variations[0].cells[0];
+    cell.note_count = 2u;
+    cell.notes[1] = {64.0f, 1.0f, 0.25f, 0.5f, 0u};
+    auto events = play(bank, window);
+    std::vector<RenderedSequencerEvent> step0;
+    for (const auto& event : events) {
+      if (event.event.step_id == 0u && event.absolute_offset < window) step0.push_back(event);
+    }
+    require(step0.size() == 2u, "offset cell must emit two events");
+    const double delta = static_cast<double>(step0[1].absolute_offset) -
+        static_cast<double>(step0[0].absolute_offset);
+    require(std::fabs(delta - 12000.0) <= 1.0, "second note must sound exactly 0.5 beat later");
+
+    bank = make_bank(32u, 0x1u, 1u);
+    bank.variations[0].cells[0].note_count = 2u;
+    bank.variations[0].cells[0].notes[1] = {64.0f, 1.0f, 0.25f, 0.0f, KESSHO_PRODUCT_SOURCE_LEAD2};
+    events = play(bank, step_frames);
+    uint16_t routed = 0u;
+    uint16_t inherited = 0u;
+    for (const auto& event : events) {
+      if (event.event.midi_note == 64.0f) routed = event.event.source_id;
+      if (event.event.midi_note == 60.0f) inherited = event.event.source_id;
+    }
+    require(routed == KESSHO_PRODUCT_SOURCE_LEAD2 && inherited != 0u && inherited != routed,
+        "destination note must target its own source while siblings keep the lane target");
+
     bool accepted = true;
-    auto bank = make_bank(2u, 0x1u, 1u);
-    bank.variations[0].cells[0].notes[0].offset_beats = 0.5f;
-    (void)play(bank, 64u, &accepted);
-    require(!accepted, "non-zero offset_beats must be rejected");
-    bank = make_bank(2u, 0x1u, 1u);
-    bank.variations[0].cells[0].notes[0].destination_source_id = 3u;
-    (void)play(bank, 64u, &accepted);
-    require(!accepted, "non-zero destination_source_id must be rejected");
+    for (const float bad : {64.0f, std::numeric_limits<float>::quiet_NaN(), -0.5f}) {
+      bank = make_bank(2u, 0x1u, 1u);
+      bank.variations[0].cells[0].notes[0].offset_beats = bad;
+      (void)play(bank, 64u, &accepted);
+      require(!accepted, "offset_beats outside [0, 64) or non-finite must be rejected");
+    }
+    for (const uint32_t bad : {99u, static_cast<uint32_t>(KESSHO_PRODUCT_SOURCE_DRUM)}) {
+      bank = make_bank(2u, 0x1u, 1u);
+      bank.variations[0].cells[0].notes[0].destination_source_id = bad;
+      (void)play(bank, 64u, &accepted);
+      require(!accepted, "invalid destination_source_id must be rejected");
+    }
     bank = make_bank(2u, 0x1u, 1u);
     (void)play(bank, 64u, &accepted);
     require(accepted, "a plain FIXED cell must be accepted");

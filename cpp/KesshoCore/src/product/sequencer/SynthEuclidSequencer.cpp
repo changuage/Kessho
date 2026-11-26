@@ -2457,12 +2457,14 @@ void KesshoProductEngine::generateLaneEvents(
           uint32_t ratchet_count,
           uint64_t note_sample,
           uint32_t arp_step_index = UINT32_MAX,
-          float note_gate_beats = 0.0f) {
+          float note_gate_beats = 0.0f,
+          uint32_t destination_source_id = 0u) {
         const uint64_t offset_samples = offset_ms > 0.0f
             ? static_cast<uint64_t>(std::llround(static_cast<double>(offset_ms) * sample_rate / 1000.0))
             : 0u;
         KesshoSequencerEvent event{};
-        event.source_id = static_cast<uint16_t>(lane.target_source_id);
+        event.source_id = static_cast<uint16_t>(
+            destination_source_id != 0u ? destination_source_id : lane.target_source_id);
         event.lane_id = static_cast<uint16_t>(lane_index);
         event.step_id = static_cast<uint16_t>(step_id);
         event.event_kind = static_cast<uint16_t>(KESSHO_PRODUCT_EVENT_KIND_MANUAL_NOTE_ON);
@@ -2513,9 +2515,9 @@ void KesshoProductEngine::generateLaneEvents(
         pending.event = event;
         pushPendingRatchet(lane, pending);
       };
-      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, float note_gate_beats = 0.0f) {
+      auto enqueueSequencerNote = [&](float midi_note, float velocity_scale, float offset_ms, uint32_t voice_ordinal, uint32_t ratchet_index, float note_gate_beats = 0.0f, uint32_t destination_source_id = 0u) {
         const uint64_t ratchet_sample = event_sample + static_cast<uint64_t>(std::llround(ratchet_spacing * ratchet_index));
-        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, note_gate_beats);
+        enqueueSequencerNoteAtSample(midi_note, velocity_scale, offset_ms, voice_ordinal, ratchet_index, ratchet, ratchet_sample, UINT32_MAX, note_gate_beats, destination_source_id);
       };
       // Every accepted variation trigger ends any pending ARP phrase.  This
       // keeps ARP->Note/Chord transitions bounded at the next trigger rather
@@ -2527,17 +2529,21 @@ void KesshoProductEngine::generateLaneEvents(
           variation_step->articulation != KESSHO_PRODUCT_SEQUENCER_NOTES_ARTICULATION_ARP) {
         // Bank-local notes are explicit. An ARP is distributed across its
         // owning grid-step span and is replaced by the next trigger, while a
-        // chord keeps every note on the parent trigger sample.
+        // chord keeps every note on the parent trigger sample plus its own
+        // offset_beats (ARP ignores per-note offsets and destinations).
         for (uint32_t ratchet_index = 0u; ratchet_index < ratchet; ++ratchet_index) {
           for (uint32_t note_index = 0u; note_index < resolved_cell.count; ++note_index) {
             const auto& note = resolved_cell.notes[note_index];
             enqueueSequencerNote(
                 clampFloat(note.midi, 0.0f, 127.0f),
                 note.velocity,
-                0.0f,
+                static_cast<float>(
+                    static_cast<double>(note.offset_beats) *
+                    transport.samplesPerBeat(sample_rate) * 1000.0 / sample_rate),
                 note_index,
                 ratchet_index,
-                note.gate_beats);
+                note.gate_beats,
+                note.destination_source_id);
           }
         }
       } else if (synth_arp_enabled) {
