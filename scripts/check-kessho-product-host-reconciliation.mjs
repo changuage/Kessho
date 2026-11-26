@@ -344,7 +344,7 @@ await runCheckWithReport({
         `${methodName}() must delegate Product transport lifecycle to the lifecycle coordinator`,
       );
     }
-    for (const methodName of ['start', 'resume']) {
+    for (const methodName of ['runStart', 'resume']) {
       assert(
         lifecycleCoordinatorMethodBody(methodName).includes('this.options.resetSequencerEvolveState();'),
         `${methodName}() must reset Product sequencer evolve clock state at transport lifecycle boundaries`,
