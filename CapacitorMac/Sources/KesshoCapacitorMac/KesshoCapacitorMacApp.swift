@@ -882,6 +882,8 @@ final class KesshoMacAudioSessionHost {
         let targetLaneIndex: UInt32
         let source: String
         let sourceMode: UInt32
+        let fixedWindow: Bool
+        let beatsPerBar: Double
         let durationBeats: Double
         var originSample: UInt64?
         var originBeat: Double?
@@ -1121,22 +1123,19 @@ final class KesshoMacAudioSessionHost {
               !token.isEmpty,
               let sourceLaneIndex = Self.uint32(request["sourceLaneIndex"]),
               let targetLaneIndex = Self.uint32(request["targetLaneIndex"]),
-              sourceLaneIndex < 8,
               targetLaneIndex < 8,
               let source = request["source"] as? String,
-              source == "keyboard" || source == "walker" || source == "orbit",
+              Self.captureSourceModes[source] != nil,
+              sourceLaneIndex < 8 || sourceLaneIndex == Self.captureArrangementLane(source),
               let durationBeats = Self.double(request["durationBeats"]),
               durationBeats > 0.0,
               durationBeats <= 4096.0,
               let engine = nativeProductEngine else {
             throw BridgeError.runtime("invalid native recorded capture request")
         }
-        let sourceMode: UInt32
-        switch source {
-        case "walker": sourceMode = 1
-        case "orbit": sourceMode = 2
-        default: sourceMode = 0
-        }
+        let sourceMode = Self.captureSourceModes[source] ?? 0
+        let fixedWindow = (request["policy"] as? String) == "fixed"
+        let beatsPerBar = Self.double(request["beatsPerBar"]).flatMap { $0 > 0.0 ? $0 : nil } ?? 4.0
         switch action {
         case "start":
             guard request["enabled"] as? Bool ?? true else {
@@ -1151,6 +1150,8 @@ final class KesshoMacAudioSessionHost {
                 targetLaneIndex: targetLaneIndex,
                 source: source,
                 sourceMode: sourceMode,
+                fixedWindow: fixedWindow,
+                beatsPerBar: beatsPerBar,
                 durationBeats: durationBeats,
                 originSample: nil,
                 originBeat: nil,
@@ -1268,7 +1269,19 @@ final class KesshoMacAudioSessionHost {
         }
         var captureOriginSample: UInt64 = 0
         var captureOriginBeat = 0.0
-        if engine.copyRecordedCaptureOriginSample(&captureOriginSample, beat: &captureOriginBeat) {
+        let haveArmOrigin = engine.copyRecordedCaptureOriginSample(&captureOriginSample, beat: &captureOriginBeat)
+        if session.fixedWindow {
+            // Fixed take: the window opens on the next bar after the arm point
+            // and keeps the real audio clock so it can close itself.
+            if session.originSample == nil {
+                let armSample = haveArmOrigin ? captureOriginSample : currentSample
+                let armBeat = haveArmOrigin ? captureOriginBeat : currentBeat
+                let windowBeat = (armBeat / session.beatsPerBar - 1e-9).rounded(.up) * session.beatsPerBar
+                let delta = max(0.0, windowBeat - armBeat) * 60.0 * nativeProductSampleRate / currentBpm
+                session.originBeat = windowBeat
+                session.originSample = armSample + UInt64(delta.rounded(.up))
+            }
+        } else if haveArmOrigin {
             session.originSample = captureOriginSample
             session.originBeat = captureOriginBeat
             currentSample = captureOriginSample
@@ -1309,6 +1322,10 @@ final class KesshoMacAudioSessionHost {
                         fromByteOffset: offset,
                         as: KesshoProductGeneratedSequencerCaptureEvent.self
                     )
+                    if session.fixedWindow, let windowSample = session.originSample,
+                       captured.absolute_sample < windowSample {
+                        continue
+                    }
                     let capture = captureClock(
                         sample: captured.absolute_sample,
                         session: session,
@@ -1442,6 +1459,23 @@ final class KesshoMacAudioSessionHost {
         }
         return data.withUnsafeBytes { rawBuffer in
             rawBuffer.loadUnaligned(as: KesshoProductTelemetry.self).absolute_sample_time
+        }
+    }
+
+    private static let captureSourceModes: [String: UInt32] = [
+        "keyboard": 0,
+        "walker": 1,
+        "orbit": 2,
+        "randomChords": 3,
+        "randomNotes": 4
+    ]
+
+    /// Arrangement producers have no Euclid lane; their events use a fixed sentinel lane.
+    private static func captureArrangementLane(_ source: String) -> UInt32? {
+        switch source {
+        case "randomChords": return 0x100
+        case "randomNotes": return 0x101
+        default: return nil
         }
     }
 

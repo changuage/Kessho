@@ -474,7 +474,13 @@ int32_t NativeProductRuntime::setRecordedCapture(
     bool enabled, uint32_t source_lane_index, uint32_t target_lane_index,
     uint32_t source_mode, double duration_beats) {
   if (engine_ == nullptr) return KESSHO_PRODUCT_ERROR_INVALID_ENGINE;
-  if (source_lane_index >= 8u || target_lane_index >= 8u || source_mode > 2u ||
+  const bool arrangement_source =
+      (source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS &&
+       source_lane_index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS) ||
+      (source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES &&
+       source_lane_index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES);
+  if ((source_lane_index >= 8u && !arrangement_source) || target_lane_index >= 8u ||
+      source_mode > KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES ||
       !std::isfinite(duration_beats) || (enabled && duration_beats <= 0.0)) {
     return KESSHO_PRODUCT_ERROR_INVALID_PARAM;
   }

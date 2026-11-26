@@ -61,6 +61,7 @@ import OrbitSequencerBody from '../sequencer/OrbitSequencerBody';
 import SequencerVariationRail, { type SequencerVariationId } from '../sequencer/SequencerVariationRail';
 import { sequencerTriggerPatternSyncKey } from '../sequencer/sequencerTriggerPatternSyncKey';
 import { useRecordedNoteCapture, sourceForMode } from '../sequencer/useRecordedNoteCapture';
+import type { RecordedNoteSource } from '../sequencer/recordedNoteSession';
 import type {
   RecordedNoteCaptureStartRequest,
   RecordedNoteCaptureSubscription,
@@ -1912,6 +1913,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     noteCount: number;
   } | null>(null);
   const [recordedCaptureStartPendingLane, setRecordedCaptureStartPendingLane] = useState<number | null>(null);
+  const [recordedCaptureSourceChoice, setRecordedCaptureSourceChoice] = useState<'lane' | 'randomChords' | 'randomNotes'>('lane');
   const keyboardCaptureGroupRef = useRef<{
     id: string;
     firstAtMs: number;
@@ -4956,6 +4958,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     activeSource: sourceForMode(activeSequencerMode),
     defaultDurationBeats: recordedCaptureLengthBeats,
     defaultGridSteps: Math.max(2, Math.min(32, Math.round(Number(seq.getParam(seq.activeTab, 'Steps')) || 16))),
+    beatsPerBar: Math.max(1, Math.round(Number(state.transportBeatsPerBar ?? 4)) || 4),
     setCaptureEnabled: recordedCaptureAvailable ? setRecordedNoteCapture : undefined,
     subscribeCapture: recordedCaptureAvailable ? subscribeRecordedNoteCapture : undefined,
     getCaptureClockBeat: recordedCaptureAvailable ? getRecordedNoteCaptureClockBeat : undefined,
@@ -6011,6 +6014,19 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     cancelRecordedCapture();
   }, [cancelRecordedCapture, recordedCaptureView?.targetLaneIndex, seq.activeTab, variationCommitPending]);
 
+  // The lane's own source plus each running Random producer.
+  const recordedCaptureSourceChoices: ReadonlyArray<{ id: 'lane' | 'randomChords' | 'randomNotes'; label: string }> = [
+    { id: 'lane', label: 'Lane' },
+    ...(state.synthChordGeneratorEnabled ? [{ id: 'randomChords' as const, label: 'Chords' }] : []),
+    ...(state.leadRandomEnabled === true ? [{ id: 'randomNotes' as const, label: 'Notes' }] : []),
+  ];
+  const recordedCaptureSourceId = recordedCaptureSourceChoices.some((choice) => choice.id === recordedCaptureSourceChoice)
+    ? recordedCaptureSourceChoice
+    : 'lane';
+  const recordedCaptureSource: RecordedNoteSource = recordedCaptureSourceId === 'lane'
+    ? sourceForMode(activeSequencerMode)
+    : recordedCaptureSourceId;
+
   const startRecordedCaptureForActiveLane = useCallback(() => {
     if (recordedCaptureIsCapturing || variationCommitPending) return;
     const laneIndex = seq.activeTab;
@@ -6045,14 +6061,15 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       startRecordedCapture({
         sourceLaneIndex: laneIndex,
         targetLaneIndex: laneIndex,
-        source: sourceForMode(activeSequencerMode),
+        source: recordedCaptureSource,
         mode: 'replace',
+        policy: 'fixed',
         durationBeats: recordedCaptureLengthBeats,
         gridSteps: Math.max(2, Math.min(32, Math.round(recordedCaptureGridSteps || 16))),
       });
     };
     start();
-  }, [activeSequencerMode, activeVariationBank, isRunning, onRequestPlaybackStart, pitchBindingModes, recordedCaptureGridSteps, recordedCaptureIsCapturing, recordedCaptureLengthBeats, selectedVariations, seq, startRecordedCapture, state.synthSequenceVariationBanks, variationCommitPending]);
+  }, [activeVariationBank, isRunning, onRequestPlaybackStart, pitchBindingModes, recordedCaptureSource, recordedCaptureGridSteps, recordedCaptureIsCapturing, recordedCaptureLengthBeats, selectedVariations, seq, startRecordedCapture, state.synthSequenceVariationBanks, variationCommitPending]);
   useEffect(() => {
     const laneIndex = recordedCaptureStartPendingLane;
     if (laneIndex === null || !isRunning) return;
@@ -6086,7 +6103,24 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
             <button type="button" className="live-overdub-btn" onClick={cancelRecordedCaptureForActiveLane} disabled={variationCommitPending}>Discard</button>
           </>
         ) : (
+          <>
+            {recordedCaptureSourceChoices.length > 1 ? (
+              <span className="recorded-note-capture-source" role="group" aria-label="Print source">
+                {recordedCaptureSourceChoices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={choice.id === recordedCaptureSourceId ? 'on' : ''}
+                    aria-pressed={choice.id === recordedCaptureSourceId}
+                    onClick={() => setRecordedCaptureSourceChoice(choice.id)}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </span>
+            ) : null}
           <button type="button" className="live-overdub-btn record" onClick={startRecordedCaptureForActiveLane} disabled={variationCommitPending || recordedCaptureStartPendingLane === seq.activeTab || (!isRunning && !onRequestPlaybackStart)} title={!isRunning && !onRequestPlaybackStart ? 'Start the sequencer transport before recording' : undefined}>REC</button>
+          </>
         )}
       </div>
       {recordedCaptureView ? (

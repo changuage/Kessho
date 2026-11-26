@@ -318,6 +318,33 @@
   text-align: left;
 }
 
+.synth-root .recorded-note-capture-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+}
+.synth-root .recorded-note-capture-source button {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--k-fs-1);
+  cursor: pointer;
+}
+.synth-root .recorded-note-capture-source button:hover:not(.on) {
+  color: var(--k-text);
+}
+.synth-root .recorded-note-capture-source button.on {
+  background: var(--k-on-bg-strong);
+  color: var(--k-on-text);
+  font-weight: var(--k-fw-bold);
+}
+
 .synth-root .recorded-note-capture-progress {
   width: 64px;
   height: 3px;

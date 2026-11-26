@@ -9,6 +9,9 @@ constexpr uint32_t kMaxArrangementPendingEvents = 512u;
 struct ProductArrangementPendingEvent {
   uint64_t absolute_sample = 0u;
   KesshoSequencerEvent event{};
+  // Capture tap identity, applied when the note is emitted (0 mode = none).
+  uint32_t capture_mode = 0u;
+  uint64_t capture_attack_id = 0u;
 };
 
 struct ProductArrangementState {

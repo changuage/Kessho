@@ -4,20 +4,25 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
+  nextBarBeat,
   useRecordedNoteCapture,
   type RecordedNoteCaptureApi,
 } from './useRecordedNoteCapture';
-import type {
-  RecordedNoteCaptureBatch,
-  RecordedNoteCaptureStartRequest,
+import {
+  recordedCaptureModeId,
+  recordedCaptureModeMask,
+  recordedCaptureSourceLane,
+  type RecordedNoteCaptureBatch,
+  type RecordedNoteCaptureStartRequest,
 } from './recordedNoteCaptureTypes';
+import type { RecordedNoteSource } from './recordedNoteSession';
 
 type Harness = {
   api: RecordedNoteCaptureApi;
   controls: RecordedNoteCaptureStartRequest[];
 };
 
-function mountHarness(): Harness {
+function mountHarness(getCaptureClockBeat?: () => number | null): Harness {
   const controls: RecordedNoteCaptureStartRequest[] = [];
   let api: RecordedNoteCaptureApi | null = null;
   function Probe() {
@@ -28,6 +33,7 @@ function mountHarness(): Harness {
       defaultGridSteps: 16,
       setCaptureEnabled: (request) => controls.push(request),
       subscribeCapture: () => () => undefined,
+      getCaptureClockBeat,
     });
     return null;
   }
@@ -54,7 +60,8 @@ function batch(
 }
 
 function startToken(harness: Harness, request: Parameters<RecordedNoteCaptureApi['start']>[0] = {}): string {
-  harness.api.start(request);
+  // The legacy tests below exercise the rolling (live replace/overdub) policy.
+  harness.api.start({ policy: 'rolling', ...request });
   const token = [...harness.controls].reverse().find((control) => control.action === 'start')?.sessionToken;
   assert.ok(token);
   return token;
@@ -201,7 +208,7 @@ test('hook coalesces silent previews across hidden resume and rapid re-arm', asy
   try {
     root = createRoot(container);
     await act(async () => root!.render(React.createElement(Probe)));
-    await act(async () => requireApi().start({ durationBeats: 4, originBeat: 0 }));
+    await act(async () => requireApi().start({ policy: 'rolling', durationBeats: 4, originBeat: 0 }));
     const token = controls.find((control) => control.action === 'start')?.sessionToken;
     assert.ok(token);
     assert.equal(previewPublicationCount, 1, 'start should publish one immediate control preview');
@@ -249,7 +256,7 @@ test('hook coalesces silent previews across hidden resume and rapid re-arm', asy
     await act(async () => requireApi().finishLoop());
     await feed(batch(token, 4, { phase: 'ready', finalEventId: 2 }));
     const oldView = requireApi().view;
-    await act(async () => requireApi().start({ durationBeats: 4, originBeat: 4 }));
+    await act(async () => requireApi().start({ policy: 'rolling', durationBeats: 4, originBeat: 4 }));
     const starts = controls.filter((control) => control.action === 'start');
     const nextToken = starts[starts.length - 1]?.sessionToken;
     assert.ok(nextToken && nextToken !== token);
@@ -272,4 +279,216 @@ test('hook coalesces silent previews across hidden resume and rapid re-arm', asy
     if (previousActEnvironment) Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment);
     else Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
   }
+});
+
+
+type LiveHook = {
+  api: () => RecordedNoteCaptureApi;
+  controls: RecordedNoteCaptureStartRequest[];
+  feed: (batch: RecordedNoteCaptureBatch) => Promise<void>;
+  cleanup: () => Promise<void>;
+};
+
+/** Mounts the hook in a minimal DOM shim so the published view can be read back. */
+async function mountLiveHook(): Promise<LiveHook> {
+  const previous = {
+    window: Object.getOwnPropertyDescriptor(globalThis, 'window'),
+    document: Object.getOwnPropertyDescriptor(globalThis, 'document'),
+    performance: Object.getOwnPropertyDescriptor(globalThis, 'performance'),
+    act: Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT'),
+  };
+  const documentShim: any = {
+    visibilityState: 'visible',
+    activeElement: null,
+    body: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const container: any = {
+    nodeType: 1,
+    tagName: 'DIV',
+    namespaceURI: 'http://www.w3.org/1999/xhtml',
+    ownerDocument: documentShim,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  documentShim.documentElement = container;
+  const windowShim: any = {
+    document: documentShim,
+    setTimeout: () => 0,
+    clearTimeout: () => undefined,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  for (const name of ['HTMLIFrameElement', 'HTMLElement', 'SVGElement', 'Element', 'Node']) {
+    windowShim[name] = class {};
+  }
+  Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: windowShim });
+  Object.defineProperty(globalThis, 'document', { configurable: true, writable: true, value: documentShim });
+  Object.defineProperty(globalThis, 'performance', { configurable: true, writable: true, value: { now: () => 0 } });
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, writable: true, value: true });
+
+  const controls: RecordedNoteCaptureStartRequest[] = [];
+  let current: RecordedNoteCaptureApi | null = null;
+  function Probe() {
+    current = useRecordedNoteCapture({
+      activeLaneIndex: 0,
+      activeSource: 'keyboard',
+      defaultDurationBeats: 4,
+      defaultGridSteps: 16,
+      setCaptureEnabled: (request) => controls.push(request),
+    });
+    return null;
+  }
+  const root = createRoot(container);
+  await act(async () => root.render(React.createElement(Probe)));
+  const restore = (name: string, descriptor: PropertyDescriptor | undefined) => {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else Reflect.deleteProperty(globalThis, name);
+  };
+  return {
+    api: () => {
+      assert.ok(current);
+      return current;
+    },
+    controls,
+    feed: async (batch) => {
+      await act(async () => current!.ingestBatch(batch));
+    },
+    cleanup: async () => {
+      await act(async () => root.unmount());
+      restore('window', previous.window);
+      restore('document', previous.document);
+      restore('performance', previous.performance);
+      restore('IS_REACT_ACT_ENVIRONMENT', previous.act);
+    },
+  };
+}
+
+function captureEvent(token: string, eventId: number, onsetBeats: number, pitch: number) {
+  return {
+    sessionToken: token,
+    eventId,
+    source: 'randomNotes' as const,
+    onsetBeats,
+    durationBeats: 0.5,
+    pitch,
+    velocity: 0.8,
+    sourceId: 3,
+  };
+}
+
+test('fixed capture keeps [origin, origin+duration), finishes by itself, and never sweeps', async () => {
+  const live = await mountLiveHook();
+  try {
+    await act(async () => live.api().start({ durationBeats: 4, originBeat: 4 }));
+    const start = live.controls[0]!;
+    assert.equal(start.action, 'start');
+    assert.equal(start.policy, 'fixed', 'Print defaults to the fixed window');
+    const token = start.sessionToken;
+
+    await live.feed(batch(token, 3.5, { originBeat: 4 }));
+    await live.feed(batch(token, 5, { originBeat: 4, events: [captureEvent(token, 1, 1, 60)] }));
+    assert.deepEqual(live.controls.map((control) => control.action), ['start'], 'still inside the window');
+
+    // One note late in the window, one past its end, and the clock passes the end.
+    await live.feed(batch(token, 8.2, {
+      originBeat: 4,
+      events: [captureEvent(token, 2, 3.75, 64), captureEvent(token, 3, 4.3, 67)],
+    }));
+    assert.deepEqual(
+      live.controls.map((control) => control.action),
+      ['start', 'finish'],
+      'the clock passing origin + duration closes intake without a user Finish',
+    );
+    assert.equal(live.api().view?.recorder.phase, 'finishing', 'completion waits for the final drain');
+
+    await live.feed(batch(token, 8.2, { originBeat: 4, phase: 'ready', finalEventId: 3 }));
+    const view = live.api().view;
+    assert.equal(view?.recorder.phase, 'ready');
+    const notes = view?.recorder.draft?.notes ?? [];
+    assert.deepEqual(notes.map((note) => note.pitch).sort(), [60, 64], 'the note after the window is excluded');
+    assert.deepEqual(notes.map((note) => note.onsetBeats).sort(), [1, 3.75], 'onsets are not swept or looped');
+    assert.deepEqual(notes.map((note) => note.sourceId), [3, 3], 'captured notes keep their destination source');
+    assert.equal(view?.recorder.draft?.durationBeats, 4);
+  } finally {
+    await live.cleanup();
+  }
+});
+
+test('fixed capture waits for the watermark and ignores intake before the origin bar', async () => {
+  const live = await mountLiveHook();
+  try {
+    await act(async () => live.api().start({ durationBeats: 2, originBeat: 8 }));
+    const token = live.controls[0]!.sessionToken;
+    // A note scheduled before the window opens (negative onset) is not part of the take.
+    await live.feed(batch(token, 7, { originBeat: 8, events: [captureEvent(token, 1, -0.5, 50)] }));
+    await live.feed(batch(token, 10.1, { originBeat: 8, phase: 'finishing' }));
+    await live.feed(batch(token, 10.1, { originBeat: 8, phase: 'ready', finalEventId: 4 }));
+    assert.equal(live.api().view?.recorder.phase, 'finishing', 'final event id 4 has not been drained yet');
+    await live.feed(batch(token, 10.2, {
+      originBeat: 8,
+      phase: 'ready',
+      finalEventId: 4,
+      events: [captureEvent(token, 2, 0.5, 55), captureEvent(token, 3, 1.5, 57), captureEvent(token, 4, 2.5, 59)],
+    }));
+    const view = live.api().view;
+    assert.equal(view?.recorder.phase, 'ready');
+    assert.deepEqual((view?.recorder.draft?.notes ?? []).map((note) => note.pitch).sort(), [55, 57]);
+  } finally {
+    await live.cleanup();
+  }
+});
+
+test('rolling capture keeps looping until Finish and never auto-finishes', async () => {
+  const live = await mountLiveHook();
+  try {
+    await act(async () => live.api().start({ policy: 'rolling', durationBeats: 4, originBeat: 0 }));
+    const token = live.controls[0]!.sessionToken;
+    await live.feed(batch(token, 1, { events: [captureEvent(token, 1, 1, 60)] }));
+    await live.feed(batch(token, 9, { events: [captureEvent(token, 2, 8.5, 62)] }));
+    assert.deepEqual(live.controls.map((control) => control.action), ['start']);
+    assert.equal(live.api().view?.policy, 'rolling');
+    assert.equal(live.api().view?.recorder.phase, 'recording');
+    await act(async () => live.api().finishLoop());
+    assert.deepEqual(live.controls.map((control) => control.action), ['start', 'finish']);
+  } finally {
+    await live.cleanup();
+  }
+});
+
+test('sources map to native mode ids, masks and sentinel lanes', () => {
+  const expected: Array<[RecordedNoteSource, number, number | null]> = [
+    ['keyboard', 0, null],
+    ['walker', 1, null],
+    ['orbit', 2, null],
+    ['randomChords', 3, 0x100],
+    ['randomNotes', 4, 0x101],
+  ];
+  for (const [source, mode, sentinel] of expected) {
+    assert.equal(recordedCaptureModeId(source), mode);
+    assert.equal(recordedCaptureModeMask(source), 1 << mode);
+    assert.equal(recordedCaptureSourceLane(source, 5), sentinel ?? 5);
+  }
+
+  for (const [source, , sentinel] of expected) {
+    const harness = mountHarness();
+    harness.api.start({ source, durationBeats: 2, originBeat: 0, sourceLaneIndex: 5, targetLaneIndex: 2 });
+    const request = harness.controls[0]!;
+    assert.equal(request.source, source);
+    assert.equal(request.sourceLaneIndex, sentinel ?? 5);
+    assert.equal(request.targetLaneIndex, 2, 'the print destination lane is never the sentinel');
+  }
+});
+
+test('fixed capture opens at the next bar boundary', () => {
+  assert.equal(nextBarBeat(5.5, 4), 8);
+  assert.equal(nextBarBeat(8, 4), 8);
+  assert.equal(nextBarBeat(0, 4), 0);
+  assert.equal(nextBarBeat(2.01, 3), 3);
+  const harness = mountHarness(() => 5.5);
+  harness.api.start({ durationBeats: 4 });
+  assert.equal(harness.controls[0]!.policy, 'fixed');
+  assert.equal(harness.controls[0]!.originBeat, 8);
+  assert.equal(harness.controls[0]!.beatsPerBar, 4);
 });

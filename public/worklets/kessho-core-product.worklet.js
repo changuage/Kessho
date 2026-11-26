@@ -791,7 +791,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
   }
 
   captureModeId(source) {
-    return source === 'walker' ? 1 : source === 'orbit' ? 2 : 0;
+    return source === 'walker' ? 1
+      : source === 'orbit' ? 2
+        : source === 'randomChords' ? 3
+          : source === 'randomNotes' ? 4
+            : 0;
   }
 
   captureSourceName(mode) {
@@ -799,19 +803,49 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       ? 'walker'
       : mode === 2 || mode === 'orbit'
         ? 'orbit'
-        : 'keyboard';
+        : mode === 3 || mode === 'randomChords'
+          ? 'randomChords'
+          : mode === 4 || mode === 'randomNotes'
+            ? 'randomNotes'
+            : 'keyboard';
   }
 
   captureControlMode(request) {
-    if (request?.source === 'walker') return 1;
-    if (request?.source === 'orbit') return 2;
-    return 0;
+    return this.captureModeId(request?.source);
+  }
+
+  /** Every non-keyboard source is tapped natively; keyboard timing is UI-owned. */
+  captureUsesNativeTap(request) {
+    return this.captureControlMode(request) !== 0;
+  }
+
+  /** Arrangement producers (3, 4) use a fixed sentinel lane instead of a Euclid lane. */
+  captureEventLane(request) {
+    const mode = this.captureControlMode(request);
+    if (mode === 3) return 0x100;
+    if (mode === 4) return 0x101;
+    return Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.sourceLaneIndex) || 0)));
   }
 
   ensureCaptureOrigin(sample, requestedBeat) {
     const capture = this.recordedCapture;
     if (!capture) return;
     const clock = this.captureClock;
+    if (
+      capture.policy === 'fixed' && capture.originBeat === null && clock &&
+      Number.isFinite(clock.beat) && Number.isFinite(clock.bpm) && clock.bpm > 0
+    ) {
+      // Fixed take: the window opens at the next bar on the audio clock and
+      // closes after exactly durationBeats, with no further UI involvement.
+      const bar = capture.beatsPerBar;
+      const originBeat = Math.ceil(clock.beat / bar - 1e-9) * bar;
+      capture.originBeat = originBeat;
+      capture.originSample = clock.sample + Math.ceil(Math.max(0, originBeat - clock.beat) * 60 * sampleRate / clock.bpm);
+      capture.finishAtBoundary = true;
+      capture.finishBoundaryBeat = originBeat + capture.durationBeats;
+      return;
+    }
+    if (capture.policy === 'fixed') return;
     if (capture.originSample === null) {
       capture.originSample = Number.isFinite(sample) ? Math.max(0, sample) : (clock?.sample ?? this.renderedFrameCount);
     }
@@ -826,13 +860,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const capture = this.recordedCapture;
     if (!capture) return;
     const message = error instanceof Error ? error.message : String(error);
-    if (!capture.disableQueued && (capture.request.source === 'orbit' || capture.request.source === 'walker')) {
+    if (!capture.disableQueued && (this.captureUsesNativeTap(capture.request))) {
       capture.disableQueued = true;
       const mode = this.captureControlMode(capture.request);
       this.enqueueEvent({
         eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
         targetId: 1,
-        index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+        index: this.captureEventLane(capture.request),
         paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
         value: 0,
         value2: mode,
@@ -902,12 +936,12 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     capture.boundaryReached = true;
     if (capture.disableQueued) return;
     capture.disableQueued = true;
-    if (capture.request.source === 'orbit' || capture.request.source === 'walker') {
+    if (this.captureUsesNativeTap(capture.request)) {
       const mode = this.captureControlMode(capture.request);
       this.enqueueEvent({
         eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
         targetId: 1,
-        index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+        index: this.captureEventLane(capture.request),
         paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
         value: 0,
         value2: mode,
@@ -983,7 +1017,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     const pending = generated.events.length === 0
       ? null
       : generated.events.filter((event) =>
-        capture.cutoffSample === null || event.absoluteSample <= capture.cutoffSample,
+        (capture.cutoffSample === null || event.absoluteSample <= capture.cutoffSample) &&
+        (capture.policy !== 'fixed' || (capture.originSample !== null && event.absoluteSample >= capture.originSample)),
       );
     if (generated.overflowCount > 0) capture.overflowCount += generated.overflowCount;
     const notes = pending && pending.length > 0
@@ -1019,6 +1054,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       if (this.recordedCapture) throw new Error('A recorded capture session is already active');
       this.recordedCapture = {
         request,
+        policy: request.policy === 'fixed' ? 'fixed' : 'rolling',
+        durationBeats: Number(request.durationBeats),
+        beatsPerBar: Number.isFinite(Number(request.beatsPerBar)) && Number(request.beatsPerBar) > 0
+          ? Number(request.beatsPerBar)
+          : 4,
         sessionToken: String(request.sessionToken || ''),
         phase: 'recording',
         originSample: null,
@@ -1037,11 +1077,11 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
       this.captureClockSegments.length = 0;
       this.captureClock = null;
       const mode = this.captureControlMode(request);
-      if (request.source === 'orbit' || request.source === 'walker') {
+      if (this.captureUsesNativeTap(request)) {
         this.enqueueEvent({
           eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
           targetId: 1,
-          index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.sourceLaneIndex) || 0))),
+          index: this.captureEventLane(request),
           paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.targetLaneIndex) || 0))),
           value: 1,
           value2: mode,
@@ -1051,6 +1091,9 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     }
     const capture = this.recordedCapture;
     if (!capture || capture.sessionToken !== String(request.sessionToken || '')) return;
+    // A fixed take closes itself at origin + duration; the UI's finish request
+    // only confirms what the audio clock already decided.
+    if (capture.policy === 'fixed' && action === 'finish') return;
     if (action === 'finish' || action === 'stop' || action === 'cancel') {
       capture.phase = 'finishing';
       capture.forceHeartbeat = true;
@@ -1072,13 +1115,13 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         capture.cutoffSample = this.captureClock.sample;
         capture.boundaryReached = true;
       }
-      if (!capture.disableQueued && (capture.request.source === 'orbit' || capture.request.source === 'walker')) {
+      if (!capture.disableQueued && (this.captureUsesNativeTap(capture.request))) {
         capture.disableQueued = true;
         const mode = this.captureControlMode(capture.request);
         this.enqueueEvent({
           eventKind: PRODUCT_EVENT_IDS.GeneratedSequencerCapture,
           targetId: 1,
-          index: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.sourceLaneIndex) || 0))),
+          index: this.captureEventLane(capture.request),
           paramId: Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(capture.request.targetLaneIndex) || 0))),
           value: 0,
           value2: mode,

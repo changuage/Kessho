@@ -44,12 +44,51 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
   const uint64_t block_end = block_start + frames;
   const auto next_random = [&]() { return arrangementNextRandom(arrangement.rng_state); };
 
+  const auto capture_lane_for_mode = [](uint32_t mode) {
+    return mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS
+        ? static_cast<uint32_t>(KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS)
+        : static_cast<uint32_t>(KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES);
+  };
+  const auto next_capture_attack_id = [&]() {
+    const uint64_t id = generated_sequencer_capture_attack_counter++;
+    if (generated_sequencer_capture_attack_counter == 0u) generated_sequencer_capture_attack_counter = 1u;
+    return id;
+  };
+  const auto arrangement_capture_wanted = [&](uint32_t mode) {
+    return generated_sequencer_capture_ring != nullptr &&
+        kessho::product::shouldCaptureGeneratedSequencerEvent(
+            generated_sequencer_capture_config, capture_lane_for_mode(mode), mode);
+  };
+  const auto captureArrangementNote = [&](uint32_t mode, uint64_t absolute_sample,
+                                          const KesshoSequencerEvent& event, uint32_t source_id,
+                                          uint64_t attack_id) {
+    if (mode == 0u || !arrangement_capture_wanted(mode)) return;
+    KesshoProductGeneratedSequencerCaptureEvent captured{};
+    captured.event_id = generated_sequencer_capture_event_counter++;
+    captured.absolute_sample = absolute_sample;
+    captured.source_lane_index = capture_lane_for_mode(mode);
+    captured.source_mode = mode;
+    captured.target_source_id = source_id;
+    captured.midi_note = event.midi_note;
+    captured.velocity = event.velocity;
+    captured.gate_seconds = event.hold_seconds;
+    captured.source_step_index = -1;
+    captured.source_layer_index = -1;
+    captured.source_note_index = -1;
+    captured.target_step_index = -1;
+    captured.target_step_float = -1.0f;
+    captured.nudge = 0.0f;
+    captured.attack_id = attack_id != 0u ? attack_id : next_capture_attack_id();
+    generated_sequencer_capture_ring->push(captured);
+  };
+
   const auto queue_note = [&](uint64_t absolute_sample, uint32_t source_id, float midi,
                               float velocity, float hold_seconds, uint32_t voice_index,
                               float morph, float distance, float expression,
                               uint32_t visual_kind, uint64_t phrase_start_sample,
                               uint64_t phrase_index, float phrase_seconds,
-                              float trigger_interval_seconds) {
+                              float trigger_interval_seconds, uint32_t capture_mode,
+                              uint64_t capture_attack_id) {
     if (arrangement.pending_count >= kMaxArrangementPendingEvents) return;
     ProductArrangementPendingEvent& pending = arrangement.pending[arrangement.pending_count++];
     pending.absolute_sample = absolute_sample;
@@ -69,6 +108,8 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
       pending.event.flags = sequencerPadVoiceEventFlags(voice_index % kProductPadVoiceCount);
     }
+    pending.capture_mode = capture_mode;
+    pending.capture_attack_id = capture_attack_id;
     // The visualizers are phrase previews, not trigger-history meters. Publish
     // the exact event as soon as it enters the arrangement queue so every dot
     // is visible before the playhead reaches it.
@@ -112,6 +153,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
             ? harmony.note_pool_midi[index]
             : harmony.chord_midi[index];
     }
+    const uint64_t chord_attack_id = next_capture_attack_id();
     double voice_delays[8]{};
     const double spread_seconds = static_cast<double>(arrangement.wave_spread) *
         static_cast<double>(std::max(0.0f, spread_interval_seconds));
@@ -240,7 +282,9 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
           phrase_start_sample,
           visual_phrase_index,
           visual_phrase_seconds,
-          visual_trigger_interval_seconds);
+          visual_trigger_interval_seconds,
+          KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS,
+          chord_attack_id);
     };
 
     for (uint32_t index = 0u; index < built_count; ++index) {
@@ -347,7 +391,9 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
             arrangement.next_lead_phrase_frame,
             arrangement.lead_phrase_index > 0u ? arrangement.lead_phrase_index - 1u : 0u,
             arrangement.lead_phrase_seconds,
-            arrangement.lead_phrase_seconds);
+            arrangement.lead_phrase_seconds,
+            KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
+            0u);
       }
       arrangement.next_lead_phrase_frame += phrase_frames;
     }
@@ -357,6 +403,11 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
   for (uint32_t index = 0u; index < arrangement.pending_count; ++index) {
     ProductArrangementPendingEvent pending = arrangement.pending[index];
     if (pending.absolute_sample < block_end) {
+      // Tap at emission: the note really sounds now, so a capture armed after
+      // it was scheduled still sees it.
+      captureArrangementNote(
+          pending.capture_mode, pending.absolute_sample, pending.event,
+          pending.event.source_id, pending.capture_attack_id);
       pending.event.sample_offset = pending.absolute_sample <= block_start
           ? 0u
           : static_cast<uint32_t>(pending.absolute_sample - block_start);

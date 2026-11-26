@@ -28,7 +28,12 @@ export const UINT32_MAX = RECORDED_NOTE_CLIP_MAX_ID;
 export const RECORDED_NOTE_SESSION_SCHEMA_VERSION = RECORDED_NOTE_CLIP_SCHEMA_VERSION;
 export const RECORDED_NOTE_MIN_DURATION_BEATS = 1e-6;
 
-export type RecordedNoteSource = 'keyboard' | 'orbit' | 'walker';
+export type RecordedNoteSource =
+  | 'keyboard'
+  | 'orbit'
+  | 'walker'
+  | 'randomChords'
+  | 'randomNotes';
 export type RecordedNoteMode = 'replace' | 'overdub' | 'extend';
 export type RecordedNoteSessionPhase =
   | 'idle'

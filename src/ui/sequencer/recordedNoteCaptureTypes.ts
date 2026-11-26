@@ -3,6 +3,44 @@ import type {
   RecordedNoteSource,
 } from './recordedNoteSession';
 
+/**
+ * `fixed` starts at the next bar on the audio clock, records exactly
+ * `durationBeats`, then finishes and drains by itself (Print).
+ * `rolling` keeps the last `durationBeats` until Finish (live replace/overdub).
+ */
+export type RecordedNoteCapturePolicy = 'fixed' | 'rolling';
+
+/** Native generated-capture mode ids (KesshoProductGeneratedSequencerCaptureMode). */
+export const RECORDED_CAPTURE_MODE_IDS: Readonly<Record<RecordedNoteSource, number>> = {
+  keyboard: 0,
+  walker: 1,
+  orbit: 2,
+  randomChords: 3,
+  randomNotes: 4,
+};
+
+/** Fixed source_lane_index the arrangement producers stamp on their capture events. */
+export const RECORDED_CAPTURE_ARRANGEMENT_LANES = {
+  randomChords: 0x100,
+  randomNotes: 0x101,
+} as const;
+
+export function recordedCaptureModeId(source: RecordedNoteSource): number {
+  return RECORDED_CAPTURE_MODE_IDS[source];
+}
+
+/** The native source-mode mask that selects this source's producer tap. */
+export function recordedCaptureModeMask(source: RecordedNoteSource): number {
+  return 1 << recordedCaptureModeId(source);
+}
+
+/** Random producers have no lane, so a request targets their sentinel lane. */
+export function recordedCaptureSourceLane(source: RecordedNoteSource, laneIndex: number): number {
+  return source === 'randomChords' || source === 'randomNotes'
+    ? RECORDED_CAPTURE_ARRANGEMENT_LANES[source]
+    : laneIndex;
+}
+
 export type RecordedNoteCaptureBatchPhase = 'recording' | 'finishing' | 'ready' | 'error';
 
 /** One authoritative timed note delivered by the runtime capture stream. */
@@ -48,8 +86,11 @@ export interface RecordedNoteCaptureStartRequest {
   readonly targetLaneIndex: number;
   readonly source: RecordedNoteSource;
   readonly mode: RecordedNoteMode;
+  readonly policy: RecordedNoteCapturePolicy;
   readonly durationBeats: number;
   readonly gridSteps: number;
+  /** Bar length used to find the next bar for `fixed` captures. */
+  readonly beatsPerBar: number;
   readonly originBeat?: number;
 }
 

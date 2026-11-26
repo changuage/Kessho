@@ -236,6 +236,187 @@ __attribute__((noinline)) void requireDirectMusicCoverage() {
   require(direct.journey_phase > 0.1f, "direct journey clock did not advance");
 }
 
+void enableArrangementCapture(KesshoProductEngine* engine, uint32_t lane, uint32_t mode) {
+  KesshoProductEvent capture{};
+  capture.event_kind = KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE;
+  capture.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  capture.index = lane;
+  capture.param_id = 0u;
+  capture.value = 1.0f;
+  capture.value2 = static_cast<float>(mode);
+  require(kessho_product_enqueue_event(engine, &capture) == KESSHO_PRODUCT_OK,
+      "arrangement capture enable event rejected");
+}
+
+// Captures the debug-rendered arrangement events of `snapshot` and returns the
+// number of events rendered; `captured` receives the drained capture events.
+int32_t renderArrangementWithCapture(
+    const KesshoProductSnapshotV2& snapshot,
+    bool capture_enabled,
+    uint32_t lane,
+    uint32_t mode,
+    KesshoSequencerEvent* events,
+    uint32_t max_events,
+    KesshoProductGeneratedSequencerCaptureEvent* captured,
+    uint32_t& captured_count) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
+  require(engine != nullptr, "arrangement capture engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "arrangement capture snapshot load failed");
+  if (capture_enabled) enableArrangementCapture(engine, lane, mode);
+  const int32_t count = kessho_product_debug_render_events(engine, events, max_events, 18001u);
+  uint32_t overflow = 0u;
+  captured_count = kessho_product_drain_generated_sequencer_capture_events(
+      engine, captured, max_events, &overflow);
+  require(overflow == 0u, "arrangement capture should not overflow");
+  kessho_product_destroy(engine);
+  return count;
+}
+
+__attribute__((noinline)) void requireArrangementCapture() {
+  using kessho::product::tests::applyGeneratedSourceDefaults;
+  constexpr uint32_t kMax = 64u;
+  static KesshoSequencerEvent events[kMax];
+  static KesshoProductGeneratedSequencerCaptureEvent captured[kMax];
+  uint32_t captured_count = 0u;
+
+  // Random Chords: one capture event per accepted chord voice, sharing one
+  // attack id, at the exact scheduled sample.
+  auto chord_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.4f, 404u));
+  chord_snapshot->synth_euclid.lane_count = 0u;
+  chord_snapshot->arrangement.chord_generator_enabled = 1u;
+  chord_snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+  chord_snapshot->arrangement.chord_generator_voice_count = 3u;
+  chord_snapshot->arrangement.wave_spread = 0.125f;
+  chord_snapshot->harmony.chord_interval_seconds = 0.25f;
+  int32_t count = renderArrangementWithCapture(
+      *chord_snapshot, true,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS,
+      events, kMax, captured, captured_count);
+  require(count == 3 && captured_count == 3u, "Random Chords capture should tap each chord voice");
+  std::sort(events, events + count, [](const KesshoSequencerEvent& a, const KesshoSequencerEvent& b) {
+    return a.sample_offset != b.sample_offset ? a.sample_offset < b.sample_offset : a.midi_note < b.midi_note;
+  });
+  std::sort(captured, captured + captured_count, [](const auto& a, const auto& b) {
+    return a.absolute_sample != b.absolute_sample ? a.absolute_sample < b.absolute_sample : a.midi_note < b.midi_note;
+  });
+  for (uint32_t index = 0u; index < captured_count; ++index) {
+    require(captured[index].absolute_sample == events[index].sample_offset,
+        "Random Chords capture sample should match the scheduled event");
+    requireNear(captured[index].midi_note, events[index].midi_note, 0.0001f,
+        "Random Chords capture pitch should match the scheduled event");
+    requireNear(captured[index].velocity, events[index].velocity, 0.0001f,
+        "Random Chords capture velocity should match the scheduled event");
+    requireNear(captured[index].gate_seconds, events[index].hold_seconds, 0.0001f,
+        "Random Chords capture gate should match the scheduled event");
+    require(captured[index].target_source_id == events[index].source_id,
+        "Random Chords capture target should match the scheduled event");
+    require(captured[index].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS &&
+            captured[index].source_lane_index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
+        "Random Chords capture mode and sentinel lane mismatch");
+    require(captured[index].attack_id != 0u && captured[index].attack_id == captured[0].attack_id,
+        "Random Chords voices of one chord should share an attack id");
+    require(captured[index].source_step_index == -1 && captured[index].target_step_index == -1,
+        "Random Chords capture step fields should be -1");
+  }
+
+  // A different mode mask captures nothing, and neither does a disabled config.
+  count = renderArrangementWithCapture(
+      *chord_snapshot, true,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
+      events, kMax, captured, captured_count);
+  require(count == 3 && captured_count == 0u, "Random Notes mask must not tap Random Chords");
+  count = renderArrangementWithCapture(
+      *chord_snapshot, false, 0u, 0u, events, kMax, captured, captured_count);
+  require(count == 3 && captured_count == 0u, "disabled capture must not tap Random Chords");
+
+  // Random Notes: one attack id per note.
+  auto lead_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.4f, 505u));
+  lead_snapshot->synth_euclid.lane_count = 0u;
+  lead_snapshot->arrangement.lead_random_enabled = 1u;
+  lead_snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+  lead_snapshot->arrangement.lead_phrase_seconds = 0.25f;
+  lead_snapshot->arrangement.lead_density = 0.5f;
+  lead_snapshot->arrangement.lead_octave_range = 2u;
+  lead_snapshot->arrangement.lead_hold_seconds = 0.4f;
+  lead_snapshot->arrangement.lead_velocity_min = 0.5f;
+  lead_snapshot->arrangement.lead_velocity_max = 0.9f;
+  count = renderArrangementWithCapture(
+      *lead_snapshot, true,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
+      events, kMax, captured, captured_count);
+  // The tap fires when a note is emitted, so captured notes are exactly the
+  // notes that sound inside the rendered span.
+  require(count > 0 && captured_count == static_cast<uint32_t>(count),
+      "Random Notes capture should tap every emitted note");
+  std::sort(events, events + count, [](const KesshoSequencerEvent& a, const KesshoSequencerEvent& b) {
+    return a.sample_offset != b.sample_offset ? a.sample_offset < b.sample_offset : a.midi_note < b.midi_note;
+  });
+  std::sort(captured, captured + captured_count, [](const auto& a, const auto& b) {
+    return a.absolute_sample != b.absolute_sample ? a.absolute_sample < b.absolute_sample : a.midi_note < b.midi_note;
+  });
+  for (uint32_t index = 0u; index < static_cast<uint32_t>(count); ++index) {
+    require(captured[index].absolute_sample == events[index].sample_offset,
+        "Random Notes capture sample should match the scheduled event");
+    requireNear(captured[index].midi_note, events[index].midi_note, 0.0001f,
+        "Random Notes capture pitch should match the scheduled event");
+    requireNear(captured[index].velocity, events[index].velocity, 0.0001f,
+        "Random Notes capture velocity should match the scheduled event");
+    require(captured[index].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
+        "Random Notes capture mode mismatch");
+    for (uint32_t other = index + 1u; other < captured_count; ++other) {
+      require(captured[index].attack_id != captured[other].attack_id,
+          "each Random Note should have its own attack id");
+    }
+  }
+  count = renderArrangementWithCapture(
+      *lead_snapshot, true,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
+      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS,
+      events, kMax, captured, captured_count);
+  require(count > 0 && captured_count == 0u, "Random Chords mask must not tap Random Notes");
+
+  // Capture armed after a phrase was scheduled still sees the notes that sound
+  // later: the tap is at emission, not scheduling.
+  {
+    constexpr uint32_t kArmFrames = 128u;
+    KesshoProductEngine* engine = kessho_product_create(48000.0, 128u, 0u);
+    require(engine != nullptr, "late-arm capture engine create failed");
+    require(kessho_product_load_snapshot_v2(engine, lead_snapshot.get(), sizeof(*lead_snapshot)) == KESSHO_PRODUCT_OK,
+        "late-arm capture snapshot load failed");
+    KesshoSequencerEvent early[kMax]{};
+    require(kessho_product_debug_render_events(engine, early, kMax, kArmFrames) == 0,
+        "no random note should sound before the late arm");
+    require(engine->arrangement.pending_count > 0u, "the phrase should already be scheduled");
+    enableArrangementCapture(
+        engine,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES);
+    const int32_t late_count = kessho_product_debug_render_events(engine, events, kMax, 18001u);
+    uint32_t overflow = 0u;
+    const uint32_t late_captured = kessho_product_drain_generated_sequencer_capture_events(
+        engine, captured, kMax, &overflow);
+    require(late_count > 0 && late_captured == static_cast<uint32_t>(late_count) && overflow == 0u,
+        "notes scheduled before arming but sounding after must be captured");
+    std::sort(events, events + late_count, [](const KesshoSequencerEvent& a, const KesshoSequencerEvent& b) {
+      return a.sample_offset != b.sample_offset ? a.sample_offset < b.sample_offset : a.midi_note < b.midi_note;
+    });
+    std::sort(captured, captured + late_captured, [](const auto& a, const auto& b) {
+      return a.absolute_sample != b.absolute_sample ? a.absolute_sample < b.absolute_sample : a.midi_note < b.midi_note;
+    });
+    for (uint32_t index = 0u; index < late_captured; ++index) {
+      require(captured[index].absolute_sample == events[index].sample_offset + kArmFrames,
+          "late-arm capture should keep the real emission sample");
+      requireNear(captured[index].midi_note, events[index].midi_note, 0.0001f,
+          "late-arm capture pitch mismatch");
+    }
+    kessho_product_destroy(engine);
+  }
+}
+
 __attribute__((noinline)) void requireArrangementScheduling() {
   auto arrangement_snapshot = std::make_unique<KesshoProductSnapshotV2>(
       makeSnapshot(60.0f, 1u, 0.4f, 404u));
@@ -1569,6 +1750,7 @@ int main() {
   kessho_product_destroy(track_off_engine);
 
   requireArrangementScheduling();
+  requireArrangementCapture();
   requireLongArrangementSimulation();
   requireTypeScriptHarmonySequenceParity();
   requireSemanticRecipeTableParity();

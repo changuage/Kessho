@@ -9,10 +9,12 @@ import {
   type RecordedNoteSessionState,
   type RecordedNoteSource,
 } from './recordedNoteSession';
-import type {
-  RecordedNoteCaptureBatch,
-  RecordedNoteCaptureStartRequest,
-  RecordedNoteCaptureSubscription,
+import {
+  recordedCaptureSourceLane,
+  type RecordedNoteCaptureBatch,
+  type RecordedNoteCapturePolicy,
+  type RecordedNoteCaptureStartRequest,
+  type RecordedNoteCaptureSubscription,
 } from './recordedNoteCaptureTypes';
 import { createRecordedNoteClip } from './recordedNoteClip';
 import {
@@ -28,9 +30,12 @@ export interface StartRecordedNoteCaptureRequest {
   readonly durationBeats?: number;
   readonly gridSteps?: number;
   readonly originBeat?: number;
+  /** Defaults to `fixed`: start at the next bar, record exactly durationBeats, finish by itself. */
+  readonly policy?: RecordedNoteCapturePolicy;
 }
 
 export interface RecordedNoteCaptureView {
+  readonly policy: RecordedNoteCapturePolicy;
   readonly sourceLaneIndex: number;
   readonly targetLaneIndex: number;
   readonly source: RecordedNoteSource;
@@ -51,6 +56,8 @@ export interface UseRecordedNoteCaptureArgs {
   readonly activeSource: RecordedNoteSource;
   readonly defaultDurationBeats?: number;
   readonly defaultGridSteps?: number;
+  /** Bar length in beats, used to find the next bar for fixed captures. */
+  readonly beatsPerBar?: number;
   readonly setCaptureEnabled?: (request: RecordedNoteCaptureStartRequest) => void;
   readonly subscribeCapture?: RecordedNoteCaptureSubscription;
   /** Audio-clock correlation for direct keyboard/UI note events. */
@@ -90,7 +97,16 @@ function nowMs(): number {
     : Date.now();
 }
 
+/** First bar boundary at or after `beat`. */
+export function nextBarBeat(beat: number, beatsPerBar: number): number {
+  const bar = Number.isFinite(beatsPerBar) && beatsPerBar > 0 ? beatsPerBar : 4;
+  if (!Number.isFinite(beat)) return 0;
+  return Math.ceil(beat / bar - 1e-9) * bar || 0;
+}
+
 interface ActiveCapture {
+  readonly policy: RecordedNoteCapturePolicy;
+  readonly beatsPerBar: number;
   readonly controller: RecordedNoteSession;
   readonly sourceLaneIndex: number;
   readonly targetLaneIndex: number;
@@ -139,12 +155,14 @@ function controlRequest(
     action,
     enabled: action === 'start' || action === 'finish',
     sessionToken: active.token,
-    sourceLaneIndex: active.sourceLaneIndex,
+    sourceLaneIndex: recordedCaptureSourceLane(active.source, active.sourceLaneIndex),
     targetLaneIndex: active.targetLaneIndex,
     source: active.source,
     mode: active.mode,
+    policy: active.policy,
     durationBeats: active.passDurationBeats,
     gridSteps: active.gridSteps,
+    beatsPerBar: active.beatsPerBar,
     originBeat: active.originBeat,
   };
 }
@@ -193,6 +211,7 @@ export function useRecordedNoteCapture({
   activeSource,
   defaultDurationBeats = 4,
   defaultGridSteps = 16,
+  beatsPerBar = 4,
   setCaptureEnabled,
   subscribeCapture,
   getCaptureClockBeat,
@@ -215,6 +234,7 @@ export function useRecordedNoteCapture({
   }, [setCaptureEnabled]);
 
   const buildView = useCallback((active: ActiveCapture): RecordedNoteCaptureView => ({
+      policy: active.policy,
       sourceLaneIndex: active.sourceLaneIndex,
       targetLaneIndex: active.targetLaneIndex,
       source: active.source,
@@ -319,6 +339,20 @@ export function useRecordedNoteCapture({
   }, []);
 
   const maybeAdvance = useCallback((active: ActiveCapture) => {
+    if (
+      active.policy === 'fixed'
+      && active.controller.getPhase() === 'recording'
+      && active.runtimePhase === 'recording'
+      && finite(active.currentClockBeat)
+      && active.currentClockBeat >= active.originBeat + active.passDurationBeats
+    ) {
+      // The audio clock passed the window. Ask the runtime to close intake at
+      // the audio boundary; completion still waits for its final drain.
+      active.controller.finishLoop(Number.NEGATIVE_INFINITY);
+      active.snapshotDirty = true;
+      active.pendingBoundary ??= { kind: 'auto' };
+      sendControlRef.current?.(controlRequest(active, 'finish'));
+    }
     if (active.runtimePhase === 'finishing' && active.controller.getPhase() === 'recording') {
       active.controller.finishLoop(Number.NEGATIVE_INFINITY);
       active.snapshotDirty = true;
@@ -404,6 +438,13 @@ export function useRecordedNoteCapture({
           ...(event.sourceId === undefined ? {} : { sourceId: event.sourceId }),
           ...(event.chordGroupId === undefined ? {} : { chordGroupId: event.chordGroupId }),
         });
+      } else if (
+        active.policy === 'fixed'
+        && !(event.onsetBeats >= 0 && event.onsetBeats < active.passDurationBeats)
+      ) {
+        // Fixed window is [origin, origin + duration). The event still counts
+        // toward the drain watermark above, but is not part of the take.
+        continue;
       } else {
         active.controller.recordNote({
           source: event.source,
@@ -476,11 +517,15 @@ export function useRecordedNoteCapture({
     const targetLaneIndex = safeLaneIndex(request.targetLaneIndex, activeLaneIndex);
     const source = request.source ?? activeSource;
     const mode = request.mode ?? 'replace';
+    const policy = request.policy ?? 'fixed';
     const correlatedOriginBeat = request.originBeat === undefined ? getCaptureClockBeat?.() : null;
+    const clockOriginBeat = correlatedOriginBeat !== null && correlatedOriginBeat !== undefined && finite(correlatedOriginBeat)
+      ? correlatedOriginBeat
+      : currentClockRef.current;
+    // A fixed take begins on the next bar. This is only the UI's estimate; the
+    // runtime reports the authoritative origin before the first note.
     const originBeat = request.originBeat ?? (
-      correlatedOriginBeat !== null && correlatedOriginBeat !== undefined && finite(correlatedOriginBeat)
-        ? correlatedOriginBeat
-        : currentClockRef.current
+      policy === 'fixed' ? nextBarBeat(clockOriginBeat, beatsPerBar) : clockOriginBeat
     );
     const controller = new RecordedNoteSession({
       durationBeats: request.durationBeats ?? defaultDurationBeats,
@@ -495,6 +540,8 @@ export function useRecordedNoteCapture({
     const token = state.token;
     if (!token) {
       const failed: ActiveCapture = {
+        policy,
+        beatsPerBar,
         controller,
         sourceLaneIndex,
         targetLaneIndex,
@@ -522,8 +569,13 @@ export function useRecordedNoteCapture({
       return;
     }
     const draftDuration = state.draft?.durationBeats ?? (request.durationBeats ?? defaultDurationBeats);
-    const captureScratch = new SynthSequenceCaptureScratch(Math.max(1e-6, draftDuration));
+    // The looping scratch sweeps phase positions; a fixed take never loops.
+    const captureScratch = policy === 'rolling'
+      ? new SynthSequenceCaptureScratch(Math.max(1e-6, draftDuration))
+      : null;
     const active: ActiveCapture = {
+      policy,
+      beatsPerBar,
       controller,
       sourceLaneIndex,
       targetLaneIndex,
@@ -546,12 +598,12 @@ export function useRecordedNoteCapture({
       scratchNoteSerial: 0,
       scratchOverflowed: false,
     };
-    captureScratch.start(originBeat, []);
+    captureScratch?.start(originBeat, []);
     activeRef.current = active;
     currentClockRef.current = originBeat;
     sendControl(active, 'start');
     publish(active, true);
-  }, [activeLaneIndex, activeSource, defaultDurationBeats, defaultGridSteps, getCaptureClockBeat, publish, sendControl]);
+  }, [activeLaneIndex, activeSource, beatsPerBar, defaultDurationBeats, defaultGridSteps, getCaptureClockBeat, publish, sendControl]);
 
   const finishLoop = useCallback(() => {
     const active = activeRef.current;
@@ -608,6 +660,12 @@ export function useRecordedNoteCapture({
     if (finite(nextClockBeat)) active.currentClockBeat = nextClockBeat;
     currentClockRef.current = active.currentClockBeat;
     const onsetBeats = Math.max(0, active.currentClockBeat - active.originBeat);
+    if (
+      active.policy === 'fixed'
+      && (active.currentClockBeat < active.originBeat || onsetBeats >= active.passDurationBeats)
+    ) {
+      return null;
+    }
     if (active.scratch) {
       const scratchId = active.scratch.noteOn(inputId, { pitch, velocity, sourceId, ...metadata }, active.currentClockBeat);
       active.snapshotDirty = true;

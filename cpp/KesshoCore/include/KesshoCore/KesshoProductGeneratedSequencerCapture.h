@@ -14,8 +14,17 @@ extern "C" {
 typedef enum KesshoProductGeneratedSequencerCaptureMode {
   KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_EUCLID = 0u,
   KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ANCHOR_WALKER = 1u,
-  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT = 2u
+  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_ORBIT = 2u,
+  // Arrangement producers (ProductArrangementSequencer.cpp).  They have no
+  // Euclid lane, so their events carry a fixed sentinel source_lane_index.
+  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS = 3u,
+  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES = 4u
 } KesshoProductGeneratedSequencerCaptureMode;
+
+enum {
+  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS = 0x100u,
+  KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES = 0x101u
+};
 
 typedef struct KesshoProductGeneratedSequencerCaptureEvent {
   uint64_t event_id;

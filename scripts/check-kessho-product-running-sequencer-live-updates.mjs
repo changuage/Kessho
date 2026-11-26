@@ -518,7 +518,11 @@ check(
     files.synthPage.includes('if (onRequestPlaybackStart) setRecordedCaptureStartPendingLane(laneIndex)') &&
     files.synthPage.includes('if (laneIndex === null || !isRunning) return') &&
     files.synthPage.includes('if (laneIndex === seq.activeTab) startRecordedCaptureForActiveLane()') &&
-    files.synthPage.includes('source: sourceForMode(activeSequencerMode)') &&
+    files.synthPage.includes('? sourceForMode(activeSequencerMode)') &&
+    files.synthPage.includes("policy: 'fixed'") &&
+    files.synthPage.includes("id: 'randomChords' as const") &&
+    files.synthPage.includes("id: 'randomNotes' as const") &&
+    files.recordedCaptureHook.includes("request.policy ?? 'fixed'") &&
     files.recordedCaptureHook.includes("if (mode === 'anchorWalker') return 'walker'") &&
     files.recordedCaptureHook.includes("if (mode === 'orbit') return 'orbit'") &&
     files.recordedCaptureHook.includes("active.runtimePhase !== 'ready' || !watermarkReached(active)") &&

@@ -342,10 +342,13 @@ void retimeSequencerLanePreservingPhase(
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE:
       return valid_sequencer(event.target_id) &&
-              event.index < kMaxLaneCount &&
+              (event.index < kMaxLaneCount ||
+               (event.value2 >= 3.0f &&
+                (event.index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS ||
+                 event.index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES))) &&
               event.param_id < kMaxLaneCount &&
               event.value >= 0.0f && event.value <= 1.0f &&
-              event.value2 >= 0.0f && event.value2 <= 2.0f
+              event.value2 >= 0.0f && event.value2 <= 4.0f
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_CONFIG:
