@@ -87,14 +87,16 @@ Extract a pure function `resolveChord(intent, notes, frame, previous) → notes[
 - **Use:** placing a palette chord copies it into a cell or progression event.
 
 ### D7 · Printer writes Fixed chords into a chosen variation
-Captured notes become cells in the chosen variation, with Notes advance = Steps and length = step count. Each cell is a Fixed chord whose notes carry `velocity`, `offset_beats`, `gate_beats` and `destination_source_id`. This fixes the four confirmed defects:
+The TS variation model moves to cells in T6, so the printer writes what native plays.
 
-1. **Destination kept:** each note keeps its sound destination.
-2. **Dense attacks fit:** several attacks in one cell are stored as offsets.
-3. **Lanes untouched:** Morph and Distance are left alone.
-4. **One variation written:** only the target variation is replaced, after a revision check.
-
-It also fixes single-note velocity. Fixed-window capture becomes a policy beside rolling capture, and Random producer taps join the native generated-capture ring.
+- **TS cells (schema version 2):** `SynthSequenceVariation` replaces `stepMetadata` with `notesLane: { length, direction, advance: 'steps' | 'hits' }` and `cells: NotesCell[]` (32). A cell is `{ kind: 'rest' | 'harmony' | 'chord', intervals?: ChordNote[], chord?: Chord, gateBeats, articulation: 'chord' | 'arp', arp? }`. Harmony cells hold intervals; chord cells hold a `Chord`, either Follow or Fixed with up to 32 notes. A version 1 bank loads through the step-to-cell mapping the encoder uses in T2: Notes mode becomes Fixed root + interval, any other mode becomes Harmony. That mapping moves from the encoder into the normaliser, and the encoder then writes cells directly.
+- **A print is one Fixed chord per occupied step:**
+  - each note keeps its absolute `midi`, `velocity`, `gate`, `offset` (attack time from the step start, so dense attacks survive) and `destination` (its source);
+  - the Pitch, Expression and Nudge sublanes are switched off for the printed variation, because the notes carry that information;
+  - Morph, Distance, Slice and Reverse keep the base lane's state.
+- **One variation per print:** the printer writes only the target variation, merges it into the current bank and commits only if the bank revision is unchanged. A take longer than 32 steps at the chosen resolution fails with `capacity` and is kept.
+- **Native playback:** `offset_beats` delays each note by its offset at the current tempo, and `destination_source_id` (when non-zero) sends the note to that source.
+- **Deleted:** the generated-capture-to-Euclid path (`useGeneratedSequenceCapture`, `commitGeneratedCaptureToEuclid`, `generatedCaptureProductCommit` and the helpers only they use), which the app never calls. The fixed-window capture policy and the Random producer taps follow in T6c, once the recorded capture path is the only one.
 
 ### D8 · Persistence: new keys, no chord decoders
 - **New keys:** `harmonyProgression` (and its A/B endpoints) at version 2, whose events are `{ type: 'auto' }` or `{ type: 'chord', chord: Chord }`, plus `harmonyPalette`. In T7, the Notes-lane cells replace `stepMetadata` inside `synthSequenceVariations`, with a format version bump.
