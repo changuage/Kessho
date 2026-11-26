@@ -106,8 +106,6 @@ function withDrumChain(state: SliderState): SliderState {
 
 function testRegistryCoversPresetOwnedState(): void {
   const currentStateKeys = Object.keys(DEFAULT_STATE).filter((key) => (
-    !key.startsWith('chordProgression') &&
-    !key.startsWith('harmonyChordSequence') &&
     key !== 'harmonyGenerationSeed'
   ));
   const result = validateRegistry(currentStateKeys);
@@ -332,7 +330,7 @@ function testOverlapIsStrippedAtEachLevel(): void {
     childRefData(getPresetChildSpecs('state', undefined), stateData),
   );
   assert.equal('dynamicsEnabled' in stateOverride, true, 'global Dynamics enable should remain in the L4 state override');
-  assert.equal('harmonyChordSlots' in stateOverride, true, 'global structured harmony slots should remain in the L4 state override');
+  assert.equal('harmonyProgression' in stateOverride, true, 'global structured harmony progression should remain in the L4 state override');
   assert.equal('chordProgressionHits' in stateOverride, false, 'legacy chord progression controls should not remain in the L4 state override');
   assert.equal('synthSequencerFaces' in stateOverride, true, 'synth sequencer faces are L4 arrangement state');
   assert.equal('synthSequencerChain' in stateOverride, true, 'synth sequencer chain is L4 arrangement state');

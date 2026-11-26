@@ -552,11 +552,8 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if (
-    /^harmonyChord(Slots|SlotsA|SlotsB|Sequence|SequenceA|SequenceB)$/.test(key) ||
     key === 'manualHarmonyControl' ||
-    key === 'harmonyMorphPercent' ||
-    key === 'harmonyChordSequenceEnabled' ||
-    key === 'harmonyChordSequenceStepIndex'
+    key === 'harmonyMorphPercent'
   ) {
     return {
       path: 'harmony-param-diff',
@@ -565,7 +562,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
         'src/audio/coreProductSnapshot.ts#createCoreProductSnapshot',
         'src/audio/CoreProductRuntimeAdapter.ts#appendHarmonyDiffs',
       ],
-      reason: 'Structured harmony state resolves to Product harmony frame fields and generated harmony control/slot/sequence events.',
+      reason: 'Structured harmony state resolves to Product harmony frame fields and generated harmony control events.',
     };
   }
 
@@ -594,12 +591,6 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
   }
 
   if ([
-    'chordProgressionSteps',
-    'chordProgressionClockSource',
-    'chordProgressionEnabled',
-    'chordProgressionPattern',
-    'chordProgressionPhraseMultiplier',
-    'chordProgressionStepEnabled',
     'chordRate',
     'cofDriftDirection',
     'cofDriftEnabled',

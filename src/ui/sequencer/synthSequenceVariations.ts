@@ -1,4 +1,3 @@
-import type { SharedHarmonyChord } from '../../audio/harmony/harmonyTypes';
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import { SCALES, semitoneToScaleDegree, type ClockDivision } from '../../audio/drumSeqTypes';
 import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
@@ -127,8 +126,6 @@ export interface SynthLocalChordPayload {
   /** Intervals are rooted at the step's pitch; this local list is playback authority. */
   intervals: SynthLocalChordInterval[];
   followHarmony?: boolean;
-  /** Optional semantic context for display/adoption, never required for playback. */
-  sharedChord?: SharedHarmonyChord;
 }
 
 export interface SynthVariationArpPayload {
@@ -536,7 +533,6 @@ function makeStepMetadata(group: CaptureGroup): SynthVariationStepMetadata {
         ...(finite(interval.gateBeats) ? { gateBeats: interval.gateBeats } : {}),
       })),
       ...(chord.followHarmony !== undefined ? { followHarmony: chord.followHarmony } : {}),
-      ...(chord.sharedChord ? { sharedChord: cloneJson(chord.sharedChord) } : {}),
     };
   }
   if (mode === 'arp' || root.arp) result.arp = root.arp ? cloneJson(root.arp) : undefined;
@@ -768,7 +764,6 @@ function normalizeStepMetadata(value: unknown, steps: number): Record<string, Sy
           ...(interval.gateBeats === undefined ? {} : { gateBeats: interval.gateBeats }),
         })),
         ...(source.chord.followHarmony === undefined ? {} : { followHarmony: source.chord.followHarmony }),
-        ...(source.chord.sharedChord ? { sharedChord: cloneJson(source.chord.sharedChord) } : {}),
       };
     }
     if (source.arp !== undefined) {

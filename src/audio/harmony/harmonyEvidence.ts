@@ -5,7 +5,6 @@ export const HARMONY_EVIDENCE_WEIGHTS = Object.freeze({
   playedChord: 1.0,
   progression: 0.92,
   seqTrigger: 0.78,
-  slot: 0.52,
   baseline: 0.18,
   livePlay: 0.88,
   recognition: 0.95,
@@ -147,7 +146,7 @@ export interface HarmonySeqTriggerObservation {
   rootPitchClass?: number;
   bassMidi?: number;
   audible: boolean;
-  source?: 'seq' | 'progression' | 'slot';
+  source?: 'seq' | 'progression';
 }
 
 export interface HarmonySeqTelemetryEvidenceInput {
@@ -168,7 +167,7 @@ export function harmonyEvidenceFromTriggerObservations(observations: readonly Ha
     if (!observation.audible) continue;
     const notes = observation.notes?.filter(finite).slice(0, 8).map((note) => Math.round(note));
     events.push({
-      kind: observation.source === 'slot' ? 'slot' : observation.source === 'progression' ? 'progression' : 'seqTrigger',
+      kind: observation.source === 'progression' ? 'progression' : 'seqTrigger',
       scope: 'playing',
       ...(notes && notes.length > 0 ? { notes } : {}),
       ...(observation.rootPitchClass !== undefined ? { rootPitchClass: observation.rootPitchClass } : {}),

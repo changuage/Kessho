@@ -1,12 +1,5 @@
-import {
-  HARMONY_POOL_MAX_NOTES,
-  HARMONY_SLOT_COUNT,
-  buildHarmonyChordIntervals,
-  resolveHarmonyIntentToNotePool,
-} from './CoreProductHarmonyControl';
-import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
+import { HARMONY_POOL_MAX_NOTES } from './CoreProductHarmonyControl';
 import { isProductSourceMonophonic } from './productSourceCapabilities';
-import type { HarmonyChordQuality, HarmonyIntent, SharedHarmonyChord } from './CoreProductHarmonyControl';
 import type { PitchBindingMode } from './drumSeqTypes';
 import {
   defaultProductArpConfig,
@@ -75,13 +68,13 @@ export interface ProductPlayEnginePattern {
   steps: number;
 }
 
-type ChordToneRole = 'root' | 'third' | 'seventh' | 'top' | 'fifth' | 'extension';
-
 const PRODUCT_PLAY_MODES: readonly ProductPlayMode[] = ['arp', 'chord'];
 const PRODUCT_CHORD_STYLES: readonly ProductChordStyle[] = ['straight', 'strum'];
 const PRODUCT_CHORD_FLOWS: readonly ProductChordFlow[] = ['forward', 'reverse', 'pingpong'];
 const PRODUCT_STRUM_DIRECTIONS: readonly ProductStrumDirection[] = ['up', 'down', 'upDown', 'downUp', 'random'];
 const PRODUCT_PLAY_MAX_STEPS = 16;
+/** Choice positions per lane; the chord bank they once indexed is gone (T7 removes this mode). */
+const PRODUCT_CHORD_CHOICE_COUNT = 8;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -108,12 +101,12 @@ function normalizeStepLength(value: unknown, fallback = 8): number {
 }
 
 function normalizeChordSlotId(value: unknown, fallback: number): number {
-  return clamp(finiteInteger(value, fallback), 0, HARMONY_SLOT_COUNT - 1);
+  return clamp(finiteInteger(value, fallback), 0, PRODUCT_CHORD_CHOICE_COUNT - 1);
 }
 
 function defaultChordStep(index: number): ProductChordStep {
   return {
-    slotId: index % HARMONY_SLOT_COUNT,
+    slotId: index % PRODUCT_CHORD_CHOICE_COUNT,
   };
 }
 
@@ -273,126 +266,8 @@ function hashU32(value: number): number {
   return x >>> 0;
 }
 
-function pitchClass(value: number): number {
-  return ((Math.round(value) % 12) + 12) % 12;
-}
-
-function semanticRootPitchClass(intent: HarmonyIntent, harmony: ProductArpHarmonyContext): number | null {
-  if (intent.rootMode === 'absolute') return pitchClass(intent.rootNote);
-  const rootIntent: HarmonyIntent = {
-    ...intent,
-    inversion: 0,
-    bassMode: 'off',
-    bassNote: null,
-    spread: 0,
-    preserveCapturedVoicing: false,
-    capturedMidiNotes: [],
-  };
-  const resolved = resolveHarmonyIntentToNotePool({
-    intent: rootIntent,
-    rootMidi: harmony.rootMidi,
-    scaleId: harmony.scaleId,
-    tension: harmony.tension,
-  });
-  return resolved.length > 0 ? pitchClass(resolved[0]!) : null;
-}
-
-function semanticRoleIntervals(intent: HarmonyIntent): {
-  third: number | null;
-  seventh: number | null;
-  fifth: number | null;
-  extensions: number[];
-} {
-  const intervals = buildHarmonyChordIntervals(intent);
-  const quality: HarmonyChordQuality = intent.quality;
-  const third = quality === 'sus' || quality === 'quartal' || quality === 'cluster'
-    ? null
-    : intervals.includes(3) ? 3 : intervals.includes(4) ? 4 : null;
-  const seventh = intervals.includes(11) ? 11 : intervals.includes(10) ? 10 : null;
-  const fifth = intervals.includes(6) ? 6 : intervals.includes(8) ? 8 : intervals.includes(7) ? 7 : null;
-  const extensions = intervals.filter((interval) => interval !== 0 && interval !== third && interval !== seventh && interval !== fifth);
-  return { third, seventh, fifth, extensions };
-}
-
-function semanticReductionIsConfident(chord: SharedHarmonyChord | null): chord is SharedHarmonyChord & { intent: HarmonyIntent } {
-  return Boolean(chord?.intent && chord.intent.quality !== 'custom' && chord.intent.quality !== 'auto');
-}
-
-/** Keep the musically important tones before filling remaining voices low-to-high. */
-function reduceChordNotes(
-  notes: readonly number[],
-  voiceCount: number,
-  chord: SharedHarmonyChord | null,
-  harmony: ProductArpHarmonyContext,
-): number[] {
-  const sorted = [...notes].sort((left, right) => left - right);
-  const count = Math.max(1, Math.min(sorted.length, Math.round(voiceCount)));
-  if (sorted.length <= count) return sorted;
-  if (!semanticReductionIsConfident(chord)) return sorted.slice(0, count);
-
-  const rootPc = semanticRootPitchClass(chord.intent, harmony);
-  if (rootPc == null) return sorted.slice(0, count);
-  const intervals = semanticRoleIntervals(chord.intent);
-  const chosen = new Set<number>();
-  const result: number[] = [];
-  const choose = (_role: ChordToneRole, targetInterval?: number | null): void => {
-    if (result.length >= count || targetInterval == null) return;
-    for (const note of sorted) {
-      if (chosen.has(note)) continue;
-      if ((pitchClass(note) - rootPc + 12) % 12 !== targetInterval % 12) continue;
-      chosen.add(note);
-      result.push(note);
-      return;
-    }
-  };
-  choose('root', 0);
-  choose('third', intervals.third);
-  choose('seventh', intervals.seventh);
-  if (result.length < count) {
-    const top = sorted[sorted.length - 1];
-    if (top !== undefined && !chosen.has(top)) {
-      chosen.add(top);
-      result.push(top);
-    }
-  }
-  choose('fifth', intervals.fifth);
-  if (result.length < count) {
-    for (const interval of intervals.extensions) {
-      choose('extension', interval);
-      if (result.length >= count) break;
-    }
-  }
-  if (result.length < count) {
-    for (const note of sorted) {
-      if (chosen.has(note)) continue;
-      chosen.add(note);
-      result.push(note);
-      if (result.length >= count) break;
-    }
-  }
-  return result.sort((left, right) => left - right);
-}
-
-function resolveChordStepNotes(step: ProductChordStep, harmony: ProductArpHarmonyContext, voiceCount: number): {
-  notes: number[];
-  label: string;
-  locked: boolean;
-} {
-  const slot = harmony.chordSlots[step.slotId];
-  if (!slot) return { notes: [], label: `S${step.slotId + 1}`, locked: false };
-  if (!slot.chord) return { notes: [], label: `S${step.slotId + 1} Empty`, locked: slot.locked };
-  const resolvedNotes = sharedSlotResolvedMidiPool(slot, {
-    rootMidi: harmony.rootMidi,
-    effectiveRootMidi: harmony.rootMidi,
-    scaleId: harmony.scaleId,
-    tension: harmony.tension,
-  });
-  const notes = reduceChordNotes(resolvedNotes, voiceCount, slot.chord, harmony);
-  return {
-    notes,
-    label: slot.chord.recognizedLabel || 'custom',
-    locked: slot.locked,
-  };
+function resolveChordStepNotes(step: ProductChordStep): { notes: number[]; label: string; locked: boolean } {
+  return { notes: [], label: `S${step.slotId + 1}`, locked: false };
 }
 
 export function resolveProductChordPlayPatternDetails(options: {
@@ -406,7 +281,7 @@ export function resolveProductChordPlayPatternDetails(options: {
   return Array.from({ length: choiceLength }, (_, step) => {
     const sourceStep = directedStepIndex(config.flow, choiceLength, step);
     const chordStep = config.steps[sourceStep] ?? defaultChordStep(sourceStep);
-    const resolved = resolveChordStepNotes(chordStep, options.harmony, config.voiceCount);
+    const resolved = resolveChordStepNotes(chordStep);
     const mono = isProductSourceMonophonic(options.sourceId ?? options.harmony.sourceId);
     const ordered = mono ? [...resolved.notes] : orderChordNotes(resolved.notes, config.strum.direction, sourceStep);
     return {
@@ -502,7 +377,7 @@ export function productPlayPulseValues(config: ProductPlayConfig): number[] {
   const chord = normalized.chord;
   return Array.from({ length: PRODUCT_PLAY_MAX_STEPS }, (_, step) => {
     const chordStep = chord.steps[step] ?? defaultChordStep(step);
-    return step < chord.choiceLength ? (chordStep.slotId + 1) / HARMONY_SLOT_COUNT : 0;
+    return step < chord.choiceLength ? (chordStep.slotId + 1) / PRODUCT_CHORD_CHOICE_COUNT : 0;
   });
 }
 

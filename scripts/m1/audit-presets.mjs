@@ -162,15 +162,6 @@ function audit(p) {
 
   // authoredChords
   const reasons = [];
-  const slotArrays = findKeys(s, (k, v) => k === 'harmonyChordSlots' && Array.isArray(v));
-  for (const arr of slotArrays) {
-    for (const slot of arr.value) {
-      if (isObj(slot) && slot.chord !== undefined && slot.chord !== null) reasons.push('slot chord set');
-      if (isObj(slot) && isObj(slot.intent) && Array.isArray(slot.intent.capturedMidiNotes) && slot.intent.capturedMidiNotes.length > 0) {
-        reasons.push('captured MIDI in slot intent');
-      }
-    }
-  }
   const progressions = findKeys(s, (k, v) => k === 'harmonyProgression' && isObj(v));
   for (const pr of progressions) {
     if (pr.value.enabled === true && Array.isArray(pr.value.events)) {
@@ -178,8 +169,8 @@ function audit(p) {
       if (authored) reasons.push('progression events not auto');
     }
   }
-  const chordSeq = findKeys(s, (k, v) => /^harmonyChordSequence/i.test(k) && Array.isArray(v) && v.length > 0);
-  if (chordSeq.length) reasons.push(`${chordSeq.map((h) => h.key).join(', ')} non-empty`);
+  const palettes = findKeys(s, (k, v) => k === 'harmonyPalette' && Array.isArray(v) && v.length > 0);
+  if (palettes.length) reasons.push('palette chords set');
 
   // synthPlayConfigs: the raw array is always stored, so count it as authored only
   // when a config is enabled or has an active step.

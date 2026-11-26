@@ -2,16 +2,13 @@ import { calculateDriftedRoot } from '../harmony';
 import {
   canonicalProgressionIndexAtPosition,
   resolveProductHarmonyState,
-  sanitizeHarmonyChordSlots,
-  type HarmonyChordSlot,
-  type HarmonyDraftChord,
-  type HarmonySequenceStep,
   type HarmonyProgression,
   type ResolvedHarmonyFrame,
 } from '../CoreProductHarmonyControl';
 import { productHarmonyScaleIdFromName } from '../coreProductHarmonyScaleIds';
 import { createRng, getUtcBucket } from '../rng';
 import { getScaleByName, selectScaleFamily } from '../scales';
+import type { Chord } from './chord';
 import { createHarmonySuggestionEngine } from './chordSuggestionEngine';
 
 const HARMONY_AUTO_SUGGESTION_ENGINE = createHarmonySuggestionEngine();
@@ -32,21 +29,19 @@ export interface MorphHarmonyPlan {
 
 export interface HarmonyProgressionEvent {
   id: string;
-  slotId: number | null;
-  source: HarmonySequenceStep['mode'] | 'suggestion';
+  /** The event's authored chord; null for an Auto event. */
+  chord: Chord | null;
+  source: 'auto' | 'chord';
   durationBars: number;
   startBar: number;
   endBar: number;
 }
 
 export interface HarmonyLiveLayer {
-  kind: 'draft-live' | 'harmony-takeover' | 'seq-live';
+  kind: 'draft-live' | 'harmony-takeover';
   scope?: unknown;
   target?: unknown;
-  draft?: HarmonyDraftChord;
   frame?: ResolvedHarmonyFrame;
-  seqId?: number;
-  slotId?: number;
   latched?: boolean;
 }
 
@@ -84,12 +79,7 @@ export interface HarmonyProjection {
   activeFrame: ResolvedHarmonyFrame;
   underlyingFrame: ResolvedHarmonyFrame;
   manualControl: ReturnType<typeof resolveProductHarmonyState>['manualControl'];
-  chordSequence: HarmonySequenceStep[];
-  chordSequenceEnabled: boolean;
-  chordSequenceLength: number;
-  chordSequenceStepIndex: number;
   tension: number;
-  slots: HarmonyChordSlot[];
   progression: HarmonyProgressionEvent[];
   canonicalProgression: HarmonyProgression;
   position: {
@@ -183,10 +173,6 @@ function scaleNameFromState(state: Record<string, unknown>, overlay?: HarmonyPro
   return names[scaleId] ?? 'Major (Ionian)';
 }
 
-function sanitizeSlots(value: unknown): HarmonyChordSlot[] {
-  return sanitizeHarmonyChordSlots(value);
-}
-
 function progressionFrom(progression: HarmonyProgression, state: Record<string, unknown>): HarmonyProgressionEvent[] {
   const events: HarmonyProgressionEvent[] = [];
   let startBar = 0;
@@ -194,8 +180,7 @@ function progressionFrom(progression: HarmonyProgression, state: Record<string, 
   for (let index = 0; index < progression.events.length && index < 64; index += 1) {
     const event = progression.events[index]!;
     const durationBars = event.duration.unit === 'phrase' ? event.duration.value * barsPerPhrase : event.duration.value;
-    const slotId = event.source.type === 'slot' ? event.source.slotId : null;
-    events.push({ id: event.id, slotId, source: event.source.type === 'auto' ? 'suggestion' : 'slot', durationBars, startBar, endBar: startBar + durationBars });
+    events.push({ id: event.id, chord: event.source.type === 'chord' ? event.source.chord : null, source: event.source.type, durationBars, startBar, endBar: startBar + durationBars });
     startBar += durationBars;
   }
   return events;
@@ -355,11 +340,10 @@ export function resolveHarmonyProjection(
     : 0;
   const cycleBars = progression.length > 0 ? progression[progression.length - 1]!.endBar : 0;
   const cycleBar = cycleBars > 0 ? ((absoluteBar % cycleBars) + cycleBars) % cycleBars : 0;
-  const slots = sanitizeSlots(runtime.chordSlots);
   const isEndpoint = morphPercent <= 0 || morphPercent >= 100;
   // Morph owns the top of the stack in the midpoint: performance layers are read-only and hidden.
   const liveLayer = isEndpoint ? selectLiveLayer(runtimeOverlay) : null;
-  const autoSuggestion = activeEvent?.source === 'suggestion'
+  const autoSuggestion = activeEvent?.source === 'auto'
     ? HARMONY_AUTO_SUGGESTION_ENGINE.bank({
       rootMidi,
       scaleId,
@@ -397,12 +381,7 @@ export function resolveHarmonyProjection(
     activeFrame,
     underlyingFrame: suggestionFrame,
     manualControl: runtime.manualControl,
-    chordSequence: runtime.chordSequence,
-    chordSequenceEnabled: runtime.chordSequenceEnabled,
-    chordSequenceLength: runtime.chordSequenceLength,
-    chordSequenceStepIndex: runtime.chordSequenceStepIndex,
     tension,
-    slots,
     progression,
     canonicalProgression: runtime.progression,
     position: { eventIndex, eventId: activeEvent ? String(activeEvent.id) : null, barInEvent: activeEvent && hasPositionContext ? Math.max(0, cycleBar - activeEvent.startBar) : 0, phraseIndex: integerValue(runtimeOverlay?.phraseIndex, 0), absoluteBarIndex: hasPositionContext ? Math.max(0, absoluteBar) : null },
@@ -421,7 +400,7 @@ function selectLiveLayer(overlay?: HarmonyProjectionRuntimeOverlay): HarmonyLive
   let selected: HarmonyLiveLayer | null = null;
   let selectedPriority = -1;
   for (const layer of layers) {
-    const priority = layer.kind === 'harmony-takeover' ? 3 : layer.kind === 'seq-live' ? 2 : 1;
+    const priority = layer.kind === 'harmony-takeover' ? 2 : 1;
     if (priority > selectedPriority) { selected = layer; selectedPriority = priority; }
   }
   return selected;

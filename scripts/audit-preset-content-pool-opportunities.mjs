@@ -236,17 +236,11 @@ function extractSampleItems(rows) {
 
 function extractHarmonyItems(rows) {
   const itemsByType = {
-    harmonyChordBank: [],
     harmonySequenceBank: [],
     harmonyContext: [],
   };
   for (const row of rows.filter((candidate) => candidate.type === 'state')) {
     const payload = row.payload ?? {};
-    for (const key of ['harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB']) {
-      if (Array.isArray(payload[key]) && payload[key].length > 0) {
-        itemsByType.harmonyChordBank.push({ scope: key, content: { slots: payload[key] } });
-      }
-    }
     for (const key of ['harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB']) {
       if (payload[key] && typeof payload[key] === 'object') {
         itemsByType.harmonySequenceBank.push({ scope: key, content: { progression: payload[key] } });

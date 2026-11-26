@@ -28,16 +28,11 @@ const harmonyPanel = read('src/ui/harmony/HarmonyEnginePanel.tsx');
 const harmonyWorkspace = read('src/ui/harmony/HarmonyWorkspace.tsx');
 const synthPage = read('src/ui/synth/SynthPage.tsx');
 const harmonyControl = read('src/audio/CoreProductHarmonyControl.ts');
-const harmonyAdapters = read('src/audio/harmony/harmonyChordAdapters.ts');
 const productEvents = read('cpp/KesshoCore/include/KesshoCore/KesshoProductEvents.h');
 const app = read('src/App.tsx');
 const overviewSurface = read('src/ui/harmony/HarmonyOverviewSurface.tsx');
-const sharedMatrix = read('src/ui/harmony/shared/SharedChordMatrix.tsx');
-const seqChordChoiceLane = read('src/ui/synth/chord/SeqChordChoiceLane.tsx');
-const seqChordInteractionBay = read('src/ui/synth/chord/SeqChordInteractionBay.tsx');
 const compactChordRow = read('src/ui/harmony/shared/HarmonyCompactChordRow.tsx');
 const liveKeyboardGeometry = read('src/ui/harmony/live/liveKeyboardGeometry.ts');
-const seqChordState = read('src/ui/synth/chord/seqChordState.ts');
 const harmonyEngine = read('cpp/KesshoCore/src/product/music/HarmonyEngine.cpp');
 const snapshotEncoder = read('src/audio/coreProductSnapshotEncoder.ts');
 const deterministicMusicCheck = read('scripts/check-kessho-product-deterministic-music.mjs');
@@ -79,9 +74,10 @@ assert(
   /LIVE_CHORD_GESTURE|LIVE_CHORD/.test(productEvents),
   'Product Core must expose a bounded live-chord event kind',
 );
+const harmonyLiveProjection = read('src/ui/harmony/useHarmonyLiveProjection.ts');
 assert(
-  app.includes('productEngine.enqueueEvents(')
-    && app.includes('createCoreProductHarmonyLiveChordGestureEvents(next'),
+  harmonyLiveProjection.includes('productEngine.enqueueEvents(')
+    && harmonyLiveProjection.includes('createCoreProductHarmonyLiveChordGestureEvents(next'),
   'All UI Harmony live layers must enter the one Product-Core event executor',
 );
 for (const contract of [
@@ -91,13 +87,6 @@ for (const contract of [
   "target: 'overview'",
 ]) {
   assert(harmonyPanel.includes(contract), `Harmony Detail/Overview must retain explicit Product-Core ${contract}`);
-}
-for (const contract of [
-  "scope: 'seq-live'",
-  "scope: 'seq-draft'",
-  'target: `seq${laneIdx + 1}`',
-]) {
-  assert(synthPage.includes(contract), `Seq Draft/Live must retain explicit Product-Core ${contract}`);
 }
 for (const [path, source] of activeSources) {
   assert(
@@ -118,10 +107,9 @@ assert(
 );
 
 for (const [path, source] of activeSources) {
-  if (path === 'src/audio/harmony/harmonyChordAdapters.ts') continue;
   assert(
-    !source.includes('slot.intent'),
-    `${path} must not read legacy slot.intent outside the named migration boundary`,
+    !source.includes('slot.intent') && !/\bHarmonyChordSlot\b|\bSharedHarmonyChord\b|harmonyChordSlots/.test(source.replace(/RETIRED_CHORD_STATE_KEYS[\s\S]*?\] as const;/, '')),
+    `${path} must not reference the retired chord bank`,
   );
 }
 
@@ -140,37 +128,9 @@ assert(
   'Harmony progression migration must expose an explicit bounded-capacity diagnostic',
 );
 assert(
-  !harmonyControl.includes('intent: chord?.intent ?? legacyIntent'),
-  'Sanitized Harmony slots must not emit a duplicate top-level intent authority',
-);
-assert(
-  !harmonyAdapters.includes('editSharedChordIntent(slot.chord, slot.intent'),
-  'Shared slot playback must not reapply a legacy top-level intent at runtime',
-);
-
-assert(
-  sharedMatrix.includes('export const SharedChordMatrixShell')
-    && sharedMatrix.includes('export const SharedChordMatrix'),
-  'One shared chord-matrix shell must own pitch-cell rendering',
-);
-assert(
-  overviewSurface.includes("import { SharedChordMatrixShell")
-    && overviewSurface.includes('<SharedChordMatrixShell')
-    && overviewSurface.includes('rows={rows.map('),
-  'Overview Edit must consume the shared multi-row chord matrix shell',
-);
-assert(
   overviewSurface.includes('HarmonyCompactChordRow')
-    && seqChordChoiceLane.includes('HarmonyCompactChordRow')
     && compactChordRow.includes('RelativeChordDotMap'),
-  'Overview and Seq must consume the same compact chord-row architecture',
-);
-assert(
-  seqChordInteractionBay.includes('<LiveChordKeyboard')
-    && seqChordInteractionBay.includes('onToggleExactNote=')
-    && seqChordInteractionBay.includes('onSetRoot=')
-    && seqChordInteractionBay.includes('onSetDegree='),
-  'Seq Draft must edit exact notes and semantic identity through the unified keyboard',
+  'Overview must consume the shared compact chord-row architecture',
 );
 assert(
   app.includes('onLiveHarmonyNoteStart={productRuntimeManualTriggers.startSynthLiveNote}')
@@ -187,10 +147,6 @@ assert(
 assert(
   !overviewSurface.includes('harmony-overview-exact-matrix'),
   'Overview must not retain a bespoke exact-note matrix',
-);
-assert(
-  seqChordState.includes("bank === 'B' ? 'harmonyChordSlotsB' : 'harmonyChordSlotsA'"),
-  'Seq shared-slot writes must target an explicit A/B endpoint bank',
 );
 assert(
   harmonyEngine.includes('stageNextHarmonyPreview()')
@@ -212,9 +168,8 @@ assert(
 );
 assert(
   app.includes('const harmonyWorkspaceController = useHarmonyWorkspaceController(state, handleStateChange);')
-    && app.includes('harmonyWorkspaceController={harmonyWorkspaceController}')
-    && app.includes('commitHarmonyAuthoredStateChange={(updater, label) => harmonyWorkspaceController.commitAuthoredStateChange'),
-  'App must own the one persistent Harmony history controller across Global/Synth unmounts',
+    && app.includes('harmonyWorkspaceController={harmonyWorkspaceController}'),
+  'App must own the one persistent Harmony history controller across Global unmounts',
 );
 assert(
   !harmonyWorkspace.includes('useHarmonyWorkspaceController(')
@@ -223,23 +178,9 @@ assert(
   'Harmony history must not fall back to a mounted-page singleton bridge',
 );
 assert(
-  synthPage.includes('commitHarmonyAuthoredStateChange: (updater: React.SetStateAction<SliderState>, label: string) => void;')
-    && !synthPage.includes('commitHarmonyAuthoredStateChange?:'),
-  'Seq authored Harmony commits must require the persistent App history callback',
+  workspaceControllerTest.includes('App-owned commit survives Global unmount and is undoable after remount'),
+  'Harmony history must regress an App-owned commit and Global undo across unmount',
 );
-assert(
-  workspaceControllerTest.includes('Synth-visible commit survives Global unmount and is undoable after remount'),
-  'Harmony history must regress cross-tab Seq commit and Global undo',
-);
-assert(
-  !seqChordChoiceLane.includes('detail?.notes ??')
-    && !seqChordChoiceLane.includes('slots.flatMap')
-    && seqChordChoiceLane.includes('deriveHarmonyPitchAxis(rows.map')
-    && seqChordState.includes('editSeqSharedSlotExactNotes')
-    && seqChordState.includes('captureDraftToSlot'),
-  'Seq rows must stay content-bounded while shared-slot edits retain explicit bank authority',
-);
-
 if (failures.length > 0) {
   console.error(`Unified Harmony architecture check failed:\n${failures.map((failure) => `- ${failure}`).join('\n')}`);
   process.exit(1);

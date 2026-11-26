@@ -113,7 +113,6 @@ class CoreProductRuntimeAdapter {
     if (!this.canApplySoundscapeParamDiff(previous, next)) return 'soundscape-param-change';
     if (previous.harmony.chordMode !== next.harmony.chordMode) return 'harmony-mode-change';
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return 'harmony-mode-change';
-    if (this.slotPoolNeedsReload(previous.harmony, next.harmony)) return 'harmony-mode-change';
     if (previous.sources.length !== next.sources.length) return 'source-structure-change';
     for (let index = 0; index < next.sources.length; index += 1) {
       const previousSource = previous.sources[index];
@@ -148,7 +147,6 @@ class CoreProductRuntimeAdapter {
     if (!this.canApplySoundscapeParamDiff(previous, next)) return false;
     if (previous.harmony.chordMode !== next.harmony.chordMode) return false;
     if (previous.harmony.voicingMode !== next.harmony.voicingMode) return false;
-    if (this.slotPoolNeedsReload(previous.harmony, next.harmony)) return false;
     // Harmony authority fields are consumed by the native cache as one atomic
     // snapshot.  Do not emit a partial dirty diff that would leave the audio
     // thread with stale semantic/playback/gesture inputs.
@@ -345,7 +343,7 @@ class CoreProductRuntimeAdapter {
           strength: next.harmony.manualControl.strength,
         }));
       } else if (next.harmony.activeSource === 1 && next.harmony.activeStepIndex >= 0) {
-        events.push(createCoreProductHarmonySequenceSetEnabledEvent(next.harmony.chordSequenceEnabled));
+        events.push(createCoreProductHarmonySequenceSetEnabledEvent(next.harmony.progression.enabled));
         events.push(createCoreProductHarmonySequenceSetStepEvent(next.harmony.activeStepIndex, {
           degree: next.harmony.resolvedHarmonyFrame.degree,
           quality: this.harmonyQuality(next.harmony.resolvedHarmonyFrame.quality),
@@ -355,11 +353,6 @@ class CoreProductRuntimeAdapter {
         events.push(createCoreProductHarmonyControlClearManualIntentEvent());
       }
     }
-  }
-
-  // The native chord bank is gone, so no event can carry a slot-sourced note pool; a changed pool reloads the snapshot.
-  private slotPoolNeedsReload(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {
-    return next.activeSource === 2 && this.harmonyPoolFrameChanged(previous, next);
   }
 
   private harmonyPoolFrameChanged(previous: CoreProductSnapshot['harmony'], next: CoreProductSnapshot['harmony']): boolean {

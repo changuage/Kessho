@@ -26,7 +26,6 @@ function liveScopeLabel(scope: unknown): string {
 
 function sourceLabel(source: HarmonyProjection['underlyingFrame']['activeSource']): string {
   if (source === 'manualControl') return 'Manual';
-  if (source === 'slot') return 'Slot';
   if (source === 'presetMorph') return 'Morph';
   if (source === 'baseline') return 'Auto Harmony';
   return source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Harmony';

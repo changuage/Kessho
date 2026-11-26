@@ -41,10 +41,6 @@ import {
 import { migrateLegacyNatureSlotState } from './natureSlots';
 import {
   HARMONY_QUALITY_IDS,
-  HARMONY_ROOT_MODE_IDS,
-  HARMONY_BASS_MODE_IDS,
-  HARMONY_EXTENSION_IDS,
-  HARMONY_ALTERATION_IDS,
   HARMONY_SEQUENCE_STEP_COUNT,
   HARMONY_STRENGTH_IDS,
   type HarmonyChordQuality,
@@ -120,7 +116,6 @@ function harmonyLiveTarget(layer: HarmonyLiveLayer | null): number {
   if (explicitTarget === 'detail') return 1;
   if (explicitTarget === 'overview') return 2;
   if (explicitTarget === 'seq1' || explicitTarget === 'seq2' || explicitTarget === 'seq3' || explicitTarget === 'seq4') return 3 + Number(explicitTarget.slice(3)) - 1;
-  if (layer?.kind === 'seq-live') return 3 + Math.max(0, Math.min(3, layer.seqId ?? 0));
   if (layer?.kind === 'harmony-takeover') return 2;
   if (layer?.scope === 'overview' || (layer?.scope && typeof layer.scope === 'object' && (layer.scope as { kind?: unknown }).kind === 'overview')) return 2;
   if (layer?.scope === 'suggestion') return 0;
@@ -132,13 +127,8 @@ function harmonyLiveScope(layer: HarmonyLiveLayer | null): number {
   if (explicitScope === 'detail') return 0;
   if (explicitScope === 'overview') return 1;
   if (explicitScope === 'suggestion') return 2;
-  if (explicitScope === 'seq-draft') return 3;
-  if (explicitScope === 'seq-live') return 4;
-  if (layer?.kind === 'seq-live') return 4;
   if (layer?.kind === 'harmony-takeover') return 1;
   if (layer?.scope === 'overview' || (layer?.scope && typeof layer.scope === 'object' && (layer.scope as { kind?: unknown }).kind === 'overview')) return 1;
-  if (layer?.scope === 'suggestion') return 2;
-  if (layer?.scope === 'seq-draft') return 3;
   return 0;
 }
 
@@ -158,13 +148,9 @@ export function createCoreProductHarmonyLiveChordGestureEvents(
     .slice(0, 8)
     .map((note) => requireNumberInRange(note, 'note', 0, 127));
   const clearing = layer === null;
-  const draft = layer?.draft;
-  const intent = draft?.intent ?? null;
-  const intentFlags = intent ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.intent : 0;
   const isTakeover = layer?.kind === 'harmony-takeover';
-  const capturedRootMidi = draft?.capturedContext.rootMidi ?? layer?.frame?.rootMidi ?? 60;
-  const capturedScaleId = draft?.capturedContext.scaleId ?? layer?.frame?.scaleId ?? 1;
-  const playbackBehavior = draft?.playbackBehavior === 'relative' ? 1 : draft?.playbackBehavior === 'exact' ? 2 : 0;
+  const capturedRootMidi = layer?.frame?.rootMidi ?? 60;
+  const capturedScaleId = layer?.frame?.scaleId ?? 1;
   const takeoverProgress = isTakeover ? 1 : 0;
   const header: CoreProductEvent = {
     eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture,
@@ -172,21 +158,14 @@ export function createCoreProductHarmonyLiveChordGestureEvents(
     index: harmonyLiveScope(layer),
     paramId: safeRevision,
     value: clearing ? 2 : layer?.latched ? 1 : 0,
-    value2: playbackBehavior,
+    value2: 0,
     value3: notes.length,
     value4: takeoverProgress,
     flags: CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.header | (clearing ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.clear : 0) | (isTakeover ? CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.takeover : 0),
   };
   if (clearing) return [header];
   const events: CoreProductEvent[] = [header];
-  if (intent) {
-    events.push(
-      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 0, paramId: safeRevision, value: 1, value2: HARMONY_QUALITY_IDS[intent.quality] ?? 0, value3: HARMONY_ROOT_MODE_IDS[intent.rootMode] ?? 0, value4: intent.degree, flags: intentFlags },
-      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 1, paramId: safeRevision, value: intent.rootNote, value2: intent.inversion, value3: intent.spread, value4: intent.octave, flags: intentFlags },
-      { eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 2, paramId: safeRevision, value: HARMONY_BASS_MODE_IDS[intent.bassMode] ?? 0, value2: intent.bassNote ?? -1, value3: (intent.extensions ?? []).reduce((mask, extension) => mask | (1 << (HARMONY_EXTENSION_IDS[extension as keyof typeof HARMONY_EXTENSION_IDS] ?? 0)), 0), value4: (intent.alterations ?? []).reduce((mask, alteration) => mask | (1 << (HARMONY_ALTERATION_IDS[alteration] ?? 0)), 0), flags: intentFlags },
-    );
-  }
-  if (draft || isTakeover) {
+  if (isTakeover) {
     events.push({ eventKind: KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture, targetId: harmonyLiveTarget(layer), index: 0, paramId: safeRevision, value: capturedRootMidi, value2: capturedScaleId, flags: CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.context });
   }
   events.push(...notes.map((note, index) => ({

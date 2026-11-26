@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import type { KesshoMidiMessage } from '../../native/midi/midiTypes';
-import { subscribeHarmonyMidiCapture } from '../harmony/harmonyDraftChord';
-import { publishHarmonyMidiCaptureFromMessage } from './midiHarmonyCapture';
+import { publishHarmonyMidiCaptureFromMessage, subscribeHarmonyMidiCapture } from './midiHarmonyCapture';
 
 const noteOn: KesshoMidiMessage = {
   timestamp: 1,

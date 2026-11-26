@@ -46,7 +46,7 @@ import {
   extractEuclideanPatternLaneDataFromSynthState,
 } from './euclideanPatternBank';
 import type { PresetEntry, PresetPoolMetadata, PresetRecoveryWarning, PresetVersionMetadata } from './types';
-import { DEFAULT_STATE, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
+import { DEFAULT_STATE, RETIRED_CHORD_STATE_KEYS, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
 import { createEmptyStepOverrides, deserializeStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
 import {
   applySequencePresetClockDivs,
@@ -309,27 +309,28 @@ function testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt(): voi
   assert.equal(getPresetMetadataOwner('synthArpConfigs'), undefined, 'legacy Play metadata is decode-only');
 }
 
-function testHarmonyLegacyFieldsAreDecodeOnly(): void {
+function testRetiredHarmonyChordFieldsAreIgnored(): void {
   const legacySequence = [{ id: 2, enabled: true, mode: 'slotFollow', slotId: 3, durationBars: 2 }];
   const migrated = migratePreset({
     name: 'Legacy Harmony',
     timestamp: '2026-07-24T00:00:00.000Z',
     state: {
       ...DEFAULT_STATE,
-      harmonyProgression: undefined as never,
-      harmonyChordSequence: legacySequence as never,
+      harmonyChordSequence: legacySequence,
       harmonyChordSequenceEnabled: true,
+      harmonyChordSlots: [{ id: 0, name: 'Slot 1', chord: null, locked: false }],
+      harmonyProgression: { version: 1, enabled: true, events: [{ id: 'old', source: { type: 'slot', slotId: 3 }, duration: { unit: 'bar', value: 2 } }] },
     },
   });
-  assert.equal('harmonyChordSequence' in migrated.state, false);
-  assert.equal(migrated.state.harmonyProgression.enabled, true);
-  assert.equal(migrated.state.harmonyProgression.events[0]?.source.type, 'slot');
+  for (const key of RETIRED_CHORD_STATE_KEYS) assert.equal(key in migrated.state, false, `${key} is ignored on load`);
+  assert.equal(migrated.state.harmonyProgression.version, 2);
+  assert.equal(migrated.state.harmonyProgression.enabled, true, 'a version 1 progression keeps its events and enabled flag');
+  assert.deepEqual(migrated.state.harmonyProgression.events[0]?.source, { type: 'auto' }, 'slot sources load as Auto');
 
-  const encoded = encodeStateToUrl({ ...DEFAULT_STATE, harmonyChordSequence: legacySequence as never });
-  assert.equal(encoded.includes('harmonyChordSequence'), false, 'new URL state must not author legacy sequence fields');
+  const encoded = encodeStateToUrl({ ...DEFAULT_STATE });
+  for (const key of RETIRED_CHORD_STATE_KEYS) assert.equal(encoded.includes(key), false, `new URL state must not author ${key}`);
   const decoded = decodeStateFromUrl(`?harmonyChordSequence=${encodeURIComponent(JSON.stringify(legacySequence))}&harmonyChordSequenceEnabled=true`);
-  assert.ok(decoded?.harmonyProgression.events.length);
-  assert.equal(decoded?.harmonyProgression.enabled, true);
+  assert.deepEqual(decoded?.harmonyProgression, DEFAULT_STATE.harmonyProgression);
 }
 
 function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
@@ -1041,6 +1042,7 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
     chordProgressionEnabled: false,
     chordProgressionPattern: [0, 2, 4],
     harmonyChordSequenceEnabled: true,
+    harmonyChordSlots: [],
   };
 
   const optimized = extractOptimizedStatePresetData(overriddenState);
@@ -1058,6 +1060,7 @@ function testOptimizedStatePresetRoundTripKeepsOnlyOverrides(): void {
   assert.equal('chordProgressionEnabled' in optimized, false, 'retired progression state must remain decode-only');
   assert.equal('chordProgressionPattern' in optimized, false, 'retired progression arrays must remain decode-only');
   assert.equal('harmonyChordSequenceEnabled' in optimized, false, 'legacy harmony state must remain decode-only');
+  assert.equal('harmonyChordSlots' in optimized, false, 'the retired chord bank must not enter the L4 contract');
   assert.equal(
     Object.values(optimized).some(value => value === undefined),
     false,
@@ -1702,7 +1705,7 @@ async function run(): Promise<void> {
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
   testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt();
-  testHarmonyLegacyFieldsAreDecodeOnly();
+  testRetiredHarmonyChordFieldsAreIgnored();
   testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();
   testLegacyPadCutoffPairMigratesToBaseAndWalkRange();

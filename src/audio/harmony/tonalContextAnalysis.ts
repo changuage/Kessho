@@ -97,7 +97,7 @@ function normalizeEvents(input: HarmonyEvidenceSnapshot | readonly HarmonyEviden
 
 function eventWeight(event: HarmonyEvidenceEvent): number {
   if ('weight' in event && finite((event as { weight?: unknown }).weight)) return Math.max(0, Number((event as { weight: number }).weight));
-  const sourceWeight: Record<string, number> = { playedChord: 1, progression: 0.92, seqTrigger: 0.78, slot: 0.52, baseline: 0.18, livePlay: 0.88, recognition: 0.95 };
+  const sourceWeight: Record<string, number> = { playedChord: 1, progression: 0.92, seqTrigger: 0.78, baseline: 0.18, livePlay: 0.88, recognition: 0.95 };
   return (sourceWeight[event.kind] ?? 0) * clamp(event.strength ?? 1, 0, 1) * (event.confirmed ? 1.2 : 1);
 }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { applyPreset } from './presetUtils';
-import { DEFAULT_STATE, type SavedPreset, type SliderState } from './state';
+import { DEFAULT_STATE, RETIRED_CHORD_STATE_KEYS, type SavedPreset, type SliderState } from './state';
 
 function normalize(state: SliderState): SliderState {
   return state;
@@ -51,22 +51,13 @@ assert.equal(safe.state.drumEuclidMasterEnabled, false);
 assert.equal(safe.state.synthEuclideanMasterEnabled, false);
 assert.equal(safe.state.drumEnabled, false);
 
-const currentWithoutLegacyProgression = makePreset({});
-for (const key of [
-  'chordProgressionEnabled',
-  'chordProgressionPattern',
-  'chordProgressionSteps',
-  'chordProgressionHits',
-  'chordProgressionRotation',
-  'chordProgressionStepEnabled',
-  'chordProgressionPhraseMultiplier',
-  'chordProgressionClockSource',
-] as const) {
-  delete (currentWithoutLegacyProgression.state as Partial<SliderState>)[key];
+const currentWithoutRetiredChordKeys = makePreset({});
+for (const key of RETIRED_CHORD_STATE_KEYS) {
+  delete (currentWithoutRetiredChordKeys.state as unknown as Record<string, unknown>)[key];
 }
 assert.doesNotThrow(
-  () => applyPreset(currentWithoutLegacyProgression, { loadMode: 'exact-as-saved', normalize }),
-  'removed legacy progression fields must not be required by the current apply contract',
+  () => applyPreset(currentWithoutRetiredChordKeys, { loadMode: 'exact-as-saved', normalize }),
+  'retired chord fields must not be required by the current apply contract',
 );
 
 const currentWithoutSpectralFreezeFields = makePreset({});

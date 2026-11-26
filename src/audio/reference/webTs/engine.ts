@@ -442,17 +442,6 @@ function areSignatureSnapshotsEqual(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function areBooleanArraysEqual(left: boolean[] | undefined, right: boolean[] | undefined): boolean {
-  if (left === right) return true;
-  const safeLeft = left ?? [];
-  const safeRight = right ?? [];
-  if (safeLeft.length !== safeRight.length) return false;
-  for (let index = 0; index < safeLeft.length; index += 1) {
-    if (safeLeft[index] !== safeRight[index]) return false;
-  }
-  return true;
-}
-
 type PerfMetrics = {
   avgPercent: number;
   peakPercent: number;
@@ -1673,10 +1662,7 @@ export class AudioEngine {
   private getCurrentProgressionPhraseIndex(nowWallSec: number = Date.now() / 1000): number {
     const state = this.sliderState!;
     const anchors = this.ensureTransportAnchors();
-    const source = resolveProgressionPhraseClockSource(
-      state.chordProgressionClockSource ?? 'harmony',
-      state.harmonyClockSource ?? 'globalPhrase',
-    );
+    const source = resolveProgressionPhraseClockSource('harmony', state.harmonyClockSource ?? 'globalPhrase');
     const phraseSeconds = getPhraseDurationForClockSource(state, source);
     return getCurrentClockIndexWall(source, phraseSeconds, anchors, nowWallSec);
   }
@@ -1691,22 +1677,13 @@ export class AudioEngine {
       this.transportAnchors,
       nowWallSec,
     );
-    const progressionSource = resolveProgressionPhraseClockSource(
-      this.sliderState.chordProgressionClockSource ?? 'harmony',
-      this.sliderState.harmonyClockSource ?? 'globalPhrase',
-    );
-    const progressionPhraseSeconds = getPhraseDurationForClockSource(this.sliderState, progressionSource);
-    const progressionStepSeconds = progressionPhraseSeconds * Math.max(1, this.sliderState.chordProgressionPhraseMultiplier ?? 1);
-    const nextProgressionStepIn = (this.sliderState.chordProgressionEnabled ?? false)
-      ? getTimeUntilNextBoundaryWall(progressionSource, progressionStepSeconds, this.transportAnchors, nowWallSec)
-      : null;
 
     return {
       effectiveBpm: metrics.effectiveBpm,
       effectivePhraseSeconds: phraseSeconds,
       nextPhraseBoundaryIn,
       nextHarmonyEventIn: this.nextHarmonyEventWallSec !== null ? Math.max(0, this.nextHarmonyEventWallSec - nowWallSec) : null,
-      nextProgressionStepIn,
+      nextProgressionStepIn: null,
     };
   }
 
@@ -7034,10 +7011,7 @@ export class AudioEngine {
       prevState.chordRate !== effectiveState.chordRate ||
       prevState.harmonyClockSource !== effectiveState.harmonyClockSource ||
       prevState.transportBarsPerPhrase !== effectiveState.transportBarsPerPhrase ||
-      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar ||
-      prevState.chordProgressionClockSource !== effectiveState.chordProgressionClockSource ||
-      prevState.chordProgressionPhraseMultiplier !== effectiveState.chordProgressionPhraseMultiplier ||
-      !areBooleanArraysEqual(prevState.chordProgressionStepEnabled, effectiveState.chordProgressionStepEnabled)
+      prevState.transportBeatsPerBar !== effectiveState.transportBeatsPerBar
     );
     const leadTimingChanged = !!prevState && (
       prevState.transportPrimaryClock !== effectiveState.transportPrimaryClock ||
@@ -8726,11 +8700,6 @@ export class AudioEngine {
       cofDriftRate: s.cofDriftRate ?? 2,
       cofDriftDirection: s.cofDriftDirection ?? 'cw',
       cofDriftRange: s.cofDriftRange ?? 3,
-      chordProgressionEnabled: s.chordProgressionEnabled ?? false,
-      chordProgressionPattern: s.chordProgressionPattern ?? [0, 3, 4, 0],
-      chordProgressionSteps: s.chordProgressionSteps ?? 4,
-      chordProgressionStepEnabled: s.chordProgressionStepEnabled ?? [true, true, true, true],
-      chordProgressionPhraseMultiplier: s.chordProgressionPhraseMultiplier ?? 1,
       canonicalProgression: sanitizeHarmonyProgression(s.harmonyProgression),
       transportBarsPerPhrase: s.transportBarsPerPhrase ?? 4,
     };

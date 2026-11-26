@@ -5,11 +5,9 @@ import {
   calculateHarmonyAdoptionCoFPath,
   cancelHarmonyAdoptionTransition,
   createStoppedHarmonyAdoptionCommand,
-  resolveAdoptionPlaybackNotes,
   selectStableScaleHandoverPathIndex,
   startHarmonyAdoptionTransition,
 } from './harmonyAdoptionTransition';
-import { defaultHarmonyIntent } from '../CoreProductHarmonyControl';
 
 const authored = { rootNote: 0, manualScale: 'Major (Ionian)', cofCurrentStep: 3 };
 
@@ -75,16 +73,6 @@ test('safe cancellation restores authored context; unsafe cancellation is ignore
 test('scale-family handover chooses maximum common-tone overlap with earliest tie', () => {
   assert.equal(selectStableScaleHandoverPathIndex({ cofPath: [60, 67, 62], sourceRoot: 60, sourceNotePool: [60, 64], targetScalePitchClasses: [0, 4] }), 0);
   assert.deepEqual(calculateHarmonyAdoptionCoFPath(0, 6).slice(0, 2), [0, 7]);
-});
-
-test('Exact remains exact while Relative and eligible Auto follow moving context', () => {
-  const intent = { ...defaultHarmonyIntent('manualControl', 0), rootMode: 'degree' as const, rootNote: 0, quality: 'maj' as const };
-  const common = { exactMidiNotes: [60, 64, 67], intent, capturedRootMidi: 60, effectiveRootMidi: 66, scaleId: 1 };
-  assert.deepEqual(resolveAdoptionPlaybackNotes({ ...common, playbackBehavior: 'exact' }), [60, 64, 67]);
-  assert.deepEqual(resolveAdoptionPlaybackNotes({ ...common, playbackBehavior: 'auto' }), [60, 64, 67]);
-  assert.notDeepEqual(resolveAdoptionPlaybackNotes({ ...common, playbackBehavior: 'relative', effectiveRootMidi: 72 }), [60, 64, 67]);
-  assert.notDeepEqual(resolveAdoptionPlaybackNotes({ ...common, playbackBehavior: 'auto', effectiveRootMidi: 72 }), [60, 64, 67]);
-  assert.deepEqual(resolveAdoptionPlaybackNotes({ ...common, intent: null, playbackBehavior: 'relative', effectiveRootMidi: 72 }), []);
 });
 
 test('continuous CoF path keeps a drifted source near target register while authored roots stay pitch classes', () => {

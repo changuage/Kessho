@@ -9,8 +9,8 @@ const projection = {
   underlyingFrame: { activeSource: 'baseline', rootMidi: 60, quality: 'maj', currentNotePool: [], scaleId: 1 },
   activeFrame: { activeSource: 'baseline', rootMidi: 60, quality: 'maj', currentNotePool: [], scaleId: 1 },
   position: { eventIndex: -1, eventId: null, barInEvent: 0, phraseIndex: 0 },
-  progression: [], slots: [], canonicalProgression: { version: 1, enabled: false, events: [], currentEventIndex: 0 },
-  chordSequence: [], chordSequenceEnabled: false, chordSequenceLength: 0, chordSequenceStepIndex: 0, tension: 0.3,
+  progression: [], canonicalProgression: { version: 2, enabled: false, events: [], currentEventIndex: 0 },
+  tension: 0.3,
   manualControl: {}, liveLayer: null, activeLiveInputScope: null, morphPlan: {}, bank: 'A', isEndpoint: true,
 } as unknown as HarmonyProjection;
 
@@ -55,16 +55,15 @@ test('header exposes explicit Adopt state without implying automatic mutation', 
   assert.deepEqual(header.adoption, { target: 'G · Dorian', mode: 'preview', active: false });
 });
 
-test('workspace tonal bridge derives Playing from progression/locked slots and Preview from live layer', () => {
+test('workspace tonal bridge derives Playing from progression chords and Preview from live layer', () => {
   const workspaceProjection = {
     ...projection,
-    progression: [{ id: 'slot-a', slotId: 1, source: 'slot', durationBars: 1, startBar: 0, endBar: 1 }],
-    slots: [{ id: 1, name: 'A', locked: true, chord: { exactMidiNotes: [64, 67, 60], intent: { rootMode: 'degree', degree: 0 }, intentSource: 'confirmed' } }],
-    liveLayer: { kind: 'draft-live', draft: { exactMidiNotes: [57, 60, 64, 67], intent: { rootNote: 9 } } },
+    progression: [{ id: 'chord-a', chord: { behavior: 'follow', degree: 0, notes: [] }, source: 'chord', durationBars: 1, startBar: 0, endBar: 1 }],
+    liveLayer: { kind: 'draft-live', frame: { currentNotePool: [57, 60, 64, 67], rootMidi: 57 } },
   } as unknown as HarmonyProjection;
   const context = deriveHarmonyWorkspaceTonalContext(workspaceProjection, 1000);
   assert.ok(context.playing.evidenceWeight > 0);
-  assert.ok(context.playing.alternatives.some((candidate) => candidate.rootPitchClass === 0), 'degree slot root must resolve from Engine root even for inverted notes');
+  assert.ok(context.playing.alternatives.some((candidate) => candidate.rootPitchClass === 0), 'a Follow chord root must resolve from the Engine root');
   assert.equal(context.preview?.mode, 'preview');
   assert.ok(context.preview?.evidenceWeight && context.preview.evidenceWeight > 0);
 });
@@ -73,7 +72,7 @@ test('running live Preview does not replace committed Playing evidence', () => {
   const withoutPreview = deriveHarmonyWorkspaceTonalContext({ ...projection, liveLayer: null } as HarmonyProjection, 1000, true);
   const withPreview = deriveHarmonyWorkspaceTonalContext({
     ...projection,
-    liveLayer: { kind: 'draft-live', draft: { exactMidiNotes: [57, 60, 64, 67], intent: { rootMode: 'degree', degree: 5, rootNote: 0 } } },
+    liveLayer: { kind: 'draft-live', frame: { currentNotePool: [57, 60, 64, 67], rootMidi: 57 } },
   } as unknown as HarmonyProjection, 1000, true);
   assert.deepEqual(withPreview.playing.top, withoutPreview.playing.top);
   assert.equal(withPreview.preview?.mode, 'preview');

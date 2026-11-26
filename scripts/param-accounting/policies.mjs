@@ -169,7 +169,7 @@ export function controlDomain(key) {
   if (/^delay/.test(key)) return 'fx.delay';
   if (/^reverb/.test(key) || /^spectralFreeze/.test(key) || /^(damping|predelay|width)$/.test(key)) return 'fx.reverb';
   if (/^(drift|degrade|erosion|dynamics|endComp|sidechain|masterLimiter)/.test(key)) return 'fx.dynamics';
-  if (/^(synthEuclid|synthSequencer(?:Faces|Chain)|drumEuclid|sequencer|transport|chordProgression|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordGenerator|synthOctave|randomness)/.test(key)) return 'music.sequencer';
+  if (/^(synthEuclid|synthSequencer(?:Faces|Chain)|drumEuclid|sequencer|transport|cof|harmony|randomWalk|rootNote|scaleMode|manualScale|tension|phraseLength|chordRate|voicingSpread|waveSpread|detune|seedWindow|synthChordGenerator|synthOctave|randomness)/.test(key)) return 'music.sequencer';
   if (/^master/.test(key)) return 'master';
   return 'misc';
 }
@@ -504,14 +504,11 @@ export function collectAppVisibleBehaviorEvidenceGaps(appVisibleLiveUpdatePaths)
 
 export const productDeferredClassifications = [
   {
-    id: 'legacy-harmony-state-aliases',
-    owner: 'Harmony preset and URL migration boundary',
+    id: 'harmony-palette-policy',
+    owner: 'Harmony preset content',
     reason:
-      'These retired chord-progression and sequence fields are accepted only as migration inputs; canonical Harmony progression content owns current playback state.',
-    patterns: [
-      /^chordProgression(?:ClockSource|Enabled|Pattern|PhraseMultiplier|StepEnabled|Steps)$/,
-      /^harmonyChordSequence(?:A|B|Enabled|Length|StepIndex)?$/,
-    ],
+      'The Palette is a per-preset list of saved Chords used only as a copy source in the editor; it is never sent to Product Core.',
+    patterns: [/^harmonyPalette$/],
   },
   {
     id: 'sequencer-portable-content-policy',
@@ -541,7 +538,6 @@ export const productDeferredClassifications = [
       'Product host arrangement scheduling feeds Product Core manual/source events today; these policy and UI-state controls need native Product scheduler ownership before they become generated Product params.',
     patterns: [
       /^(cofCurrentStep|harmonySyncPolicy)$/,
-      /^(chordProgressionHits|chordProgressionRotation)$/,
       /^(lead|drum|pad|reverb|granular|synthEuclid)Tension(Mode|Value)$/,
       /^drumTension(Mode|Value)$/,
     ],
@@ -646,19 +642,8 @@ export const productDeferredClassifications = [
 ];
 
 export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
-  'legacy-harmony-state-aliases': [
-    'chordProgressionClockSource',
-    'chordProgressionEnabled',
-    'chordProgressionPattern',
-    'chordProgressionPhraseMultiplier',
-    'chordProgressionStepEnabled',
-    'chordProgressionSteps',
-    'harmonyChordSequence',
-    'harmonyChordSequenceA',
-    'harmonyChordSequenceB',
-    'harmonyChordSequenceEnabled',
-    'harmonyChordSequenceLength',
-    'harmonyChordSequenceStepIndex',
+  'harmony-palette-policy': [
+    'harmonyPalette',
   ],
   'sequencer-portable-content-policy': [
     'synthPlayConfigs',
@@ -700,8 +685,6 @@ export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
     'oceanSliceDuration',
   ],
   'arrangement-and-clock-policy': [
-    'chordProgressionHits',
-    'chordProgressionRotation',
     'cofCurrentStep',
     'drumTensionMode',
     'drumTensionValue',
@@ -845,62 +828,6 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'spectralFreezeCaptureSerial',
     reason: 'Runtime capture edge serial; presets must never replay a historical capture trigger.',
-  },
-  {
-    key: 'chordProgressionClockSource',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionEnabled',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionHits',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionPattern',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionPhraseMultiplier',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionRotation',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionStepEnabled',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'chordProgressionSteps',
-    reason: 'Retired chord-progression migration field; canonical Harmony progression owns playback.',
-  },
-  {
-    key: 'harmonyChordSequence',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
-  },
-  {
-    key: 'harmonyChordSequenceA',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
-  },
-  {
-    key: 'harmonyChordSequenceB',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
-  },
-  {
-    key: 'harmonyChordSequenceEnabled',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
-  },
-  {
-    key: 'harmonyChordSequenceLength',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
-  },
-  {
-    key: 'harmonyChordSequenceStepIndex',
-    reason: 'Legacy Harmony sequence migration field; canonical Harmony progression content owns playback.',
   },
   {
     key: 'synthPlayConfigs',

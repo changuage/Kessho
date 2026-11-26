@@ -75,11 +75,6 @@ function harmonyParamsFromState(state: Record<string, unknown>): Partial<Harmony
     cofDriftRate: finiteNumber(state.cofDriftRate, 2),
     cofDriftDirection: state.cofDriftDirection === 'ccw' || state.cofDriftDirection === 'random' ? state.cofDriftDirection : 'cw',
     cofDriftRange: finiteNumber(state.cofDriftRange, 3),
-    chordProgressionEnabled: false,
-    chordProgressionPattern: [0, 3, 4, 0],
-    chordProgressionSteps: 4,
-    chordProgressionStepEnabled: [true, true, true, true],
-    chordProgressionPhraseMultiplier: 1,
     canonicalProgression: sanitizeHarmonyProgression(state.harmonyProgression),
     transportBarsPerPhrase: finiteInteger(state.transportBarsPerPhrase, 4),
   };
@@ -144,7 +139,7 @@ export function createCoreProductHostHarmonySnapshot(
     harmonyState.progression = {
       ...harmonyState.progression,
       step,
-      pattern: canonical.events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0),
+      pattern: canonical.events.map(() => 0),
       stepEnabled: canonical.events.map(() => true),
       phraseMultiplier: 1,
       phraseCounter: 0,

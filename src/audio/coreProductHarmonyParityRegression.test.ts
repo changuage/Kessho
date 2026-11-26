@@ -13,9 +13,7 @@ import {
 } from './productArpeggiator';
 import {
   normalizeProductPlayConfig,
-  resolveProductChordPlayPatternDetails,
   resolveProductPlayEnginePattern,
-  resolveProductPlayMidiPattern,
 } from './productPlaySequencer';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
@@ -28,19 +26,15 @@ import { drumPitchUiValuesToEngineOffsets } from '../ui/sequencer/drumPitchSeque
 import { reactiveVisualizerRootPitchClass } from '../ui/visualizer/reactiveVisualizerHarmony';
 import { DEFAULT_STATE } from '../ui/state';
 import {
-  HARMONY_SEQUENCE_STEP_COUNT,
-  HARMONY_SLOT_COUNT,
-  defaultHarmonyChordSlot,
   defaultHarmonyIntent,
   formatHarmonyIntentChordLabel,
-  recognizeHarmonyIntentFromMidiPool,
   resolveHarmonyIntentToNotePool,
   resolveProductHarmonyState,
   type HarmonyChordAlteration,
   type HarmonyChordQuality,
 } from './CoreProductHarmonyControl';
 import { sampleDescriptorForSlotNote, samplePredictionState } from './product/host/CoreProductSampleAssetResolver';
-import { editSharedChordIntent } from './harmony/harmonyChordAdapters';
+import { normalizeChord } from './harmony/chord';
 import {
   createCoreProductSynthSequencerLaneStepOverrideEvents,
   createCoreProductSynthSequencerStepOverrideEvents,
@@ -213,7 +207,7 @@ function absoluteHarmonyIntent(options: {
   alterations?: HarmonyChordAlteration[];
 }) {
   return {
-    ...defaultHarmonyIntent('slot'),
+    ...defaultHarmonyIntent('manualControl'),
     rootMode: 'absolute' as const,
     rootNote: 0,
     quality: options.quality,
@@ -259,63 +253,9 @@ for (const testCase of harmonyVocabularyCases) {
   );
 }
 
-const harmonyRecognitionCases: Array<{ notes: number[]; label: string }> = [
-  { notes: [60, 64, 67, 71, 74], label: 'Cmaj9' },
-  { notes: [60, 64, 67, 70, 74], label: 'C9' },
-  { notes: [60, 63, 67, 70, 74], label: 'Cm9' },
-  { notes: [60, 64, 67, 69], label: 'C6' },
-  { notes: [60, 64, 67, 69, 74], label: 'C6/9' },
-  { notes: [60, 64, 67, 70, 73], label: 'C7b9' },
-  { notes: [60, 64, 67, 70, 75], label: 'C7#9' },
-  { notes: [60, 64, 67, 70, 78], label: 'C7#11' },
-  { notes: [60, 64, 67, 70, 81], label: 'C13' },
-  { notes: [60, 65, 67], label: 'Csus' },
-  { notes: [60, 65, 70, 75], label: 'Cquartal' },
-  { notes: [60, 61, 62, 64], label: 'Ccluster' },
-];
-const previousCmaj7Intent = absoluteHarmonyIntent({ quality: 'maj7' });
-for (const testCase of harmonyRecognitionCases) {
-  const recognized = recognizeHarmonyIntentFromMidiPool({
-    midiNotes: testCase.notes,
-    previousIntent: previousCmaj7Intent,
-    rootMidi: 60,
-    scaleId: 1,
-    tension: 0.3,
-  });
-  assert.equal(
-    formatHarmonyIntentChordLabel(recognized, { rootMidi: 60, scaleId: 1 }),
-    testCase.label,
-    `Harmony recognition should identify ${testCase.label}`,
-  );
-}
-assert.equal(
-  formatHarmonyIntentChordLabel(recognizeHarmonyIntentFromMidiPool({
-    midiNotes: [60, 64, 67, 69],
-    previousIntent: previousCmaj7Intent,
-    rootMidi: 60,
-    scaleId: 1,
-    tension: 0.3,
-  }), { rootMidi: 60, scaleId: 1 }),
-  'C6',
-  'Harmony recognition should prefer previous-root C6 over Am7/C',
-);
-const freeVoicingIntent = recognizeHarmonyIntentFromMidiPool({
-  midiNotes: [60, 61, 67, 71],
-  previousIntent: previousCmaj7Intent,
-  rootMidi: 60,
-  scaleId: 1,
-  tension: 0.3,
-});
-assert.equal(freeVoicingIntent.preserveCapturedVoicing, true, 'unsupported Harmony recognition should preserve exact free voicing');
-assert.deepEqual(freeVoicingIntent.capturedMidiNotes, [60, 61, 67, 71], 'free voicing fallback should keep exact edited MIDI notes');
-assert.notEqual(
-  formatHarmonyIntentChordLabel(freeVoicingIntent, { rootMidi: 60, scaleId: 1 }),
-  'FREE',
-  'captured Harmony voicing labels should not fall back to FREE',
-);
 assert.equal(
   formatHarmonyIntentChordLabel({
-    ...freeVoicingIntent,
+    ...absoluteHarmonyIntent({ quality: 'maj7' }),
     capturedMidiNotes: [64, 67, 71, 74],
     preserveCapturedVoicing: true,
   }, { rootMidi: 60, scaleId: 1 }),
@@ -323,16 +263,12 @@ assert.equal(
   'captured Harmony voicing labels should infer common chord names',
 );
 
-function productArpTestHarmony(
-  notePoolMidi: number[],
-  chordSlots: ProductArpHarmonyContext['chordSlots'] = [],
-): ProductArpHarmonyContext {
+function productArpTestHarmony(notePoolMidi: number[]): ProductArpHarmonyContext {
   return {
     rootMidi: 60,
     scaleId: 1,
     tension: 0.3,
     notePoolMidi,
-    chordSlots,
   };
 }
 
@@ -439,85 +375,6 @@ assert.equal(rememberedLength10Details?.length, 10, 'Product arp should only res
 assert.equal(rememberedLength12Details?.[10]?.enabled, true, 'Product arp should restore remembered step 11 when length expands');
 assert.equal(rememberedLength12Details?.[11]?.enabled, true, 'Product arp should restore remembered step 12 when length expands');
 
-const chordPlaySlot = defaultHarmonyChordSlot(0);
-chordPlaySlot.chord = editSharedChordIntent(chordPlaySlot.chord!, absoluteHarmonyIntent({ quality: 'maj7', extensions: ['9'] }));
-const chordPlayHarmony = productArpTestHarmony([60, 64, 67], [chordPlaySlot]);
-const emptyChordPlayConfig = normalizeProductPlayConfig({
-  enabled: true,
-  mode: 'chord',
-  chord: { length: 4 },
-});
-assert.deepEqual(
-  resolveProductPlayMidiPattern({ config: emptyChordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
-  [60, -1, -1, -1],
-  'Product Play chord mode should preserve empty slot choices as silent positions',
-);
-const chordPlayConfig = normalizeProductPlayConfig({
-  enabled: true,
-  mode: 'chord',
-  chord: {
-    style: 'straight',
-    length: 2,
-    steps: [
-      { slotId: 0 },
-      { slotId: 0 },
-    ],
-  },
-});
-const chordPlayDetails = resolveProductChordPlayPatternDetails({
-  config: chordPlayConfig.chord,
-  harmony: chordPlayHarmony,
-});
-assert.deepEqual(chordPlayDetails[0]?.notes, [60, 64, 67, 71, 74], 'Product Play chord mode should resolve S1 through global Harmony slot');
-assert.deepEqual(chordPlayDetails[1]?.notes, [60, 64, 67, 71, 74], 'Product Play chord mode should treat every choice as a trigger event');
-chordPlaySlot.chord = editSharedChordIntent(chordPlaySlot.chord!, absoluteHarmonyIntent({ quality: 'nine' }));
-assert.deepEqual(
-  resolveProductChordPlayPatternDetails({ config: chordPlayConfig.chord, harmony: chordPlayHarmony })[0]?.notes,
-  [60, 64, 67, 70, 74],
-  'Product Play chord mode should follow changed global slot intent',
-);
-assert.deepEqual(
-  resolveProductPlayMidiPattern({ config: chordPlayConfig, harmony: chordPlayHarmony, laneIndex: 0 }),
-  [60, 60],
-  'Product Play chord choices should retain one engine position per choice',
-);
-const sparseChordPlayConfig = normalizeProductPlayConfig({
-  enabled: true,
-  mode: 'chord',
-  chord: {
-    style: 'straight',
-    length: 8,
-    steps: [
-      { slotId: 0 },
-      { slotId: 0 },
-      { slotId: 0 },
-      { slotId: 0 },
-    ],
-  },
-});
-const sparseChordEnginePattern = resolveProductPlayEnginePattern({
-  config: sparseChordPlayConfig,
-  harmony: chordPlayHarmony,
-  laneIndex: 0,
-});
-assert.deepEqual(
-  sparseChordEnginePattern?.midiPattern,
-  [60, 60, 60, 60, -1, -1, -1, -1],
-  'Product Play chord engine pattern should preserve every slot choice',
-);
-assert.equal(sparseChordEnginePattern?.steps, 8, 'Product Play chord choices should clock at their authored choice length');
-const sequenceBoundChordEnginePattern = resolveProductPlayEnginePattern({
-  config: chordPlayConfig,
-  harmony: chordPlayHarmony,
-  laneIndex: 0,
-  pitchBindingMode: 'sequence',
-  triggerPattern: [true, false, false, true, false, false, false, true],
-});
-assert.deepEqual(
-  sequenceBoundChordEnginePattern?.midiPattern,
-  [60, 60],
-  'chord Product Play should keep choice-length pitch pattern for hit-count binding',
-);
 const continuousArpPlayConfig = normalizeProductPlayConfig({
   enabled: true,
   mode: 'arp',
@@ -742,32 +599,6 @@ assert.deepEqual(
   'Product arp reset points should restart traversal from the reset step',
 );
 assert.equal(resetDetails[3]?.reset, true, 'Product arp resolved details should expose reset points for the editor');
-
-const arpLockedSlot = defaultHarmonyChordSlot(0);
-arpLockedSlot.chord = editSharedChordIntent(arpLockedSlot.chord!, {
-  ...arpLockedSlot.chord!.intent!,
-  preserveCapturedVoicing: true,
-  capturedMidiNotes: [72, 76, 79],
-});
-const sourceLockDetails = resolveProductArpPatternDetails({
-  config: normalizeProductArpConfig({
-    enabled: true,
-    flow: 'up',
-    length: 2,
-    pulseMask: 0b11,
-    contour: [0, 0],
-    slotLane: [-1, 0],
-  }),
-  harmony: productArpTestHarmony([60, 62, 64], [arpLockedSlot]),
-  laneIndex: 0,
-});
-assert(sourceLockDetails, 'enabled Product arp source-lock test should resolve step details');
-assert.deepEqual(
-  sourceLockDetails.map((step) => step.outputMidi),
-  [60, 76],
-  'Product arp per-step source lock should resolve that step from the selected harmony slot pool',
-);
-assert.equal(sourceLockDetails[1]?.source, 0, 'Product arp resolved details should expose the selected source lock');
 
 const randomArpConfig = normalizeProductArpConfig({
   enabled: true,
@@ -1459,8 +1290,7 @@ assert.ok((customUnknownDrumVoicePresetSource?.drumVoicePresetAIds[0] ?? 0) > 0,
 assert.ok((customUnknownDrumVoicePresetSource?.drumOverrideCount ?? 0) > 0, 'Product drum unknown voice preset should carry slider-derived sparse overrides');
 
 const harmonyDefaultsSnapshot = createCoreProductSnapshot({ rootMidi: 60, tension: 0.35 });
-assert.equal(harmonyDefaultsSnapshot.harmony.chordSlots.length, HARMONY_SLOT_COUNT, 'Product harmony should initialize 8 chord slots');
-assert.equal(harmonyDefaultsSnapshot.harmony.chordSequence.length, HARMONY_SEQUENCE_STEP_COUNT, 'Product harmony should initialize 8 sequence steps');
+assert.equal(harmonyDefaultsSnapshot.harmony.canonicalProgressionEventCount, 8, 'Product harmony should initialize 8 progression events');
 assert.equal(harmonyDefaultsSnapshot.harmony.resolvedHarmonyFrame.activeSource, 'baseline', 'Product harmony baseline should remain default authority');
 assert.equal(harmonyDefaultsSnapshot.harmony.manualControlAvailable, true, 'manual harmony control should be available at endpoint morph');
 assert.ok(harmonyDefaultsSnapshot.harmony.notePoolCount > 0, 'Product harmony should expose a current note pool');
@@ -1522,66 +1352,6 @@ const harmonyManualDuringMorph = createCoreProductSnapshot({
 assert.equal(harmonyManualDuringMorph.harmony.manualControlAvailable, false, 'manual harmony control should be locked during morph');
 assert.equal(harmonyManualDuringMorph.harmony.resolvedHarmonyFrame.activeSource, 'baseline', 'manual harmony control should not mutate active harmony during morph');
 
-const slotTriggerIntent = {
-  source: 'slot' as const,
-  strength: 'force' as const,
-  rootMode: 'degree' as const,
-  degree: 4,
-  rootNote: 0,
-  quality: 'min7' as const,
-  extensions: [],
-  inversion: 0,
-  spread: 0.5,
-  octave: 4,
-  bassMode: 'off' as const,
-  bassNote: null,
-  capturedMidiNotes: [],
-  preserveCapturedVoicing: false,
-};
-const slotTriggerState = resolveProductHarmonyState({
-  state: {
-    manualHarmonyControl: {
-      slotTriggerMode: true,
-      activeSlotId: 2,
-    },
-    harmonyChordSlots: [{
-      id: 2,
-      name: 'Slot 3',
-      locked: false,
-      intent: slotTriggerIntent,
-    }],
-  },
-  rootMidi: 60,
-  scaleId: 1,
-  tension: 0.35,
-  seed: 1,
-});
-const expectedSlotTriggerPool = resolveHarmonyIntentToNotePool({
-  intent: slotTriggerIntent,
-  rootMidi: 60,
-  scaleId: 1,
-  tension: 0.35,
-});
-assert.equal(slotTriggerState.resolvedHarmonyFrame.activeSource, 'slot', 'slot trigger should become active harmony at endpoint morph');
-assert.equal(slotTriggerState.resolvedHarmonyFrame.activeSlotId, 2, 'slot trigger should preserve the active slot id');
-assert.deepEqual(slotTriggerState.resolvedHarmonyFrame.currentNotePool, expectedSlotTriggerPool, 'slot trigger should resolve the selected slot note pool');
-const harmonySlotTriggerSnapshot = createCoreProductSnapshot({
-  rootMidi: 60,
-  scaleMode: 'manual',
-  manualScale: 'Major (Ionian)',
-  tension: 0.35,
-  manualHarmonyControl: {
-    slotTriggerMode: true,
-    activeSlotId: 2,
-  },
-  harmonyChordSlots: [{
-    id: 2,
-    name: 'Slot 3',
-    locked: false,
-    intent: slotTriggerIntent,
-  }],
-});
-assert.equal(harmonySlotTriggerSnapshot.harmony.activeSource, 2, 'Product snapshot should encode slot trigger as active slot source');
 const idleLiveWireSnapshot = createCoreProductSnapshot({
   rootMidi: 60,
   tension: 0.35,
@@ -1594,49 +1364,20 @@ assert.equal(idleLiveWireSnapshot.harmony.liveGestureRevision, 0, 'momentary liv
 assert.equal(idleLiveWireSnapshot.harmony.liveGestureScope, 0, 'snapshot live scope must start idle');
 assert.equal(idleLiveWireSnapshot.harmony.liveGestureTarget, 0, 'snapshot live target must start idle');
 assert.equal(idleLiveWireSnapshot.harmony.liveGestureNoteCount, 0, 'snapshot live notes must start empty');
-assert.equal(harmonySlotTriggerSnapshot.harmony.controlMode, 3, 'Product snapshot should encode slot trigger as slot control mode');
-assert.deepEqual(
-  harmonySlotTriggerSnapshot.harmony.notePoolMidi.slice(0, harmonySlotTriggerSnapshot.harmony.notePoolCount),
-  expectedSlotTriggerPool,
-  'Product snapshot should carry the triggered slot note pool',
-);
-
-const slotTriggerDuringMorph = resolveProductHarmonyState({
-  state: {
-    harmonyMorphPercent: 50,
-    manualHarmonyControl: {
-      slotTriggerMode: true,
-      activeSlotId: 2,
-    },
-    harmonyChordSlots: [{
-      id: 2,
-      name: 'Slot 3',
-      locked: false,
-      intent: slotTriggerIntent,
-    }],
-  },
-  rootMidi: 60,
-  scaleId: 1,
-  tension: 0.35,
-  seed: 1,
-});
-assert.equal(slotTriggerDuringMorph.resolvedHarmonyFrame.manualControlAvailable, false, 'slot trigger should be locked during preset morph');
-assert.equal(slotTriggerDuringMorph.resolvedHarmonyFrame.activeSource, 'baseline', 'slot trigger should not mutate active harmony during preset morph');
-
 const morphBankState = resolveProductHarmonyState({
   state: {
     harmonyMorphPercent: 50,
     harmonyProgressionA: {
-      version: 1,
+      version: 2,
       enabled: true,
       currentEventIndex: 0,
-      events: [{ id: 'a0', source: { type: 'slot', slotId: 0 }, duration: { unit: 'phrase', value: 1 }}],
+      events: [{ id: 'a0', source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 }}],
     },
     harmonyProgressionB: {
-      version: 1,
+      version: 2,
       enabled: true,
       currentEventIndex: 0,
-      events: [{ id: 'b0', source: { type: 'slot', slotId: 1 }, duration: { unit: 'phrase', value: 1 }}],
+      events: [{ id: 'b0', source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 }}],
     },
   },
   rootMidi: 60,
@@ -1644,7 +1385,35 @@ const morphBankState = resolveProductHarmonyState({
   tension: 0.35,
   seed: 1,
 });
-assert.equal(morphBankState.chordSequence[0]?.slotId, 1, 'Product harmony should select the Preset B progression bank at 50% morph');
+assert.equal(morphBankState.progression.events[0]?.id, 'b0', 'Product harmony should select the Preset B progression bank at 50% morph');
+
+const fixedProgressionChord = normalizeChord({ behavior: 'fixed', notes: [{ midi: 60 }, { midi: 64, velocity: 0.5, offset: 0.25, gate: 1, destination: 7 }, { midi: 67 }] })!;
+const followProgressionChord = normalizeChord({
+  behavior: 'follow', degree: 4, quality: 'major', extensions: ['7', 'dominant'],
+  voicing: { inversion: 1, spread: 0.5, register: -1, bass: 'root' },
+  notes: [{ midi: 99 }],
+})!;
+const chordProgressionSnapshot = createCoreProductSnapshot({
+  rootMidi: 60,
+  tension: 0.35,
+  harmonyProgression: {
+    version: 2,
+    enabled: true,
+    currentEventIndex: 0,
+    events: [
+      { id: 'fixed', source: { type: 'chord', chord: fixedProgressionChord }, duration: { unit: 'bar', value: 1 } },
+      { id: 'follow', source: { type: 'chord', chord: followProgressionChord }, duration: { unit: 'bar', value: 1 } },
+      { id: 'auto', source: { type: 'auto' }, duration: { unit: 'bar', value: 1 } },
+    ],
+  },
+});
+const progressionHarmony = chordProgressionSnapshot.harmony;
+assert.deepEqual(progressionHarmony.canonicalProgressionSource?.slice(0, 4), [1, 1, 0, 0], 'chord events encode as chord sources and auto events as auto');
+assert.deepEqual(progressionHarmony.canonicalProgressionNoteCount?.slice(0, 3), [3, 0, 0], 'only Fixed chords send notes to native');
+assert.deepEqual(progressionHarmony.canonicalProgressionChord?.[0], { behavior: 1, degree: 0, quality: 0, extensions: 0, inversion: 0, spread: 0, registerOctave: 0, bassMode: 0, bassPitchClass: 0 });
+assert.deepEqual(progressionHarmony.canonicalProgressionChord?.[1], { behavior: 0, degree: 4, quality: 1, extensions: 2 | 32, inversion: 1, spread: 0.5, registerOctave: -1, bassMode: 1, bassPitchClass: 0 });
+assert.deepEqual(progressionHarmony.canonicalProgressionNotes?.[1], { midi: 64, velocity: 0.5, gateBeats: 1, offsetBeats: 0.25, destinationSourceId: 7 });
+assert.equal(progressionHarmony.canonicalProgressionNotes?.[8]?.midi, 0, 'a Follow chord leaves its note slots empty');
 
 const extendedHarmonyPool = resolveHarmonyIntentToNotePool({
   intent: {

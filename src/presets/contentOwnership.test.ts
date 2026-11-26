@@ -41,7 +41,7 @@ assert.equal(getPresetContentOwner('synthEuclid1NoteMax'), 'slot-binding');
 assert.equal(getPresetContentOwner('drumEuclid6TargetMembrane'), 'slot-binding');
 assert.equal(getPresetContentOwner('drumEuclid6ResumeQuantization'), 'slot-binding');
 assert.equal(getPresetContentOwner('synthSequencerChain'), 'arrangement-global');
-assert.equal(getPresetContentOwner('harmonyChordSlotsA'), 'portable-content');
+assert.equal(getPresetContentOwner('harmonyPalette'), 'portable-content');
 assert.equal(getPresetContentOwner('rootNote'), 'portable-content');
 assert.equal(getPresetContentOwner('transportPrimaryClock'), 'arrangement-global');
 assert.equal(getPresetContentOwner('sample1ReverbSend'), 'slot-binding');

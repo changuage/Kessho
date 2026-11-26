@@ -57,9 +57,9 @@ test('syncAuthored follows external edits and ignores them during an active tran
 });
 
 test('boundary helper waits for canonical event ends and handles one-bar cycle wraps', () => {
-  const long = { version: 1 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'long', source: { type: 'auto' as const }, duration: { unit: 'phrase' as const, value: 2 as const } }, { id: 'next', source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } }] };
+  const long = { version: 2 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'long', source: { type: 'auto' as const }, duration: { unit: 'phrase' as const, value: 2 as const } }, { id: 'next', source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } }] };
   assert.equal(crossedHarmonyProgressionBoundary({ eventIndex: 0, absoluteBarIndex: 0 }, { eventIndex: 0, absoluteBarIndex: 1 }, long), false);
   assert.equal(crossedHarmonyProgressionBoundary({ eventIndex: 0, absoluteBarIndex: 1 }, { eventIndex: 1, absoluteBarIndex: 8 }, long), true);
-  const one = { version: 1 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'one', source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } }] };
+  const one = { version: 2 as const, enabled: true, currentEventIndex: 0, events: [{ id: 'one', source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } }] };
   assert.equal(crossedHarmonyProgressionBoundary({ eventIndex: 0, absoluteBarIndex: 0 }, { eventIndex: 0, absoluteBarIndex: 1 }, one), true);
 });

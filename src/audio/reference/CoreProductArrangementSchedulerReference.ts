@@ -380,10 +380,7 @@ export class CoreProductArrangementScheduler {
       nowWallSec,
     );
     const progressionPhraseIndex = getCurrentClockIndexWall(
-      resolveProgressionPhraseClockSource(
-        sliderState.chordProgressionClockSource ?? 'harmony',
-        sliderState.harmonyClockSource ?? 'globalPhrase',
-      ),
+      resolveProgressionPhraseClockSource('harmony', sliderState.harmonyClockSource ?? 'globalPhrase'),
       progressionPhraseSeconds(sliderState),
       this.anchors,
       nowWallSec,

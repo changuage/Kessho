@@ -41,8 +41,8 @@ export interface HarmonyWorkspaceProps {
 
 function viewDescription(view: 'simple' | 'detail' | 'overview'): string {
   if (view === 'simple') return 'Root, scale, Circle of Fifths, and automatic Harmony policy';
-  if (view === 'detail') return 'Manual voicing and single-slot chord construction';
-  return 'Canonical progression, performance, and Harmony takeover';
+  if (view === 'detail') return 'Manual voicing and chord construction';
+  return 'Canonical progression and Harmony takeover';
 }
 
 const HARMONY_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
@@ -60,7 +60,6 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, contr
   const boundaryRef = useRef<HarmonyBoundaryPosition>(boundaryPosition);
   const editableStateChange = actionsLocked ? undefined : controller.onStateChange;
   const transientStateChange = actionsLocked ? undefined : controller.onTransientStateChange;
-  const [selectedSlotId, setSelectedSlotId] = useState(projection.position.eventIndex >= 0 ? projection.progression[projection.position.eventIndex]?.slotId ?? 0 : 0);
   const historyLabel = controller.history.past.length > 0 ? controller.history.past[controller.history.past.length - 1]?.label : 'No authored edits';
   const surface = harmonyWorkspaceSurfaceForView(controller.view);
   useEffect(() => {
@@ -164,10 +163,6 @@ export function HarmonyWorkspace({ state, harmonyState, harmonyProjection, contr
           onHarmonyLiveLayerChange={onHarmonyLiveLayerChange}
           isRunning={isRunning}
           workspaceView={controller.view}
-          selectedSlotId={selectedSlotId}
-          onSelectedSlotChange={setSelectedSlotId}
-          canUndo={controller.canUndo}
-          onUndo={controller.undo}
         />
       </div>
     </section>

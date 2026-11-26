@@ -8,8 +8,9 @@ import {
 
 test('HarmonyLiveChordGesture emits one bounded header and at most eight note records', () => {
   const events = createCoreProductHarmonyLiveChordGestureEvents({
-    kind: 'seq-live',
-    seqId: 2,
+    kind: 'draft-live',
+    scope: 'suggestion',
+    target: 'seq3',
     latched: false,
     frame: { currentNotePool: [60, 64, 67, 71, 74, 77, 81, 84, 90] } as never,
   }, 9);
@@ -17,7 +18,7 @@ test('HarmonyLiveChordGesture emits one bounded header and at most eight note re
   assert.equal(events[0]?.eventKind, KESSHO_PRODUCT_EVENT_IDS.HarmonyLiveChordGesture);
   assert.equal(events[0]?.flags, CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.header);
   assert.equal(events[0]?.targetId, 5);
-  assert.equal(events[0]?.index, 4);
+  assert.equal(events[0]?.index, 2);
   assert.equal(events[0]?.value3, 8);
   assert.equal(events[8]?.flags, CORE_PRODUCT_HARMONY_LIVE_GESTURE_FLAGS.note);
   assert.equal(events[8]?.value, 84);

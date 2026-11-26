@@ -1,10 +1,3 @@
-import {
-  HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES,
-  resolveHarmonyIntentToNotePool,
-  type HarmonyIntent,
-} from '../CoreProductHarmonyControl';
-import type { HarmonyPlaybackBehavior } from './harmonyTypes';
-
 export type HarmonyAdoptionStatus = 'queued' | 'running' | 'complete' | 'cancelled';
 
 export interface HarmonyAdoptionTransition {
@@ -235,20 +228,4 @@ export function cancelHarmonyAdoptionTransition(transition: HarmonyAdoptionTrans
   if (transition.status !== 'running' || !atHarmonyBoundary) return { accepted: false, transition, patch: null, inverse: null };
   const cancelled: HarmonyAdoptionTransition = { ...transition, status: 'cancelled' };
   return { accepted: true, transition: cancelled, patch: { ...transition.sourceAuthored }, inverse: patchForTransition(transition) };
-}
-
-export function resolveAdoptionPlaybackNotes(input: {
-  playbackBehavior: HarmonyPlaybackBehavior;
-  exactMidiNotes: readonly number[];
-  intent: HarmonyIntent | null;
-  capturedRootMidi: number;
-  effectiveRootMidi: number;
-  scaleId: number;
-}): number[] {
-  if (input.playbackBehavior === 'exact') return input.exactMidiNotes.slice();
-  const displacement = input.effectiveRootMidi - input.capturedRootMidi;
-  if (input.playbackBehavior === 'auto' && Math.abs(displacement) <= HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES) return input.exactMidiNotes.slice();
-  return input.intent
-    ? resolveHarmonyIntentToNotePool({ intent: input.intent, rootMidi: input.effectiveRootMidi, scaleId: input.scaleId, tension: 0.35 })
-    : [];
 }

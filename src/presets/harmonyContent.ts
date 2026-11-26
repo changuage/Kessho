@@ -7,22 +7,11 @@ export interface HarmonyContentInstance {
   content: Record<string, unknown>;
 }
 
-const HARMONY_CONTEXT_KEYS = ['rootNote', 'scaleMode', 'manualScale', 'tension', 'voicingSpread'] as const;
+/** The Palette is per-preset harmony content that rides with the context. */
+const HARMONY_CONTEXT_KEYS = ['rootNote', 'scaleMode', 'manualScale', 'tension', 'voicingSpread', 'harmonyPalette'] as const;
 
 export function buildHarmonyContentInstances(state: Record<string, unknown>): HarmonyContentInstance[] {
   const instances: HarmonyContentInstance[] = [];
-  for (const [suffix, key] of [
-    ['active', 'harmonyChordSlots'],
-    ['a', 'harmonyChordSlotsA'],
-    ['b', 'harmonyChordSlotsB'],
-  ] as const) {
-    if (Array.isArray(state[key])) instances.push({
-      id: `harmony.chord.${suffix}`,
-      refSlot: `harmony.program.chord-bank-${suffix}`,
-      contentType: 'harmonyChordBank',
-      content: { slots: state[key] },
-    });
-  }
   for (const [suffix, key, refSuffix] of [
     ['active', 'harmonyProgression', 'active'],
     ['a', 'harmonyProgressionA', 'a'],
@@ -39,7 +28,7 @@ export function buildHarmonyContentInstances(state: Record<string, unknown>): Ha
     id: 'harmony.context',
     refSlot: 'harmony.program.context',
     contentType: 'harmonyContext',
-    content: Object.fromEntries(HARMONY_CONTEXT_KEYS.map(key => [key, state[key]]).filter(([, value]) => value !== undefined)),
+    content: Object.fromEntries(HARMONY_CONTEXT_KEYS.map(key => [key, state[key]]).filter(([, value]) => value !== undefined && !(Array.isArray(value) && value.length === 0))),
   });
   return instances;
 }
@@ -54,22 +43,12 @@ export function hydrateHarmonyContentRef(
   content: Record<string, unknown>,
 ): Record<string, unknown> | null {
   if (refSlot === 'harmony.program.context' && contentType === 'harmonyContext') return content;
-  const chord = /^harmony\.program\.chord-bank-(active|[ab])$/.exec(refSlot);
-  if (chord && contentType === 'harmonyChordBank') {
-    return chord[1] === 'active'
-      ? { harmonyChordSlots: content.slots }
-      : { [`harmonyChordSlots${chord[1]!.toUpperCase()}`]: content.slots };
-  }
   const sequence = /^harmony\.program\.sequence-bank-([ab])$/.exec(refSlot);
   if (sequence && contentType === 'harmonySequenceBank') {
-    if (content.progression !== undefined) {
-      return { [`harmonyProgression${sequence[1]!.toUpperCase()}`]: content.progression };
-    }
-    return { [`harmonyChordSequence${sequence[1]!.toUpperCase()}`]: content.steps };
+    return { [`harmonyProgression${sequence[1]!.toUpperCase()}`]: content.progression };
   }
   if (refSlot === 'harmony.program.sequence-bank-active' && contentType === 'harmonySequenceBank') {
-    if (content.progression !== undefined) return { harmonyProgression: content.progression };
-    return { harmonyChordSequence: content.steps };
+    return { harmonyProgression: content.progression };
   }
   return null;
 }
@@ -77,8 +56,6 @@ export function hydrateHarmonyContentRef(
 export function stripHarmonyContentFromL4Override(data: Record<string, unknown>): Record<string, unknown> {
   const moved = new Set<string>([
     ...HARMONY_CONTEXT_KEYS,
-    'harmonyChordSlots',
-    'harmonyChordSlotsA', 'harmonyChordSlotsB',
     'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
   ]);
   return Object.fromEntries(Object.entries(data).filter(([key]) => !moved.has(key)));

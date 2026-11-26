@@ -66,11 +66,6 @@ function harmonyParamsFromState(state: SliderState): Partial<HarmonyParams> {
     cofDriftRate: state.cofDriftRate ?? 2,
     cofDriftDirection: state.cofDriftDirection ?? 'cw',
     cofDriftRange: state.cofDriftRange ?? 3,
-    chordProgressionEnabled: state.chordProgressionEnabled ?? false,
-    chordProgressionPattern: state.chordProgressionPattern ?? [0, 3, 4, 0],
-    chordProgressionSteps: state.chordProgressionSteps ?? 4,
-    chordProgressionStepEnabled: state.chordProgressionStepEnabled ?? [true, true, true, true],
-    chordProgressionPhraseMultiplier: state.chordProgressionPhraseMultiplier ?? 1,
   };
 }
 

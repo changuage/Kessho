@@ -1419,11 +1419,6 @@ function getCorePreviewHarmonyParams(sliderState: SliderState): Partial<HarmonyP
     cofDriftRate: sliderState.cofDriftRate ?? 2,
     cofDriftDirection: sliderState.cofDriftDirection ?? 'cw',
     cofDriftRange: sliderState.cofDriftRange ?? 3,
-    chordProgressionEnabled: false,
-    chordProgressionPattern: [0, 3, 4, 0],
-    chordProgressionSteps: 4,
-    chordProgressionStepEnabled: [true, true, true, true],
-    chordProgressionPhraseMultiplier: 1,
     canonicalProgression: sanitizeHarmonyProgression(sliderState.harmonyProgression),
     transportBarsPerPhrase: sliderState.transportBarsPerPhrase ?? 4,
   };

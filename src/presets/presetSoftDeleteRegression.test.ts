@@ -3134,9 +3134,9 @@ async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
   assert.equal(preset.latest_resolved_hash, null, 'new L4 rollups should remain graph-authoritative');
   assert.ok(
     client.tables.preset_version_content_refs_v2.some(ref => (
-      ref.version_id === version?.id && ref.ref_slot === 'harmony.program.chord-bank-active'
+      ref.version_id === version?.id && ref.ref_slot === 'harmony.program.sequence-bank-active'
     )),
-    'the active chord bank should be content-addressed instead of embedded in the L4 override',
+    'the active progression should be content-addressed instead of embedded in the L4 override',
   );
   assert.equal(
     client.tables.preset_version_content_refs_v2.filter(ref => (
@@ -3146,7 +3146,7 @@ async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
     'all four Lead endpoints should be content-addressed',
   );
   const override = client.tables.preset_payloads_v2.find(row => row.hash === version?.override_hash)?.payload as FakeRow;
-  assert.equal('harmonyChordSlots' in override, false, 'L4 overrides should omit the active chord-bank payload');
+  assert.equal('harmonyProgression' in override, false, 'L4 overrides should omit the active progression payload');
   client.presetLatestManifestRpcCalls = 0;
   client.presetPayloadRpcCalls = 0;
   const loaded = await store.load('state', name, 'global');
@@ -3154,7 +3154,7 @@ async function testGraphOnlyStateLoadWithoutResolvedPayload(): Promise<void> {
   assert.ok(restored, 'graph-only state should load without a resolved payload');
   for (const key of [
     'synthEuclid1Steps', 'synthEuclid1Hits', 'synthEuclid1Source', 'synthEuclid1VoiceMask',
-    'synthEuclid1Level', 'rootNote', 'tension', 'harmonyChordSlots', 'sample1LibraryKey', 'granularV1Mode',
+    'synthEuclid1Level', 'rootNote', 'tension', 'harmonyProgression', 'sample1LibraryKey', 'granularV1Mode',
     'dynamicsEq1LowFreq', 'padOscAWave', 'drumKickFreq', 'waterIntensity',
   ]) {
     assert.deepEqual(restored[key], state[key], `graph-only load should restore ${key}`);

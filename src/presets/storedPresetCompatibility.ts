@@ -1,10 +1,11 @@
 import type { PresetLevel } from './types';
-import { applyLegacyStateKeyAliases } from '../ui/state';
+import { RETIRED_CHORD_STATE_KEYS, applyLegacyStateKeyAliases } from '../ui/state';
 import { convertLegacyPadPitchFields } from '../ui/synth/padPitch';
 
 type JsonRecord = Record<string, unknown>;
 
-const RETIRED_INERT_STATE_KEYS = new Set([
+const RETIRED_INERT_STATE_KEYS = new Set<string>([
+  ...RETIRED_CHORD_STATE_KEYS,
   'airNoise',
   'filterModSpeed',
   'oscBrightness',
@@ -22,21 +23,7 @@ const RETIRED_INERT_STATE_KEYS = new Set([
   'synthChordSequencerVoiceCount',
   'synthChordSequencerClockDivision',
   'synthChordSequencer',
-  'harmonyChordSequence',
-  'harmonyChordSequenceA',
-  'harmonyChordSequenceB',
-  'harmonyChordSequenceEnabled',
-  'harmonyChordSequenceLength',
-  'harmonyChordSequenceStepIndex',
   'harmonyGenerationSeed',
-  'chordProgressionEnabled',
-  'chordProgressionPattern',
-  'chordProgressionSteps',
-  'chordProgressionHits',
-  'chordProgressionRotation',
-  'chordProgressionStepEnabled',
-  'chordProgressionPhraseMultiplier',
-  'chordProgressionClockSource',
   'drumRandomMorphUpdate',
   'drumRandomEnabled',
   'drumRandomDensity',

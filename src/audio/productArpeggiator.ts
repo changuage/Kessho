@@ -1,21 +1,14 @@
 import { DEFAULT_STATE } from '../ui/state';
-import {
-  HARMONY_POOL_MAX_NOTES,
-  resolveProductHarmonyState,
-  type HarmonyChordSlot,
-} from './CoreProductHarmonyControl';
-import { sharedSlotResolvedMidiPool } from './harmony/harmonyChordAdapters';
+import { HARMONY_POOL_MAX_NOTES, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { productHarmonyScaleIdFromName } from './coreProductHarmonyScaleIds';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleByName, selectScaleFamily } from './scales';
 
 export type ProductArpFlow = 'up' | 'down' | 'upDown' | 'downUp' | 'randomLiveTone' | 'diceHold';
-export type ProductArpSlotChoice = -1 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type ProductArpBoundaryMode = 'fold' | 'wrap' | 'clamp';
 export type ProductArpContourMode = 'pool' | 'semitone';
 export type ProductArpRate = 0.5 | 1 | 2 | 4;
 
-type LegacyProductArpSourceMode = 'followHarmony' | 'slotLane';
 type LegacyProductArpDirection = ProductArpFlow;
 
 export interface ProductArpConfig {
@@ -27,7 +20,6 @@ export interface ProductArpConfig {
   contour: number[];
   contourMode: ProductArpContourMode;
   boundaryMode: ProductArpBoundaryMode;
-  slotLane: ProductArpSlotChoice[];
   resetMask: number;
 }
 
@@ -36,7 +28,6 @@ export interface ProductArpHarmonyContext {
   scaleId: number;
   tension: number;
   notePoolMidi: number[];
-  chordSlots: HarmonyChordSlot[];
   /** Optional destination source for capability-aware chord rendering. */
   sourceId?: number;
 }
@@ -50,7 +41,6 @@ export interface ProductArpResolvedStep {
   step: number;
   enabled: boolean;
   reset: boolean;
-  source: ProductArpSlotChoice;
   move: number;
   baseMidi: number | null;
   outputMidi: number | null;
@@ -68,7 +58,6 @@ const PRODUCT_ARP_CONTOUR_MIN = -12;
 const PRODUCT_ARP_CONTOUR_MAX = 12;
 const DEFAULT_CONTOUR = [0, 2, -1, 3, 0, 1, -2, 1, 0, 2, -3, 1, 0, -1, 2, 0];
 const DEFAULT_TONE_PATTERN = [0, 2, 1, 3, 0, 1, 3, 2, 0, 2, 4, 3, 1, 4, 2, 5];
-const DEFAULT_SLOT_LANE: ProductArpSlotChoice[] = Array.from({ length: 16 }, () => -1);
 const DEFAULT_PULSE_MASK = 0b01011111;
 
 export function defaultProductArpConfig(): ProductArpConfig {
@@ -81,7 +70,6 @@ export function defaultProductArpConfig(): ProductArpConfig {
     contour: [...DEFAULT_CONTOUR],
     contourMode: 'pool',
     boundaryMode: 'fold',
-    slotLane: [...DEFAULT_SLOT_LANE],
     resetMask: 0,
   };
 }
@@ -90,7 +78,6 @@ export function normalizeProductArpConfig(value: unknown): ProductArpConfig {
   const fallback = defaultProductArpConfig();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
   const source = value as Partial<ProductArpConfig> & {
-    sourceMode?: LegacyProductArpSourceMode;
     direction?: LegacyProductArpDirection;
     pulseCount?: number;
     tonePattern?: number[];
@@ -108,7 +95,6 @@ export function normalizeProductArpConfig(value: unknown): ProductArpConfig {
   const resetMask = typeof source.resetMask === 'number' && Number.isFinite(source.resetMask)
     ? normalizeStepMask(source.resetMask)
     : fallback.resetMask;
-  const slotLane = normalizeSlotLane(source.slotLane);
   return {
     enabled: source.enabled === true,
     flow,
@@ -122,7 +108,6 @@ export function normalizeProductArpConfig(value: unknown): ProductArpConfig {
     boundaryMode: PRODUCT_ARP_BOUNDARY_MODES.includes(source.boundaryMode as ProductArpBoundaryMode)
       ? source.boundaryMode as ProductArpBoundaryMode
       : fallback.boundaryMode,
-    slotLane: source.sourceMode === 'followHarmony' ? [...DEFAULT_SLOT_LANE] : slotLane,
     resetMask,
   };
 }
@@ -158,7 +143,6 @@ export function createProductArpHarmonyContext(
     scaleId,
     tension,
     notePoolMidi: harmony.resolvedHarmonyFrame.currentNotePool,
-    chordSlots: harmony.chordSlots,
   };
 }
 
@@ -188,13 +172,11 @@ export function resolveProductArpPatternDetails(options: {
     const reset = (config.resetMask & (1 << pulse)) !== 0;
     if (reset) segmentStart = pulse;
     const move = config.contour[pulse] ?? 0;
-    const source = config.slotLane[pulse] ?? -1;
     if ((config.pulseMask & (1 << pulse)) === 0) {
       values.push({
         step: pulse,
         enabled: false,
         reset,
-        source,
         move,
         baseMidi: null,
         outputMidi: null,
@@ -204,13 +186,12 @@ export function resolveProductArpPatternDetails(options: {
       });
       continue;
     }
-    const pool = resolveSourcePool(config, options.harmony, pulse);
+    const pool = normalizePool(options.harmony.notePoolMidi);
     if (pool.length === 0) {
       values.push({
         step: pulse,
         enabled: true,
         reset,
-        source,
         move,
         baseMidi: null,
         outputMidi: null,
@@ -240,7 +221,6 @@ export function resolveProductArpPatternDetails(options: {
         step: pulse,
         enabled: true,
         reset,
-        source,
         move,
         baseMidi: null,
         outputMidi: null,
@@ -255,7 +235,6 @@ export function resolveProductArpPatternDetails(options: {
         step: pulse,
         enabled: true,
         reset,
-        source,
         move,
         baseMidi,
         outputMidi: clamp(Math.round(baseMidi + move), 0, 127),
@@ -270,7 +249,6 @@ export function resolveProductArpPatternDetails(options: {
       step: pulse,
       enabled: true,
       reset,
-      source,
       move,
       baseMidi,
       outputMidi: pool[outputIndex] ?? baseMidi,
@@ -361,16 +339,6 @@ function legacyTonePatternToContour(value: unknown[], flow: ProductArpFlow, leng
   });
 }
 
-function normalizeSlotLane(value: unknown): ProductArpSlotChoice[] {
-  const source = Array.isArray(value) ? value : DEFAULT_SLOT_LANE;
-  return Array.from({ length: 16 }, (_, index) => {
-    const raw = source[index];
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) return -1;
-    const rounded = Math.round(raw);
-    return (rounded >= -1 && rounded <= 7 ? rounded : -1) as ProductArpSlotChoice;
-  });
-}
-
 function numberFromState(state: Record<string, unknown> | undefined, key: string, fallback: number): number {
   const value = state?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -432,23 +400,6 @@ function nearestPoolIndex(pool: readonly number[], anchorMidi: number | null | u
     }
   }
   return closestIndex;
-}
-
-function resolveSourcePool(config: ProductArpConfig, harmony: ProductArpHarmonyContext, pulse: number): number[] {
-  const slotChoice = config.slotLane[pulse] ?? -1;
-  if (slotChoice >= 0) {
-    const slot = harmony.chordSlots[slotChoice];
-    if (slot) {
-      if (!slot.chord) return [];
-      return normalizePool(sharedSlotResolvedMidiPool(slot, {
-        rootMidi: harmony.rootMidi,
-        effectiveRootMidi: harmony.rootMidi,
-        scaleId: harmony.scaleId,
-        tension: harmony.tension,
-      }));
-    }
-  }
-  return normalizePool(harmony.notePoolMidi);
 }
 
 function resolveTraversalIndex(options: {

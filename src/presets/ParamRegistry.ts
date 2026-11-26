@@ -219,12 +219,10 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   modulationSourceB:     { level: 4, scope: 'global' },
   harmonyMorphPercent:   { level: 4, scope: 'global' },
   manualHarmonyControl:  { level: 4, scope: 'global' },
-  harmonyChordSlots:     { level: 4, scope: 'global' },
-  harmonyChordSlotsA:    { level: 4, scope: 'global' },
-  harmonyChordSlotsB:    { level: 4, scope: 'global' },
   harmonyProgression:    { level: 4, scope: 'global' },
   harmonyProgressionA:   { level: 4, scope: 'global' },
   harmonyProgressionB:   { level: 4, scope: 'global' },
+  harmonyPalette:        { level: 4, scope: 'global' },
   transportPrimaryClock: { level: 4, scope: 'global' },
   transportBarsPerPhrase:{ level: 4, scope: 'global' },
   transportBeatsPerBar:  { level: 4, scope: 'global' },
@@ -1727,7 +1725,7 @@ export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulat
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1354) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1354`);
+  if (count !== 1352) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1352`);
   }
 }

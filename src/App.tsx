@@ -2813,7 +2813,6 @@ const App: React.FC = () => {
                 onParamChange={handleSynthParameterChange}
                 onSelectChange={handleSelectChange}
                 onStateChange={handleStateChange}
-                commitHarmonyAuthoredStateChange={(updater, label) => harmonyWorkspaceController.commitAuthoredStateChange(updater, undefined, label)}
                 togglePanel={togglePanel}
                 sliderProps={sliderProps}
                 sliderModes={sliderModes}
@@ -2861,7 +2860,6 @@ const App: React.FC = () => {
                 onAuditionPresetPreview={productRuntimeManualTriggers.auditionSynthNoteWithState}
                 harmonyState={engineState.harmonyState}
                 harmonyProjection={harmonyProjection}
-                onHarmonyLiveLayerChange={handleHarmonyLiveLayerChange}
                 presetPoolRequest={synthPresetPoolRequest}
                 onPresetPoolRequestClose={closeSynthPresetPoolFromPatch}
                 />

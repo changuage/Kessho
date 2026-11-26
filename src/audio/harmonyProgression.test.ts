@@ -1,37 +1,59 @@
 import assert from 'node:assert/strict';
 import {
   HARMONY_PROGRESSION_CAPACITY,
-  defaultHarmonyChordSlot,
   defaultHarmonyProgression,
-  makeHarmonyProgressionEventUnique,
   migrateHarmonyProgression,
   reduceHarmonyProgression,
   resolveProductHarmonyState,
+  sanitizeHarmonyPalette,
   sanitizeHarmonyProgression,
 } from './CoreProductHarmonyControl';
+import { normalizeChord } from './harmony/chord';
 import { createHarmonyState, updateHarmonyState } from './harmony';
 import { createCoreProductHostHarmonySnapshot } from './CoreProductHostHarmonyState';
 import type { CoreProductTelemetrySnapshot } from './coreProductTelemetry';
 import { resolveHarmonyProjection } from './harmony/harmonyProjection';
-import { DEFAULT_STATE, decodeStateFromUrl, migratePreset } from '../ui/state';
+import { DEFAULT_STATE, decodeStateFromUrl, encodeStateToUrl, migratePreset, serializeState } from '../ui/state';
 
 const base = defaultHarmonyProgression();
 const first = base.events[0]!;
-assert.equal(Object.prototype.hasOwnProperty.call(defaultHarmonyChordSlot(0), 'intent'), false, 'default runtime slots must not emit legacy top-level intent');
 
-// The persisted legacy sequence is a migration source, never a second runtime authority.
-const migrated = sanitizeHarmonyProgression(undefined, [
-  { id: 4, enabled: true, mode: 'auto', degree: 0 },
-  { id: 7, enabled: true, mode: 'slotFollow', slotId: 2, durationBars: 4 },
-  { id: 8, enabled: false, mode: 'auto' },
-]);
+// A version 1 progression keeps its events; slot sources load as Auto.
+const migrated = sanitizeHarmonyProgression({
+  version: 1,
+  enabled: true,
+  currentEventIndex: 1,
+  events: [
+    { id: 'a', source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 } },
+    { id: 'b', source: { type: 'slot', slotId: 2 }, duration: { unit: 'bar', value: 4 } },
+  ],
+});
+assert.equal(migrated.version, 2);
 assert.equal(migrated.events.length, 2);
-assert.deepEqual(migrated.events[1]?.source, { type: 'slot', slotId: 2 });
-assert.equal(migrated.events[1]?.duration.value, 4);
-assert.notEqual(migrated.events[0]?.id, migrated.events[1]?.id);
-assert.equal(sanitizeHarmonyProgression(undefined, [
-  { id: 1, enabled: true, mode: 'auto', degree: 0 },
-], false).enabled, false, 'legacy sequence migration preserves Track Off');
+assert.deepEqual(migrated.events[1]?.source, { type: 'auto' });
+assert.deepEqual(migrated.events[1]?.duration, { unit: 'bar', value: 4 });
+assert.equal(migrated.enabled, true);
+assert.equal(migrated.currentEventIndex, 1);
+
+// Version 2 chord events validate through normalizeChord; anything else loads as Auto.
+const chord = normalizeChord({ behavior: 'fixed', notes: [{ midi: 60 }, { midi: 64 }, { midi: 67 }] })!;
+const withChord = sanitizeHarmonyProgression({
+  version: 2,
+  enabled: true,
+  events: [
+    { id: 'c', source: { type: 'chord', chord }, duration: { unit: 'bar', value: 2 } },
+    { id: 'd', source: { type: 'chord', chord: 'not a chord' }, duration: { unit: 'bar', value: 1 } },
+  ],
+});
+assert.deepEqual(withChord.events[0]?.source, { type: 'chord', chord });
+assert.deepEqual(withChord.events[1]?.source, { type: 'auto' });
+assert.deepEqual(sanitizeHarmonyProgression(undefined).events.map((event) => event.source.type), ['auto']);
+assert.deepEqual(sanitizeHarmonyProgression({ events: [{ id: 'x' }, { id: 'x' }] }).events.map((event) => event.id), ['x', 'x-1'], 'duplicate ids are made unique');
+
+// The Palette keeps up to 16 valid chords.
+const palette = sanitizeHarmonyPalette([chord, 'junk', ...Array.from({ length: 20 }, () => chord)]);
+assert.equal(palette.length, 16);
+assert.deepEqual(sanitizeHarmonyPalette(undefined), []);
 
 const oversizedMigration = migrateHarmonyProgression({
   version: 1,
@@ -62,6 +84,10 @@ assert.equal(withDurations.events[0]?.duration.value, 2);
 const duplicate = reduceHarmonyProgression(withDurations, { type: 'duplicate', id: first.id });
 assert.equal(duplicate.events.length, 3);
 assert.deepEqual(duplicate.events[1]?.source, duplicate.events[0]?.source);
+const chordProgression = { ...base, events: [{ ...first, source: { type: 'chord' as const, chord } }] };
+const chordCopy = reduceHarmonyProgression(chordProgression, { type: 'duplicate', id: first.id });
+assert.deepEqual(chordCopy.events[1]?.source, chordCopy.events[0]?.source);
+assert.notEqual((chordCopy.events[1]?.source as { chord: unknown }).chord, (chordCopy.events[0]?.source as { chord: unknown }).chord, 'a duplicated chord event owns its own chord');
 const moved = reduceHarmonyProgression(duplicate, { type: 'move', id: duplicate.events[0]!.id, direction: 'down' });
 assert.equal(moved.events[1]?.id, duplicate.events[0]?.id);
 const deleted = reduceHarmonyProgression(moved, { type: 'delete', id: moved.events[0]!.id });
@@ -83,19 +109,10 @@ assert.equal(full.events.length, HARMONY_PROGRESSION_CAPACITY);
 const rejected = reduceHarmonyProgression(full, { type: 'insert' });
 assert.deepEqual(rejected, full, 'event 65 must be rejected atomically');
 
-const slots = Array.from({ length: 8 }, (_, id) => defaultHarmonyChordSlot(id));
-slots[2] = { ...slots[2]!, chord: null };
-const linked = { ...base, events: [{ ...first, source: { type: 'slot' as const, slotId: 0 } }] };
-const unique = makeHarmonyProgressionEventUnique(linked, first.id, slots);
-assert(unique);
-assert.equal(unique?.progression.events[0]?.source.type, 'slot');
-assert.equal((unique?.progression.events[0]?.source as { slotId: number }).slotId, 2);
-assert(unique?.slots[2]?.chord, 'Make Unique copies the chord into the first empty slot');
-
 const runtime = resolveProductHarmonyState({
   state: {
     harmonyProgression: {
-      version: 1,
+      version: 2,
       enabled: true,
       currentEventIndex: 1,
       events: [
@@ -103,7 +120,6 @@ const runtime = resolveProductHarmonyState({
         { id: 'b', source: { type: 'auto' }, duration: { unit: 'bar', value: 4 } },
       ],
     },
-    harmonyChordSequence: [],
   },
   rootMidi: 60,
   scaleId: 1,
@@ -112,10 +128,8 @@ const runtime = resolveProductHarmonyState({
 });
 assert.equal(runtime.progression.events.length, 2);
 assert.equal(runtime.progression.currentEventIndex, 1);
-assert.equal(runtime.chordSequenceLength, 2);
-assert.equal(runtime.chordSequence[1]?.mode, 'auto');
 const positionedRuntime = resolveProductHarmonyState({
-  state: { harmonyProgression: runtime.progression, harmonyChordSequenceStepIndex: 0, transportBarsPerPhrase: 4 },
+  state: { harmonyProgression: runtime.progression, transportBarsPerPhrase: 4 },
   barIndex: 4,
   phraseIndex: 1,
   rootMidi: 60,
@@ -123,7 +137,7 @@ const positionedRuntime = resolveProductHarmonyState({
   tension: 0.35,
   seed: 1,
 });
-assert.equal(positionedRuntime.progression.currentEventIndex, 1, 'canonical position must ignore legacy step index at transport context');
+assert.equal(positionedRuntime.progression.currentEventIndex, 1, 'canonical position follows the transport context');
 const sixtyFourEvents = Array.from({ length: 64 }, (_, index) => ({
   id: `event-${index}`,
   source: { type: 'auto' as const },
@@ -131,16 +145,15 @@ const sixtyFourEvents = Array.from({ length: 64 }, (_, index) => ({
 }));
 const sixtyFourRuntime = resolveProductHarmonyState({
   state: {
-    harmonyProgression: { version: 1 as const, enabled: true, currentEventIndex: 63, events: sixtyFourEvents },
-    harmonyChordSequence: [],
+    harmonyProgression: { version: 2 as const, enabled: true, currentEventIndex: 63, events: sixtyFourEvents },
   },
   rootMidi: 60,
   scaleId: 1,
   tension: 0.35,
   seed: 1,
 });
-assert.equal(sixtyFourRuntime.chordSequenceLength, 64);
-assert.equal(sixtyFourRuntime.chordSequenceStepIndex, 63, 'canonical runtime resolves event 64');
+assert.equal(sixtyFourRuntime.progression.events.length, 64);
+assert.equal(sixtyFourRuntime.progression.currentEventIndex, 63, 'canonical runtime resolves event 64');
 assert.equal(sixtyFourRuntime.resolvedHarmonyFrame.nextStepIndex, 0, 'canonical runtime wraps event 64 to event 1');
 assert.deepEqual(
   resolveProductHarmonyState({ state: { harmonyProgression: runtime.progression }, rootMidi: 60, scaleId: 1, tension: 0.35, seed: 1 }).resolvedHarmonyFrame.currentNotePool,
@@ -149,7 +162,7 @@ assert.deepEqual(
 );
 
 const canonicalTiming = {
-  version: 1 as const,
+  version: 2 as const,
   enabled: true,
   currentEventIndex: 0,
   events: [
@@ -179,24 +192,45 @@ const advancedWithinPhrase = updateHarmonyState(
 );
 assert.equal(advancedWithinPhrase.progression.step, 1, 'one-bar canonical event advances at the bar boundary within a phrase');
 
+// Old chord keys are ignored on load and never saved: no decoders.
 const legacyUrl = `?harmonyChordSequence=${encodeURIComponent(JSON.stringify([
   { id: 0, enabled: true, mode: 'auto', degree: 0 },
   { id: 1, enabled: true, mode: 'slotFollow', slotId: 2, durationBars: 2 },
-]))}&harmonyChordSequenceEnabled=true`;
+]))}&harmonyChordSequenceEnabled=true&harmonyChordSlots=${encodeURIComponent('[]')}&chordProgressionEnabled=true`;
 const decodedLegacy = decodeStateFromUrl(legacyUrl);
 assert(decodedLegacy, 'legacy URL should decode');
-assert.equal(decodedLegacy?.harmonyProgression.enabled, true, 'legacy URL preserves progression enabled state');
-assert(decodedLegacy && decodedLegacy.harmonyProgression.events.length >= 2, 'legacy URL migrates sequence events');
-assert.deepEqual(decodedLegacy?.harmonyProgression.events[1]?.source, { type: 'slot', slotId: 2 });
-const migratedPreset = migratePreset({ name: 'legacy', state: { harmonyChordSequence: [{ id: 0, enabled: true, mode: 'auto', degree: 0 }], harmonyChordSequenceEnabled: true } });
-assert.equal(migratedPreset.state.harmonyProgression.enabled, true, 'preset migration preserves legacy progression enabled state');
-assert.equal(DEFAULT_STATE.harmonyProgression.version, 1);
+assert.deepEqual(decodedLegacy?.harmonyProgression, DEFAULT_STATE.harmonyProgression, 'legacy sequence keys no longer feed the progression');
+for (const key of ['harmonyChordSequence', 'harmonyChordSequenceEnabled', 'harmonyChordSlots', 'chordProgressionEnabled']) {
+  assert.equal(key in (decodedLegacy ?? {}), false, `${key} must not be decoded`);
+}
+const migratedPreset = migratePreset({
+  name: 'legacy',
+  state: {
+    harmonyChordSlots: [{ id: 0 }],
+    harmonyChordSequence: [{ id: 0, enabled: true, mode: 'auto', degree: 0 }],
+    chordProgressionEnabled: true,
+    harmonyProgression: { version: 1, enabled: true, events: [{ id: 'old', source: { type: 'slot', slotId: 1 }, duration: { unit: 'bar', value: 2 } }] },
+    harmonyPalette: [chord, 'junk'],
+  },
+});
+const migratedState = migratedPreset.state as unknown as Record<string, unknown>;
+for (const key of ['harmonyChordSlots', 'harmonyChordSequence', 'chordProgressionEnabled']) assert.equal(key in migratedState, false, `${key} must be dropped on load`);
+assert.deepEqual(migratedPreset.state.harmonyProgression.events.map((event) => event.source), [{ type: 'auto' }], 'a version 1 progression keeps its events with slot sources turned into Auto');
+assert.equal(migratedPreset.state.harmonyProgression.version, 2);
+assert.deepEqual(migratedPreset.state.harmonyPalette, [chord]);
+assert.equal(DEFAULT_STATE.harmonyProgression.version, 2);
+assert.deepEqual(DEFAULT_STATE.harmonyPalette, []);
+const serialized = JSON.parse(serializeState(DEFAULT_STATE)) as Record<string, unknown>;
+assert.equal('harmonyChordSlots' in serialized, false);
+assert.deepEqual(serialized.harmonyPalette, []);
+assert.equal(encodeStateToUrl({ ...DEFAULT_STATE, harmonyPalette: [chord] }).includes('harmonyPalette'), true, 'the Palette round-trips through URLs');
+assert.deepEqual(decodeStateFromUrl(encodeStateToUrl({ ...DEFAULT_STATE, harmonyPalette: [chord] }))?.harmonyPalette, [chord]);
 
 console.log('harmony progression tests passed');
 
 const projectionState = {
   harmonyProgression: {
-    version: 1,
+    version: 2,
     enabled: true,
     currentEventIndex: 0,
     events: [
@@ -204,9 +238,7 @@ const projectionState = {
       { id: 'stable-b', source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 } },
     ],
   },
-  harmonyChordSequenceStepIndex: 1,
   transportBarsPerPhrase: 4,
-  harmonyChordSequence: [],
 };
 const firstProjection = resolveHarmonyProjection(projectionState, { barIndex: 0, phraseIndex: 0 });
 const advancedProjection = resolveHarmonyProjection(projectionState, { barIndex: 1, phraseIndex: 0 });
@@ -232,7 +264,6 @@ assert.deepEqual(firstProjection.morphPlan.commonToneVoicePairs, resolveHarmonyP
 
 const hostState = {
   harmonyProgression: projectionState.harmonyProgression,
-  harmonyChordSequenceStepIndex: 0,
   transportBarsPerPhrase: 4,
   rootNote: 0,
   tension: 0.35,

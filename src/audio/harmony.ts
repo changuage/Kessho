@@ -613,13 +613,7 @@ export interface HarmonyParams {
   cofDriftRate: number;
   cofDriftDirection: 'cw' | 'ccw' | 'random';
   cofDriftRange: number;
-  // Chord progression parameters
-  chordProgressionEnabled: boolean;
-  chordProgressionPattern: number[];
-  chordProgressionSteps: number;
-  chordProgressionStepEnabled: boolean[];
-  chordProgressionPhraseMultiplier: 1 | 2 | 4 | 8;
-  /** Canonical progression takes precedence over legacy degree fields. */
+  /** The canonical authored progression; absent means no progression. */
   canonicalProgression?: HarmonyProgression;
   transportBarsPerPhrase?: number;
 }
@@ -638,11 +632,6 @@ export const DEFAULT_HARMONY_PARAMS: HarmonyParams = {
   cofDriftRate: 2,
   cofDriftDirection: 'cw',
   cofDriftRange: 3,
-  chordProgressionEnabled: false,
-  chordProgressionPattern: [0, 3, 4, 0],
-  chordProgressionSteps: 4,
-  chordProgressionStepEnabled: [true, true, true, true],
-  chordProgressionPhraseMultiplier: 1,
 };
 
 /** Create default progression state */
@@ -651,25 +640,14 @@ function createDefaultProgression(params: HarmonyParams): ProgressionState {
     const events = params.canonicalProgression.events;
     return {
       enabled: params.canonicalProgression.enabled,
-      pattern: events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0),
+      pattern: events.map(() => 0),
       step: Math.max(0, Math.min(Math.max(0, events.length - 1), params.canonicalProgression.currentEventIndex)),
       stepEnabled: events.map(() => true),
       phraseMultiplier: 1,
       phraseCounter: 0,
     };
   }
-  const steps = Math.max(1, params.chordProgressionSteps);
-  const stepEnabled = params.chordProgressionStepEnabled
-    .slice(0, steps)
-    .concat(new Array(Math.max(0, steps - params.chordProgressionStepEnabled.length)).fill(true));
-  return {
-    enabled: params.chordProgressionEnabled,
-    pattern: params.chordProgressionPattern,
-    step: 0,
-    stepEnabled,
-    phraseMultiplier: params.chordProgressionPhraseMultiplier,
-    phraseCounter: 0,
-  };
+  return { enabled: false, pattern: [0, 3, 4, 0], step: 0, stepEnabled: [true, true, true, true], phraseMultiplier: 1, phraseCounter: 0 };
 }
 
 /**
@@ -796,44 +774,25 @@ export function updateHarmonyState(
   let progression = { ...state.progression };
   let progressionDegree: number | undefined;
 
-  // Canonical progression is the only active global progression. Legacy
-  // degree fields remain as a compatibility fallback for old callers.
-  progression.enabled = fullParams.canonicalProgression?.enabled ?? fullParams.chordProgressionEnabled;
-  if ((isPhraseBoundary || fullParams.canonicalProgression) && progression.enabled) {
-    const canonical = fullParams.canonicalProgression;
-    if (canonical) {
-      progression.pattern = canonical.events.map((event) => event.source.type === 'slot' ? event.source.slotId % 7 : 0);
-      progression.stepEnabled = canonical.events.map(() => true);
-      const barsPerPhrase = Math.max(1, Math.round(fullParams.transportBarsPerPhrase ?? 4));
-      const durations = canonical.events.map((event) => event.duration.unit === 'phrase' ? event.duration.value : event.duration.value / barsPerPhrase);
-      const total = Math.max(1, durations.reduce((sum, value) => sum + value, 0));
-      let cursor = Math.max(0, progressionPhraseIndex) % total;
-      let nextStep = 0;
-      for (; nextStep < durations.length - 1 && cursor >= durations[nextStep]!; nextStep += 1) cursor -= durations[nextStep]!;
-      progression.phraseMultiplier = 1;
-      progression.phraseCounter = Math.floor(cursor);
-      const stepChanged = nextStep !== progression.step;
-      progression.step = nextStep;
-      if (stepChanged && progression.stepEnabled[nextStep]) {
-        forceNewChord = true;
-        progressionDegree = progression.pattern[nextStep] ?? 0;
-      }
-      // Canonical branch has completed all progression work for this tick.
-      // Do not consult any legacy degree-pattern fields below.
-    } else {
-      progression.pattern = fullParams.chordProgressionPattern;
-      progression.stepEnabled = fullParams.chordProgressionStepEnabled
-        .slice(0, Math.max(1, fullParams.chordProgressionSteps))
-        .concat(new Array(Math.max(0, Math.max(1, fullParams.chordProgressionSteps) - fullParams.chordProgressionStepEnabled.length)).fill(true));
-      progression.phraseMultiplier = fullParams.chordProgressionPhraseMultiplier;
-      const nextStep = Math.floor(Math.max(0, progressionPhraseIndex) / Math.max(1, progression.phraseMultiplier)) % Math.max(1, fullParams.chordProgressionSteps);
-      const stepChanged = nextStep !== progression.step;
-      progression.step = nextStep;
-      progression.phraseCounter = progressionPhraseIndex % Math.max(1, progression.phraseMultiplier);
-      if (stepChanged && progression.stepEnabled[nextStep]) {
-        forceNewChord = true;
-        progressionDegree = progression.pattern[nextStep] ?? 0;
-      }
+  // The canonical progression is the only global progression.
+  progression.enabled = fullParams.canonicalProgression?.enabled ?? false;
+  const canonical = fullParams.canonicalProgression;
+  if (canonical && progression.enabled) {
+    progression.pattern = canonical.events.map(() => 0);
+    progression.stepEnabled = canonical.events.map(() => true);
+    const barsPerPhrase = Math.max(1, Math.round(fullParams.transportBarsPerPhrase ?? 4));
+    const durations = canonical.events.map((event) => event.duration.unit === 'phrase' ? event.duration.value : event.duration.value / barsPerPhrase);
+    const total = Math.max(1, durations.reduce((sum, value) => sum + value, 0));
+    let cursor = Math.max(0, progressionPhraseIndex) % total;
+    let nextStep = 0;
+    for (; nextStep < durations.length - 1 && cursor >= durations[nextStep]!; nextStep += 1) cursor -= durations[nextStep]!;
+    progression.phraseMultiplier = 1;
+    progression.phraseCounter = Math.floor(cursor);
+    const stepChanged = nextStep !== progression.step;
+    progression.step = nextStep;
+    if (stepChanged && progression.stepEnabled[nextStep]) {
+      forceNewChord = true;
+      progressionDegree = progression.pattern[nextStep] ?? 0;
     }
   }
 

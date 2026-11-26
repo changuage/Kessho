@@ -43,12 +43,10 @@ const HARMONY_CONTENT_KEYS = new Set([
   'scaleMode',
   'tension',
   'voicingSpread',
-  'harmonyChordSlots',
-  'harmonyChordSlotsA',
-  'harmonyChordSlotsB',
   'harmonyProgression',
   'harmonyProgressionA',
   'harmonyProgressionB',
+  'harmonyPalette',
 ]);
 
 const SEQUENCER_ARRANGEMENT_KEYS = new Set([

@@ -102,11 +102,6 @@ import {
 } from '../../audio/drumSeqTypes';
 import type { ClockDivision, PitchBindingMode } from '../../audio/drumSeqTypes';
 import {
-  type HarmonyChordSlot,
-  type HarmonyIntent,
-} from '../../audio/CoreProductHarmonyControl';
-import { sharedChordResolvedMidiPool } from '../../audio/harmony/harmonyChordAdapters';
-import {
   normalizeSequencerPitchBindingMode,
   normalizeSequencerPitchBindingModes,
 } from '../../audio/sequencerPitchBinding';
@@ -215,7 +210,6 @@ import {
 import { SimplePhraseVisualizer } from './SimplePhraseVisualizer';
 import { SEQUENCER_LANE_COLORS, SEQUENCER_SUB_LANE_COLORS, SOURCE_COLORS } from '../../designSystem/colors';
 import {
-  createProductArpHarmonyContext,
   normalizeProductArpConfig,
   resolveProductArpPatternDetails,
   type ProductArpBoundaryMode,
@@ -224,33 +218,19 @@ import {
   type ProductArpFlow,
   type ProductArpRate,
   type ProductArpResolvedStep,
-  type ProductArpSlotChoice,
   type ProductArpHarmonyContext,
 } from '../../audio/productArpeggiator';
-import { type HarmonyLiveLayer, type HarmonyLiveLayerChangeHandler, type HarmonyProjection } from '../../audio/harmony/harmonyProjection';
-import { resolveLiveChordExecution, createLiveChordGesture, shouldEmitLiveChordMonitorNotes } from '../../audio/harmony/liveChordGesture';
-import SeqChordInteractionBay from './chord/SeqChordInteractionBay';
-import SeqChordChoiceLane from './chord/SeqChordChoiceLane';
-import { countSharedSlotUses, draftFromSlot, emptyHarmonyDraft, captureDraftToSlot, resolveLiveReanchoredNotes } from '../harmony/shared/harmonyDraftHelpers';
-import { initialHarmonyCaptureState, reduceHarmonyCaptureNoteOff, reduceHarmonyCaptureNoteOn, type HarmonyCaptureState } from '../harmony/harmonyDraftChord';
-import { applySeqSuggestionToDraft, draftFromSeqCaptureState, readSeqHarmonySlots, writeSeqHarmonySlots } from './chord/seqChordState';
-import type { HarmonyDraftChord } from '../../audio/harmony/harmonyTypes';
+import type { HarmonyProjection } from '../../audio/harmony/harmonyProjection';
 import {
   defaultProductPlayConfig,
   normalizeProductPlayConfig,
   normalizeProductPlayConfigs,
   productPlayLiveLength,
   productPlayPulseValues,
-  resolveProductChordPlayPatternDetails,
-  resolveProductChordChoiceIndex,
   resolveProductPlayEnginePattern,
-  type ProductChordPlayConfig,
   type ProductPlayConfig,
   type ProductPlayMode,
 } from '../../audio/productPlaySequencer';
-import { assignHarmonySuggestionToPlayConfig, saveHarmonySuggestion } from '../harmony/harmonySuggestionActions';
-import type { HarmonySuggestion as AudioHarmonySuggestion } from '../../audio/harmony/chordSuggestionEngine';
-import type { HarmonySuggestion as UiHarmonySuggestion } from '../harmony/shared/SuggestionGrid';
 import { generateHarmonySuggestionBank } from '../../audio/harmony/chordSuggestionEngine';
 
 import { normalizeSynthEuclidSource } from '../../audio/coreProductSourceMapping';
@@ -1069,17 +1049,6 @@ const ARP_CONTOUR_MODE_OPTIONS: Array<{ value: ProductArpContourMode; label: str
   { value: 'pool', label: 'Pool' },
   { value: 'semitone', label: 'Semitone' },
 ];
-const ARP_SLOT_CHOICES: Array<{ value: ProductArpSlotChoice; label: string }> = [
-  { value: -1, label: 'Follow' },
-  { value: 0, label: 'S1' },
-  { value: 1, label: 'S2' },
-  { value: 2, label: 'S3' },
-  { value: 3, label: 'S4' },
-  { value: 4, label: 'S5' },
-  { value: 5, label: 'S6' },
-  { value: 6, label: 'S7' },
-  { value: 7, label: 'S8' },
-];
 const ARP_CONTOUR_GRID_VALUES = [12, 6, 0, -6, -12] as const;
 type ArpContourPreset = 'flat' | 'rise' | 'fall' | 'wave';
 const ARP_CONTOUR_PRESETS: Array<{ value: ArpContourPreset; label: string }> = [
@@ -1092,83 +1061,11 @@ const PLAY_MODE_OPTIONS: Array<{ value: ProductPlayMode; label: string }> = [
   { value: 'arp', label: 'ARP' },
   { value: 'chord', label: 'Chord' },
 ];
-const ARP_ROMAN_DEGREES = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
-const ARP_QUALITY_LABELS = {
-  auto: 'Auto',
-  dim: 'Dim',
-  min: 'Min',
-  maj: 'Maj',
-  sus: 'Sus',
-  maj7: 'M7',
-  min7: 'm7',
-  dom7: '7',
-  add9: 'add9',
-  six: '6',
-  sixNine: '6/9',
-  nine: '9',
-  quartal: 'Quartal',
-  cluster: 'Cluster',
-  custom: 'Custom',
-} as const;
-const ARP_EXTENSION_LABELS: Readonly<Record<string, string>> = {
-  six: '6',
-  min7: 'm7',
-  maj7: 'M7',
-  dom7: '7',
-  add9: '9',
-  nine: '9',
-  sixNine: '6/9',
-};
-
 function normalizeKeyboardStepArray(steps?: number[]): number[] {
   return Array.from({ length: 4 }, (_, index) => {
     const value = steps?.[index];
     return Number.isFinite(value) ? Math.max(0, Math.floor(value as number)) : 0;
   });
-}
-
-function formatArpPitchClass(value: number): string {
-  return CHROMATIC_NOTE_NAMES[((Math.round(value) % 12) + 12) % 12] ?? 'C';
-}
-
-function formatArpIntentTitle(intent: HarmonyIntent | null | undefined): string {
-  if (!intent) return 'Empty';
-  const root = intent.rootMode === 'degree'
-    ? ARP_ROMAN_DEGREES[Math.max(0, Math.min(6, Math.round(intent.degree)))] ?? 'I'
-    : formatArpPitchClass(intent.rootNote);
-  const quality = ARP_QUALITY_LABELS[intent.quality] ?? intent.quality;
-  const extensions = intent.extensions
-    .map((extension) => ARP_EXTENSION_LABELS[extension] ?? extension)
-    .filter((extension) => extension !== quality);
-  return [root, quality, ...extensions].join(' ');
-}
-
-function formatArpSlotChoiceLabel(slots: readonly HarmonyChordSlot[], choice: ProductArpSlotChoice): string {
-  if (choice < 0) return 'F';
-  const slot = slots[choice];
-  return slot ? `S${choice + 1} ${slot.chord?.intent ? formatArpIntentTitle(slot.chord.intent) : 'Empty'}` : `S${choice + 1}`;
-}
-
-function formatArpSlotChoiceCompactLabel(choice: ProductArpSlotChoice): string {
-  return choice < 0 ? 'F' : `S${choice + 1}`;
-}
-
-function formatArpSlotChoiceTitle(
-  slots: readonly HarmonyChordSlot[],
-  choice: ProductArpSlotChoice,
-  harmony: ReturnType<typeof createProductArpHarmonyContext>,
-): string {
-  if (choice < 0) return 'Follow current harmony';
-  const slot = slots[choice];
-  if (!slot) return `Slot ${choice + 1}`;
-  if (!slot.chord) return `S${choice + 1} Empty`;
-  const notes = sharedChordResolvedMidiPool(slot.chord, {
-    rootMidi: harmony.rootMidi,
-    effectiveRootMidi: harmony.rootMidi,
-    scaleId: harmony.scaleId,
-    tension: harmony.tension,
-  }).map(formatMidiNoteName);
-  return `S${choice + 1} ${slot.chord.intent ? formatArpIntentTitle(slot.chord.intent) : 'Custom'}${notes.length ? ` · ${notes.join(' ')}` : ''}`;
 }
 
 function clampArpContourValue(value: number): number {
@@ -1193,17 +1090,6 @@ function armNewArpLengthSteps(pulseMask: number, oldLength: number, nextLength: 
   const normalizedMask = Math.max(0, Math.min(ARP_FULL_STEP_MASK, Math.round(pulseMask)));
   if (nextLength <= oldLength) return normalizedMask;
   return normalizedMask | stepRangeMask(oldLength, nextLength);
-}
-
-function armNewChordLengthSteps(
-  steps: readonly ProductChordPlayConfig['steps'][number][],
-  oldLength: number,
-  nextLength: number,
-): ProductChordPlayConfig['steps'] {
-  if (nextLength <= oldLength) return steps.map((step, index) => step ?? { slotId: index % 8 });
-  return Array.from({ length: ARP_VISIBLE_STEPS }, (_, index) => {
-    return steps[index] ?? { slotId: index % 8 };
-  });
 }
 
 function arpContourPresetValues(preset: ArpContourPreset): number[] {
@@ -1243,7 +1129,6 @@ function formatArpResolvedNote(midi: number | null | undefined): string {
 interface ArpContourEditorProps {
   config: ProductArpConfig;
   color: string;
-  harmony: ReturnType<typeof createProductArpHarmonyContext>;
   resolvedSteps: ProductArpResolvedStep[];
   selectedStep: number;
   playStep?: number | null;
@@ -1252,7 +1137,6 @@ interface ArpContourEditorProps {
   onUpdateConfig: (patch: Partial<ProductArpConfig>) => void;
   onSetContour: (step: number, value: number) => void;
   onTogglePulse: (step: number) => void;
-  onSetSlotChoice: (step: number, value: ProductArpSlotChoice) => void;
   onToggleReset: (step: number) => void;
   onApplyPreset: (preset: ArpContourPreset) => void;
   onMutate: () => void;
@@ -1261,7 +1145,6 @@ interface ArpContourEditorProps {
 const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
   config,
   color,
-  harmony,
   resolvedSteps,
   selectedStep,
   playStep = null,
@@ -1270,7 +1153,6 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
   onUpdateConfig,
   onSetContour,
   onTogglePulse,
-  onSetSlotChoice,
   onToggleReset,
   onApplyPreset,
   onMutate,
@@ -1283,7 +1165,6 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
   const selectedInRange = selected < length;
   const selectedDetail = selectedInRange ? resolvedSteps[selected] : undefined;
   const selectedMove = config.contour[selected] ?? 0;
-  const selectedSource = config.slotLane[selected] ?? -1;
   const selectedPulseStored = (config.pulseMask & (1 << selected)) !== 0;
   const selectedResetStored = (config.resetMask & (1 << selected)) !== 0;
   const playingDetail = playbackStep == null ? undefined : resolvedSteps[playbackStep];
@@ -1521,24 +1402,6 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
         })}
       </div>
 
-      <div className="seq-arp-source-row" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
-        {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
-          const source = config.slotLane[step] ?? -1;
-          const inRange = step < length;
-          return (
-            <button
-              key={step}
-              type="button"
-              className={`seq-arp-source-cell${source >= 0 ? ' locked' : ''}${selected === step ? ' selected' : ''}${playbackStep === step ? ' playing' : ''}${inRange ? '' : ' out'}`}
-              onClick={() => onSelectStep(step)}
-              title={formatArpSlotChoiceTitle(harmony.chordSlots, source, harmony)}
-            >
-              {formatArpSlotChoiceCompactLabel(source)}
-            </button>
-          );
-        })}
-      </div>
-
       <div className="seq-arp-gate-row" style={{ gridTemplateColumns: `repeat(${ARP_VISIBLE_STEPS}, minmax(0, 1fr))` }}>
         {Array.from({ length: ARP_VISIBLE_STEPS }, (_, step) => {
           const inRange = step < length;
@@ -1588,31 +1451,6 @@ const ArpContourEditor: React.FC<ArpContourEditorProps> = ({
           <strong>Playing</strong>
           {formatArpResolvedNote(playingDetail?.outputMidi)}
         </span>
-        <label className="seq-arp-inspector-source">
-          <span>Source</span>
-          <select
-            className="seq-arp-select"
-            value={selectedSource}
-            title={formatArpSlotChoiceTitle(harmony.chordSlots, selectedSource, harmony)}
-            onChange={(event) => {
-              onSetSlotChoice(selected, Number.parseInt(event.target.value, 10) as ProductArpSlotChoice);
-              blurSelectAfterChange(event.currentTarget);
-            }}
-          >
-            {ARP_SLOT_CHOICES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.value < 0 ? option.label : formatArpSlotChoiceLabel(harmony.chordSlots, option.value)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className={`seq-arp-inspector-toggle${selectedSource < 0 ? ' on' : ''}`}
-          onClick={() => onSetSlotChoice(selected, -1)}
-        >
-          Follow Harmony
-        </button>
         <button
           type="button"
           className={`seq-arp-inspector-toggle${selectedPulseStored ? ' on' : ''}`}
@@ -1947,10 +1785,6 @@ export interface SynthPageProps {
   harmonyState?: HarmonyState | null;
   /** Authoritative Harmony projection shared with the Global page and Seq lanes. */
   harmonyProjection: HarmonyProjection;
-  /** Temporary Harmony target for Draft Play; null releases the live layer. */
-  onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
-  /** App-owned authored history callback; remains available while Global is unmounted. */
-  commitHarmonyAuthoredStateChange: (updater: React.SetStateAction<SliderState>, label: string) => void;
   presetPoolRequest?: SynthPresetPoolSource | null;
   onPresetPoolRequestClose?: () => void;
 }
@@ -2024,15 +1858,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     commitSynthSequenceVariationBank,
     onSynthSequenceVariationBankChange,
     harmonyState,
-    onHarmonyLiveLayerChange,
-    commitHarmonyAuthoredStateChange: commitHarmonyAuthoredStateChangeProp,
   } = props;
   const onStateChange = props.onStateChange;
-  const commitHarmonyAuthoredStateChange = useCallback((updater: React.SetStateAction<SliderState>, label: string): boolean => {
-    commitHarmonyAuthoredStateChangeProp(updater, label);
-    return true;
-  }, [commitHarmonyAuthoredStateChangeProp]);
-
   const evolvedOverrides = props.evolvedOverrides;
   const initialEvolveConfigs = props.initialEvolveConfigs;
   const presetVersion = props.presetVersion;
@@ -3904,75 +3731,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const [selectedVariations, setSelectedVariations] = useState<SequencerVariationId[]>(() => ['A', 'A', 'A', 'A']);
   const [queuedVariations, setQueuedVariations] = useState<Array<SequencerVariationId | null>>(() => [null, null, null, null]);
   const [showAllChordChoices, setShowAllChordChoices] = useState(false);
-  const [seqDrafts, setSeqDrafts] = useState<HarmonyDraftChord[]>(() => [0, 1, 2, 3].map(() => emptyHarmonyDraft()));
-  const [seqDraftSlots, setSeqDraftSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
-  const [seqLiveSlots, setSeqLiveSlots] = useState<Array<number | null>>(() => [null, null, null, null]);
-  const [seqLiveLatched, setSeqLiveLatched] = useState<boolean[]>(() => [false, false, false, false]);
-  const seqLiveHeldRef = useRef<Array<string[]>>([[], [], [], []]);
-  const seqDraftHeldRef = useRef<Array<string[]>>([[], [], [], []]);
-  const seqLiveLayerRef = useRef<Array<HarmonyLiveLayer | null>>([null, null, null, null]);
-  const seqDraftCaptureRef = useRef<HarmonyCaptureState[]>([0, 1, 2, 3].map(() => initialHarmonyCaptureState()));
-  const seqSlotWriteLocked = !onStateChange || !props.harmonyProjection.isEndpoint || props.harmonyProjection.engine.morphLocked;
-  const harmonyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const harmonyGestureRevisionRef = useRef(0);
-  const releaseHarmonyLayer = useCallback(() => {
-    harmonyGestureRevisionRef.current += 1;
-    if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
-    harmonyReleaseTimerRef.current = null;
-    onHarmonyLiveLayerChange?.(null);
-  }, [onHarmonyLiveLayerChange]);
-  /** Seq chord gestures are held by their scoped keyboard/live pad and must
-   * not expire on a UI timer; release/stop owns their lifetime. */
-  const startHeldHarmonyLayer = useCallback((layer: HarmonyLiveLayer) => {
-    harmonyGestureRevisionRef.current += 1;
-    if (harmonyReleaseTimerRef.current !== null) clearTimeout(harmonyReleaseTimerRef.current);
-    harmonyReleaseTimerRef.current = null;
-    onHarmonyLiveLayerChange?.({ ...layer, latched: layer.latched ?? false });
-  }, [onHarmonyLiveLayerChange]);
-  useEffect(() => () => releaseHarmonyLayer(), [releaseHarmonyLayer]);
   const arpHarmonyContext = useMemo<ProductArpHarmonyContext>(() => ({
     rootMidi: props.harmonyProjection.engine.rootMidi,
     scaleId: props.harmonyProjection.engine.scaleId,
     tension: props.harmonyProjection.tension,
     notePoolMidi: props.harmonyProjection.activeFrame.currentNotePool,
-    chordSlots: props.harmonyProjection.slots,
   }), [props.harmonyProjection]);
-  const emptySeqHarmonyDraft = useCallback(() => emptyHarmonyDraft({
-    rootMidi: arpHarmonyContext.rootMidi,
-    rootMidiAnchor: arpHarmonyContext.rootMidi,
-    scaleId: arpHarmonyContext.scaleId,
-    tension: arpHarmonyContext.tension,
-  }), [
-    arpHarmonyContext.rootMidi,
-    arpHarmonyContext.scaleId,
-    arpHarmonyContext.tension,
-  ]);
-
-  useEffect(() => {
-    setSeqDrafts((current) => {
-      let changed = false;
-      const next = current.map((draft) => {
-        if (draft.exactMidiNotes.length > 0 || draft.intent || draft.dirty) {
-          return draft;
-        }
-        if (
-          draft.capturedContext.rootMidi === arpHarmonyContext.rootMidi
-          && draft.capturedContext.scaleId === arpHarmonyContext.scaleId
-          && draft.capturedContext.tension === arpHarmonyContext.tension
-        ) {
-          return draft;
-        }
-        changed = true;
-        return emptySeqHarmonyDraft();
-      });
-      return changed ? next : current;
-    });
-  }, [
-    arpHarmonyContext.rootMidi,
-    arpHarmonyContext.scaleId,
-    arpHarmonyContext.tension,
-    emptySeqHarmonyDraft,
-  ]);
   const activePlayConfig = playConfigs[seq.activeTab] ?? defaultProductPlayConfig();
   const activeArpConfig = activePlayConfig.arp;
   const activeArpPitchAnchor = arpPitchAnchorMidi(
@@ -3997,28 +3761,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         !Number.isInteger(step) || !Number.isFinite(midi) || midi < 0 || step >= projected.length) return projected;
     return projected.map((value, index) => index === step ? { ...value, outputMidi: midi } : value);
   }, [activeArpConfig, activeArpPitchAnchor, arpHarmonyContext, getProductArpAudibleTelemetry, isRunning, seq.activeTab]);
-  const activeChordResolvedSteps = useMemo(() => resolveProductChordPlayPatternDetails({
-    config: activePlayConfig.chord,
-    harmony: arpHarmonyContext,
-    sourceId: productSourceIdForManualSynthSource(manualSynthSourceForLaneSource(
-      state[SYNTH_LANE_SOURCE_KEYS[seq.activeTab] ?? SYNTH_LANE_SOURCE_KEYS[0]],
-      state.pad2VoiceAssign,
-    )),
-  }), [activePlayConfig.chord, arpHarmonyContext, seq.activeTab, state.pad2VoiceAssign, state.synthEuclid1Source, state.synthEuclid2Source, state.synthEuclid3Source, state.synthEuclid4Source]);
-  const activeChordChoiceIndex = isRunning && activePlayConfig.enabled && activePlayConfig.mode === 'chord' && (seq.hitCounts[seq.activeTab] ?? 0) > 0
-    ? resolveProductChordChoiceIndex(
-      activePlayConfig.chord.flow,
-      activePlayConfig.chord.choiceLength,
-      Math.max(0, (seq.hitCounts[seq.activeTab] ?? 0) - 1),
-    )
-    : null;
   const activeSuggestionBank = useMemo(() => generateHarmonySuggestionBank({
     rootMidi: arpHarmonyContext.rootMidi,
     scaleId: arpHarmonyContext.scaleId,
     tension: arpHarmonyContext.tension,
-    currentDraft: { intent: seqDrafts[seq.activeTab]?.intent ?? null, exactMidiNotes: seqDrafts[seq.activeTab]?.exactMidiNotes ?? [] },
     previousChord: arpHarmonyContext.notePoolMidi,
-  }), [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, arpHarmonyContext.tension, arpHarmonyContext.notePoolMidi, seq.activeTab, seqDrafts]);
+  }), [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, arpHarmonyContext.tension, arpHarmonyContext.notePoolMidi]);
   const updateArpConfig = useCallback((laneIdx: number, patch: Partial<ProductArpConfig>) => {
     setPlayConfigs((current) => current.map((config, index) => {
       if (index !== laneIdx) return config;
@@ -4045,14 +3793,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       const contour = [...config.arp.contour];
       contour[step] = clampArpContourValue(value);
       return normalizeProductPlayConfig({ ...config, arp: { ...config.arp, contour } });
-    }));
-  }, []);
-  const setArpSlotChoice = useCallback((laneIdx: number, step: number, value: ProductArpSlotChoice) => {
-    setPlayConfigs((current) => current.map((config, index) => {
-      if (index !== laneIdx) return config;
-      const slotLane = [...config.arp.slotLane];
-      slotLane[step] = value;
-      return normalizeProductPlayConfig({ ...config, arp: { ...config.arp, slotLane } });
     }));
   }, []);
   const toggleArpPulse = useCallback((laneIdx: number, step: number) => {
@@ -4083,155 +3823,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         : config
     )));
   }, []);
-  const updateChordPlayConfig = useCallback((laneIdx: number, patch: Partial<ProductChordPlayConfig>) => {
-    if (seqSlotWriteLocked) return;
-    setPlayConfigs((current) => current.map((config, index) => {
-      if (index !== laneIdx) return config;
-      const nextPatch: Partial<ProductChordPlayConfig> = { ...patch };
-      if (typeof patch.choiceLength === 'number' && Number.isFinite(patch.choiceLength)) {
-        const oldLength = clampArpLengthValue(config.chord.choiceLength);
-        const nextLength = clampArpLengthValue(patch.choiceLength);
-        nextPatch.choiceLength = nextLength;
-        nextPatch.steps = armNewChordLengthSteps(patch.steps ?? config.chord.steps, oldLength, nextLength);
-      }
-      return normalizeProductPlayConfig({ ...config, chord: { ...config.chord, ...nextPatch } });
-    }));
-  }, [seqSlotWriteLocked]);
-  const assignSuggestionToActiveChordStep = useCallback((suggestion: UiHarmonySuggestion) => {
-    if (seqSlotWriteLocked) return;
-    const laneIdx = seq.activeTab;
-    const stepIndex = selectedArpSteps[laneIdx] ?? 0;
-    const audioSuggestion: AudioHarmonySuggestion | undefined = suggestion.audioSuggestion;
-    if (!audioSuggestion) return;
-    const result = assignHarmonySuggestionToPlayConfig({ slots: arpHarmonyContext.chordSlots, seqPlayConfigs: playConfigs }, audioSuggestion, laneIdx, stepIndex, { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
-    if (!result.ok || !result.state.seqPlayConfigs) return;
-    const nextConfig = result.state.seqPlayConfigs[laneIdx];
-    const nextPlayConfigs = nextConfig ? playConfigs.map((config, index) => index === laneIdx ? normalizeProductPlayConfig({ ...config, chord: { ...config.chord, steps: (nextConfig.chord?.steps ?? config.chord.steps).map((step, stepIndex) => ({ slotId: step.slotId ?? config.chord.steps[stepIndex]?.slotId ?? 0 })) } }) : config) : playConfigs;
-    if (result.state.slots !== arpHarmonyContext.chordSlots || nextConfig) {
-      const bank = props.harmonyProjection.bank;
-      const committed = commitHarmonyAuthoredStateChange((previous) => {
-        const record = previous as unknown as Record<string, unknown>;
-        const nextRecord = writeSeqHarmonySlots(record, bank, result.state.slots);
-        return { ...nextRecord, synthPlayConfigs: nextPlayConfigs } as unknown as SliderState;
-      }, 'Seq suggestion assignment');
-      if (!committed) return;
-    }
-    if (nextConfig) setPlayConfigs(nextPlayConfigs);
-  }, [arpHarmonyContext, commitHarmonyAuthoredStateChange, playConfigs, props.harmonyProjection.bank, selectedArpSteps, seq.activeTab, seqSlotWriteLocked]);
-  const updateSeqDraft = useCallback((laneIdx: number, draft: HarmonyDraftChord) => setSeqDrafts((current) => current.map((entry, index) => index === laneIdx ? draft : entry)), []);
-  const loadSeqDraftSlot = useCallback((laneIdx: number, slotId: number) => {
-    setSeqDraftSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
-    updateSeqDraft(laneIdx, draftFromSlot(arpHarmonyContext.chordSlots[slotId]));
-  }, [arpHarmonyContext.chordSlots, updateSeqDraft]);
-  const captureSeqDraft = useCallback((laneIdx: number) => {
-    const slotId = seqDraftSlots[laneIdx];
-    const draft = seqDrafts[laneIdx] ?? emptySeqHarmonyDraft();
-    if (slotId == null || seqSlotWriteLocked) return;
-    const committed = commitHarmonyAuthoredStateChange((previous) => {
-      const record = previous as unknown as Record<string, unknown>;
-      const slots = readSeqHarmonySlots(record, props.harmonyProjection.bank, props.harmonyProjection.slots);
-      const current = slots[slotId];
-      if (!current || current.locked) return previous;
-      const captured = captureDraftToSlot(current, draft, { rootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId });
-      const nextSlots = slots.map((slot) => slot.id === slotId ? { ...slot, chord: captured.chord } : slot);
-      return writeSeqHarmonySlots(record, props.harmonyProjection.bank, nextSlots) as unknown as SliderState;
-    }, 'Seq chord capture');
-    if (!committed) return;
-    setSeqDrafts((currentDrafts) => currentDrafts.map((entry, index) => index === laneIdx ? { ...entry, dirty: false } : entry));
-  }, [arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId, commitHarmonyAuthoredStateChange, emptySeqHarmonyDraft, props.harmonyProjection.bank, props.harmonyProjection.slots, seqDraftSlots, seqDrafts, seqSlotWriteLocked]);
-  const playSeqLiveSlot = useCallback((laneIdx: number, slotId: number) => {
-    if (seqSlotWriteLocked) return;
-    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    const slot = arpHarmonyContext.chordSlots[slotId];
-    const notes = slot?.chord ? sharedChordResolvedMidiPool(slot.chord, { rootMidi: arpHarmonyContext.rootMidi, effectiveRootMidi: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId, tension: arpHarmonyContext.tension }) : [];
-    const layer: HarmonyLiveLayer = { kind: 'seq-live', scope: 'seq-live', target: `seq${laneIdx + 1}`, seqId: laneIdx, slotId, draft: draftFromSlot(slot), frame: { ...props.harmonyProjection.activeFrame, currentNotePool: notes, nextNotePool: notes }, latched: false };
-    seqLiveLayerRef.current[laneIdx] = layer;
-    startHeldHarmonyLayer(layer);
-    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
-    const monitor = shouldEmitLiveChordMonitorNotes({ target: 'harmony', running: isRunning, bypassesHarmony: false });
-    seqLiveHeldRef.current[laneIdx] = monitor ? notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; }) : [];
-    setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? slotId : entry));
-  }, [arpHarmonyContext, draftFromSlot, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
-  const stopSeqLive = useCallback((laneIdx: number, explicitStop = false) => {
-    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    seqLiveHeldRef.current[laneIdx] = [];
-    seqLiveLayerRef.current[laneIdx] = null;
-    onHarmonyLiveLayerChange?.(null, { explicitStop });
-    setSeqLiveSlots((current) => current.map((entry, index) => index === laneIdx ? null : entry));
-    setSeqLiveLatched((current) => current.map((entry, index) => index === laneIdx ? false : entry));
-  }, [liveNoteInput, onHarmonyLiveLayerChange]);
-  const playSeqLiveReanchored = useCallback((laneIdx: number, slotId: number, pressedRootMidi: number) => {
-    if (seqSlotWriteLocked) return;
-    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    const slot = arpHarmonyContext.chordSlots[slotId];
-    const notes = slot?.chord ? resolveLiveReanchoredNotes(slot.chord, pressedRootMidi, arpHarmonyContext.rootMidi, arpHarmonyContext.scaleId) : [];
-    const layer: HarmonyLiveLayer = { kind: 'seq-live', scope: 'seq-live', target: `seq${laneIdx + 1}`, seqId: laneIdx, slotId, draft: draftFromSlot(slot), frame: { ...props.harmonyProjection.activeFrame, currentNotePool: notes, nextNotePool: notes }, latched: Boolean(seqLiveLatched[laneIdx]) };
-    seqLiveLayerRef.current[laneIdx] = layer;
-    startHeldHarmonyLayer(layer);
-    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
-    const monitor = shouldEmitLiveChordMonitorNotes({ target: 'harmony', running: isRunning, bypassesHarmony: false });
-    seqLiveHeldRef.current[laneIdx] = monitor ? notes.map((midi) => { const id = `seq-live-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; }) : [];
-  }, [arpHarmonyContext, draftFromSlot, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, seqLiveLatched, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
-  const playSeqDraftValue = useCallback((laneIdx: number, draft: HarmonyDraftChord, route: 'track' | 'harmony' = 'track') => {
-    if (route === 'harmony' && seqSlotWriteLocked) return;
-    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    const gesture = createLiveChordGesture({ id: `seq-draft-${laneIdx}-${Date.now()}`, scope: { kind: 'seq', seqId: laneIdx }, target: route, source: 'onscreen', draft });
-    const execution = resolveLiveChordExecution({ gesture, draft, effectiveFrame: props.harmonyProjection.activeFrame, currentAudioBlock: 0, running: isRunning, scaleId: arpHarmonyContext.scaleId });
-    if (route === 'harmony' && !execution.bypassesHarmony && execution.temporaryHarmonyFrame) {
-      startHeldHarmonyLayer({ kind: 'draft-live', scope: 'seq-draft', target: `seq${laneIdx + 1}`, seqId: laneIdx, draft, frame: execution.temporaryHarmonyFrame, latched: false });
-    } else {
-      releaseHarmonyLayer();
-    }
-    const notes = shouldEmitLiveChordMonitorNotes({ target: route, running: isRunning, bypassesHarmony: execution.bypassesHarmony }) ? execution.notes : [];
-    const instrument = manualSynthSourceForLaneSource(state[SYNTH_LANE_SOURCE_KEYS[laneIdx] ?? SYNTH_LANE_SOURCE_KEYS[0]] ?? 'lead1', state.pad2VoiceAssign);
-    seqDraftHeldRef.current[laneIdx] = notes.map((midi) => { const id = `seq-draft-${laneIdx}-${midi}`; liveNoteInput.noteOn(id, { source: 'ui-pad', instrument, note: midi, velocity: 0.82 }); return id; });
-  }, [arpHarmonyContext.scaleId, isRunning, liveNoteInput, props.harmonyProjection.activeFrame, releaseHarmonyLayer, seqSlotWriteLocked, startHeldHarmonyLayer, state]);
-  const playSeqDraft = useCallback((laneIdx: number, route: 'track' | 'harmony' = 'track') => {
-    playSeqDraftValue(laneIdx, seqDrafts[laneIdx] ?? emptySeqHarmonyDraft(), route);
-  }, [emptySeqHarmonyDraft, playSeqDraftValue, seqDrafts]);
-  const stopSeqChordGestures = useCallback((laneIdx: number, explicitStop = false) => {
-    seqLiveHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    seqLiveHeldRef.current[laneIdx] = [];
-    seqDraftHeldRef.current[laneIdx] = [];
-    seqDraftCaptureRef.current[laneIdx] = initialHarmonyCaptureState();
-    releaseHarmonyLayer();
-    stopSeqLive(laneIdx, explicitStop);
-  }, [liveNoteInput, releaseHarmonyLayer, stopSeqLive]);
-  useEffect(() => () => {
-    [0, 1, 2, 3].forEach((laneIdx) => stopSeqChordGestures(laneIdx));
-  }, [stopSeqChordGestures]);
-  const previewSeqSuggestion = useCallback((suggestion: UiHarmonySuggestion) => {
-    const laneIdx = seq.activeTab;
-    const draft = applySeqSuggestionToDraft(seqDrafts[laneIdx] ?? emptySeqHarmonyDraft(), {
-      notes: suggestion.notes,
-      label: suggestion.label,
-      intent: suggestion.audioSuggestion?.intent ?? null,
-      playbackBehavior: suggestion.audioSuggestion?.playbackBehavior,
-    });
-    updateSeqDraft(laneIdx, draft);
-    playSeqDraftValue(laneIdx, draft, 'track');
-  }, [emptySeqHarmonyDraft, playSeqDraftValue, seq.activeTab, seqDrafts, updateSeqDraft]);
-  const releaseSeqSuggestion = useCallback(() => {
-    const laneIdx = seq.activeTab;
-    seqDraftHeldRef.current[laneIdx]?.forEach((id) => liveNoteInput.noteOff(id));
-    seqDraftHeldRef.current[laneIdx] = [];
-    releaseHarmonyLayer();
-  }, [liveNoteInput, releaseHarmonyLayer, seq.activeTab]);
-  const saveSeqSuggestion = useCallback((suggestion: UiHarmonySuggestion) => {
-    if (seqSlotWriteLocked || !suggestion.audioSuggestion) return;
-    const result = saveHarmonySuggestion(
-      { slots: arpHarmonyContext.chordSlots },
-      suggestion.audioSuggestion,
-      { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId },
-    );
-    if (!result.ok) return;
-    commitHarmonyAuthoredStateChange((previous) => writeSeqHarmonySlots(
-      previous as unknown as Record<string, unknown>,
-      props.harmonyProjection.bank,
-      result.state.slots,
-    ) as unknown as SliderState, 'Save Seq suggestion');
-  }, [arpHarmonyContext, commitHarmonyAuthoredStateChange, props.harmonyProjection.bank, seqSlotWriteLocked]);
   const selectArpStep = useCallback((laneIdx: number, step: number) => {
     const normalized = Math.max(0, Math.min(15, Math.round(step)));
     setSelectedArpSteps((current) => {
@@ -5547,15 +5138,12 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
       if (patch.distance != null) writeLaneValue('distance', distanceIndex, patch.distance);
       if (patch.nudge != null) writeLaneValue('nudge', nudgeIndex, clampNudge(patch.nudge));
       const metadata = variation.stepMetadata[String(step)];
-      const sharedHarmonyChord = props.harmonyProjection.slots.find((slot) => slot.chord)?.chord;
       const nextMode = patch.mode ?? metadata?.mode;
       const chordBase = patch.chord ?? metadata?.chord;
       let nextChord = nextMode === 'chord' && chordBase
         ? {
             ...chordBase,
             ...(patch.followHarmony == null ? {} : { followHarmony: patch.followHarmony }),
-            ...(patch.followHarmony && sharedHarmonyChord ? { sharedChord: sharedHarmonyChord } : {}),
-            ...(patch.followHarmony === false ? { sharedChord: undefined } : {}),
           }
         : nextMode === 'chord' && metadata
         ? {
@@ -5607,7 +5195,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
         },
       };
     });
-  }, [activeArpConfig, createEmptyVariationForLane, createVariationBankFromCurrentLane, props.harmonyProjection.slots, selectedDetailSteps, selectedVariationId, selectedVariationVelocity, seq.activeTab, updateSynthVariationBank]);
+  }, [activeArpConfig, createEmptyVariationForLane, createVariationBankFromCurrentLane, selectedDetailSteps, selectedVariationId, selectedVariationVelocity, seq.activeTab, updateSynthVariationBank]);
 
   const updateSelectedVariationChordNotes = useCallback((notes: readonly number[]) => {
     if (!selectedVariationMetadata?.chord) return;
@@ -5628,7 +5216,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
     updateSelectedVariationStep({
       mode: 'chord',
       followHarmony: false,
-      chord: { ...selectedVariationMetadata.chord, intervals, followHarmony: false, sharedChord: undefined },
+      chord: { ...selectedVariationMetadata.chord, intervals, followHarmony: false },
     });
   }, [selectedVariation, selectedVariationMetadata, selectedVariationPitch, selectedVariationVelocity, updateSelectedVariationStep]);
 
@@ -7298,18 +6886,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   const pad2CardExpanded = isSynthSourceCardExpanded('pad2');
   const lead1CardExpanded = isSynthSourceCardExpanded('lead1');
   const lead2CardExpanded = isSynthSourceCardExpanded('lead2');
-  const projectedSeqLiveLayer = props.harmonyProjection.liveLayer?.kind === 'seq-live'
-    ? props.harmonyProjection.liveLayer
-    : null;
-  const projectedActiveSeqSlotId = projectedSeqLiveLayer?.seqId === seq.activeTab
-    ? projectedSeqLiveLayer.slotId ?? null
-    : null;
-  const activeSeqLiveSlotId = seqLiveSlots[seq.activeTab] ?? projectedActiveSeqSlotId;
-  const activeSeqLiveLatched = Boolean(
-    seqLiveLatched[seq.activeTab]
-    || (projectedSeqLiveLayer?.seqId === seq.activeTab && projectedSeqLiveLayer.latched),
-  );
-
   return (
     <div className="synth-root">
       <div className="container">
@@ -9938,8 +9514,8 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               <>
                                 <HarmonyCompactChordRow
                                   indexLabel={`Step ${selectedDetailStep + 1}`}
-                                  slotLabel={selectedVariationMetadata.chord.sharedChord ? 'Harmony' : 'Local'}
-                                  title={selectedVariationMetadata.chord.sharedChord?.recognizedLabel ?? 'Local chord'}
+                                  slotLabel="Local"
+                                  title="Local chord"
                                   meta={`${selectedNotes.length} notes · ${selectedVariationMetadata.gateBeats.toFixed(2)} beats`}
                                   notes={selectedNotes}
                                   axis={axis}
@@ -10152,7 +9728,6 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                               <ArpContourEditor
                                 config={{ ...arpConfig, enabled: playConfig.enabled }}
                                 color={laneColor}
-                                harmony={arpHarmonyContext}
                                 resolvedSteps={activeArpResolvedSteps}
                                 selectedStep={selectedArpStep}
                                 playStep={isRunning && playConfig.enabled ? activeArpUiPlayhead : null}
@@ -10164,79 +9739,11 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                                 onUpdateConfig={(patch) => updateArpConfig(seq.activeTab, patch)}
                                 onSetContour={(step, value) => setArpContour(seq.activeTab, step, value)}
                                 onTogglePulse={(step) => toggleArpPulse(seq.activeTab, step)}
-                                onSetSlotChoice={(step, value) => setArpSlotChoice(seq.activeTab, step, value)}
                                 onToggleReset={(step) => toggleArpReset(seq.activeTab, step)}
                                 onApplyPreset={(preset) => applyArpContourPreset(seq.activeTab, preset)}
                                 onMutate={() => mutateArpContour(seq.activeTab)}
                               />
-                            ) : (
-                              <>
-                              <SeqChordChoiceLane config={playConfig.chord} harmony={arpHarmonyContext} resolvedSteps={activeChordResolvedSteps} selectedStep={selectedArpStep} activeChoiceIndex={activeChordChoiceIndex} onSelectStep={(step) => { setStepDetailMode(seq.activeTab, 'chord'); selectArpStep(seq.activeTab, step); }} onLoadSlot={(slotId) => loadSeqDraftSlot(seq.activeTab, slotId)} onUpdateConfig={(patch) => updateChordPlayConfig(seq.activeTab, patch)} />
-                              <SeqChordInteractionBay
-                                seqId={seq.activeTab}
-                                draft={seqDrafts[seq.activeTab] ?? emptySeqHarmonyDraft()}
-                                slots={arpHarmonyContext.chordSlots}
-                                activeSlotId={activeSeqLiveSlotId}
-                                draftSlotId={seqDraftSlots[seq.activeTab]}
-                                draftLocked={Boolean(seqDraftSlots[seq.activeTab] != null && arpHarmonyContext.chordSlots[seqDraftSlots[seq.activeTab] ?? 0]?.locked)}
-                                useCount={seqDraftSlots[seq.activeTab] == null ? 0 : countSharedSlotUses(seqDraftSlots[seq.activeTab]!, playConfigs, props.harmonyProjection?.progression ?? [])}
-                                liveLatched={activeSeqLiveLatched}
-                                draftActive={activeSeqLiveSlotId == null}
-                                liveActive={activeSeqLiveSlotId != null}
-                                onDraftChange={(draft) => updateSeqDraft(seq.activeTab, draft)}
-                                onDraftCapture={() => captureSeqDraft(seq.activeTab)}
-                                onDraftClear={() => updateSeqDraft(seq.activeTab, emptySeqHarmonyDraft())}
-                                onDraftPlay={(route) => playSeqDraft(seq.activeTab, route)}
-                                onLiveSlot={(slotId) => playSeqLiveSlot(seq.activeTab, slotId)}
-                                onLiveHoldChange={(held) => { if (!held && !activeSeqLiveLatched) stopSeqChordGestures(seq.activeTab); }}
-                                onLiveLatch={() => setSeqLiveLatched((current) => current.map((entry, index) => {
-                                  if (index !== seq.activeTab) return entry;
-                                  const nextLatched = !entry;
-                                  const layer = seqLiveLayerRef.current[index];
-                                  if (layer) {
-                                    const nextLayer = { ...layer, latched: nextLatched };
-                                    seqLiveLayerRef.current[index] = nextLayer;
-                                    onHarmonyLiveLayerChange?.(nextLayer);
-                                  }
-                                  return nextLatched;
-                                }))}
-                                onLiveStop={() => stopSeqChordGestures(seq.activeTab, true)}
-                                onLiveRecord={() => {
-                                  if (seqSlotWriteLocked) return;
-                                  const slotId = activeSeqLiveSlotId;
-                                  if (slotId != null) updateChordPlayConfig(seq.activeTab, { steps: playConfig.chord.steps.map((step, index) => index === selectedArpStep ? { ...step, slotId } : step) });
-                                }}
-                                onNoteDown={(midi, velocity, source) => {
-                                  if (activeSeqLiveSlotId == null) {
-                                    const laneIdx = seq.activeTab;
-                                    const current = seqDrafts[laneIdx] ?? emptySeqHarmonyDraft();
-                                    const capture = reduceHarmonyCaptureNoteOn(seqDraftCaptureRef.current[laneIdx] ?? initialHarmonyCaptureState(), midi, typeof performance === 'undefined' ? Date.now() : performance.now(), velocity);
-                                    seqDraftCaptureRef.current[laneIdx] = capture;
-                                    const nextDraft = draftFromSeqCaptureState(capture, { rootMidi: arpHarmonyContext.rootMidi, rootMidiAnchor: arpHarmonyContext.rootMidi, scaleId: arpHarmonyContext.scaleId }, source, current);
-                                    updateSeqDraft(laneIdx, nextDraft);
-                                    return;
-                                  }
-                                  playSeqLiveReanchored(seq.activeTab, activeSeqLiveSlotId, midi);
-                                }}
-                                onNoteUp={(midi) => {
-                                  const laneIdx = seq.activeTab;
-                                  if (activeSeqLiveSlotId != null) {
-                                    if (!activeSeqLiveLatched) stopSeqLive(laneIdx);
-                                    return;
-                                  }
-                                  seqDraftCaptureRef.current[laneIdx] = reduceHarmonyCaptureNoteOff(seqDraftCaptureRef.current[laneIdx] ?? initialHarmonyCaptureState(), midi);
-                                  releaseHarmonyLayer();
-                                }}
-                                suggestions={activeSuggestionBank.map((suggestion) => suggestion ? { id: suggestion.id, label: suggestion.label, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes, category: suggestion.category, triggerKey: suggestion.triggerKey, audioSuggestion: suggestion } : null)}
-                                onSuggestion={(suggestion) => updateSeqDraft(seq.activeTab, applySeqSuggestionToDraft(seqDrafts[seq.activeTab] ?? emptySeqHarmonyDraft(), { notes: suggestion.notes, label: suggestion.label, intent: suggestion.audioSuggestion?.intent ?? null, playbackBehavior: suggestion.audioSuggestion?.playbackBehavior }))}
-                                onSuggestionPress={previewSeqSuggestion}
-                                onSuggestionRelease={releaseSeqSuggestion}
-                                onSuggestionSave={saveSeqSuggestion}
-                                onSuggestionAssign={assignSuggestionToActiveChordStep}
-                                selectedStep={selectedArpStep}
-                              />
-                              </>
-                            )}
+                            ) : null}
                           </div>
                         )}
                       </React.Fragment>

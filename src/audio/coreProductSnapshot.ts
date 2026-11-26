@@ -22,6 +22,7 @@ import { resolveReverbSnapshotParams, scaleIdFromState, shouldUseMobileReverbQua
 import { coreProductDrumLaneMacroDefaultsFromState, coreProductSynthLaneMacroDefaultsFromState } from './coreProductSequencerMacroDefaults';
 import { laneDefaults as coreProductLaneDefaults } from './coreProductSnapshotDefaults';
 import { soundscapeSnapshotPayloadFromState, type SoundscapeSnapshotPayload } from './coreProductSoundscapesSnapshot';
+import { chordIntentFields, chordNoteFields, normalizeChord } from './harmony/chord';
 import { HARMONY_POOL_MAX_NOTES, HARMONY_SOURCE_IDS, HARMONY_STRENGTH_IDS, resolveProductHarmonyState } from './CoreProductHarmonyControl';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { productAnchorWalkerFromConfig, productOrbitFromConfig, SEQUENCER_MODE_IDS, synthSequencerFaceSlotsFromState } from './coreProductSequencerFaceSnapshot';
@@ -941,35 +942,20 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
   const granularUsesLegacyRuntimeSeed = usesLegacyGranularRuntimeSeed(sliderState);
   const reverbParams = resolveReverbSnapshotParams(sliderState, tension);
   const delayBTapeMode = sliderState?.delayBAlgorithm === 'tapeHeads';
-  // Snapshot projection carries authored exact voicings unchanged. Native
-  // Product Core owns semantic/relative/auto resolution after load.
-  const harmonySlotAuthoredPools = harmonyControl.chordSlots.map((slot) => (slot.chord?.exactMidiNotes ?? []).slice(0, HARMONY_POOL_MAX_NOTES));
-  // Transitional: a slot event carries its slot's authored notes as a Fixed chord.
-  const progressionChordSlot = (index: number): number[] | undefined => {
+  const EMPTY_CHORD = normalizeChord({})!;
+  // Chord events are encoded as the shared Chord intent plus Fixed notes; native resolves them.
+  const progressionChords = Array.from({ length: 64 }, (_, index) => {
     const source = harmonyControl.progression.events[index]?.source;
-    return source?.type === 'slot' ? harmonySlotAuthoredPools[source.slotId] ?? [] : undefined;
-  };
+    return source?.type === 'chord' ? source.chord : null;
+  });
+  const progressionNotes = progressionChords.map((chord) => (chord ? chordNoteFields(chord) : []));
   const endpointAControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 0 });
   const endpointBControl = resolveProductHarmonyState({ state: sliderState, rootMidi, rootMidiAnchor: rootMidi, scaleId, tension, seed: rngSeed, morphPercent: 100 });
   const endpointA = endpointAControl.resolvedHarmonyFrame;
   const endpointB = endpointBControl.resolvedHarmonyFrame;
-  // Endpoint context comes from the endpoint's authored slot/capture when one
-  // is active. Hidden `harmonyMorphEndpoint*` fields were never authored and
-  // made native morph context silently collapse to the current frame.
-  const endpointContext = (control: typeof endpointAControl, frame: typeof endpointA) => {
-    const event = control.progression.events[control.progression.currentEventIndex];
-    const eventSlotId = event?.source.type === 'slot' ? event.source.slotId : null;
-    const slotId = frame.activeSlotId ?? eventSlotId;
-    const slot = slotId == null ? undefined : control.chordSlots[slotId];
-    const captured = slot?.chord?.capturedContext;
-    return {
-      rootMidi: captured?.rootMidi ?? frame.rootMidi,
-      scaleId: captured?.scaleId ?? frame.scaleId,
-      tension: captured?.tension ?? tension,
-    };
-  };
-  const endpointContextA = endpointContext(endpointAControl, endpointA);
-  const endpointContextB = endpointContext(endpointBControl, endpointB);
+  const endpointContext = (frame: typeof endpointA) => ({ rootMidi: frame.rootMidi, scaleId: frame.scaleId, tension });
+  const endpointContextA = endpointContext(endpointA);
+  const endpointContextB = endpointContext(endpointB);
   const morphPlan = resolveCachedMorphHarmonyPlan(endpointA, endpointB, numberFromState(sliderState, 'harmonyMorphPercent', journey.morphPhase * 100) >= 50 ? 'B' : 'A');
   return {
     transport,
@@ -984,9 +970,7 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
         ? 1
         : harmonyFrame.activeSource === 'manualControl'
           ? 2
-          : harmonyFrame.activeSource === 'slot'
-            ? 3
-            : 0,
+          : 0,
       controlStrength: HARMONY_STRENGTH_IDS[harmonyControl.manualControl.strength],
       activeSource: HARMONY_SOURCE_IDS[harmonyFrame.activeSource],
       activeStepIndex: harmonyFrame.activeStepIndex ?? -1,
@@ -1031,16 +1015,13 @@ export function createCoreProductSnapshot(sliderState?: Record<string, unknown>)
       canonicalProgressionEventCount: harmonyControl.progression.events.length,
       canonicalProgressionCurrentEvent: harmonyControl.progression.currentEventIndex,
       canonicalProgressionBarsPerPhrase: clamp(numberFromState(sliderState, 'transportBarsPerPhrase', 4), 1, 16),
-      canonicalProgressionSource: Array.from({ length: 64 }, (_, index) => progressionChordSlot(index) === undefined ? 0 : 1),
-      canonicalProgressionChord: Array.from({ length: 64 }, (_, index) => ({
-        behavior: progressionChordSlot(index) === undefined ? 0 : 1,
-        degree: 0, quality: 0, extensions: 0, inversion: 0, spread: 0, registerOctave: 0, bassMode: 0, bassPitchClass: 0,
-      })),
-      canonicalProgressionNoteCount: Array.from({ length: 64 }, (_, index) => (progressionChordSlot(index)?.length ?? 0)),
-      canonicalProgressionNotes: Array.from({ length: 64 * HARMONY_POOL_MAX_NOTES }, (_, index) => {
-        const midi = progressionChordSlot(Math.floor(index / HARMONY_POOL_MAX_NOTES))?.[index % HARMONY_POOL_MAX_NOTES];
-        return { midi: midi ?? 0, velocity: midi === undefined ? 0 : 1, gateBeats: 0, offsetBeats: 0, destinationSourceId: 0 };
-      }),
+      canonicalProgressionSource: progressionChords.map((chord) => chord ? 1 : 0),
+      canonicalProgressionChord: progressionChords.map((chord) => chordIntentFields(chord ?? EMPTY_CHORD)),
+      canonicalProgressionNoteCount: progressionNotes.map((notes) => notes.length),
+      canonicalProgressionNotes: Array.from({ length: 64 * HARMONY_POOL_MAX_NOTES }, (_, index) => (
+        progressionNotes[Math.floor(index / HARMONY_POOL_MAX_NOTES)]?.[index % HARMONY_POOL_MAX_NOTES]
+          ?? { midi: 0, velocity: 0, gateBeats: 0, offsetBeats: 0, destinationSourceId: 0 }
+      )),
       canonicalProgressionDurationUnit: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.unit === 'bar' ? 0 : 1),
       canonicalProgressionDurationValue: Array.from({ length: 64 }, (_, index) => harmonyControl.progression.events[index]?.duration.value ?? 1),
       morphEndpointCount: 2,

@@ -6,8 +6,6 @@ import type {
   HarmonyControlStrength,
   HarmonyIntent,
   HarmonyRootMode,
-  HarmonySequenceStep,
-  HarmonySequenceStepMode,
   HarmonyProgression,
   HarmonyProgressionEvent,
   HarmonyProgressionDurationValue,
@@ -16,18 +14,12 @@ import type {
   ManualHarmonyControlState,
   ResolvedHarmonyFrame,
   L4HarmonyStateExtension,
-  HarmonyChordSlot,
-  SharedHarmonyChord,
 } from './harmony/harmonyTypes';
-import {
-  recognizeHarmonyCandidates,
-  recognizeHarmonyIntentFromCandidates,
-} from './harmony/chordRecognition';
+import { normalizeChord, type Chord } from './harmony/chord';
 import {
   DEFAULT_HARMONY_SCALE_INTERVALS,
   HARMONY_SCALE_INTERVALS,
 } from './harmony/harmonyScaleIntervals';
-import type { HarmonyRecognitionCandidate } from './harmony/harmonyTypes';
 export type {
   HarmonyBassMode,
   HarmonyChordAlteration,
@@ -37,8 +29,6 @@ export type {
   HarmonyControlStrength,
   HarmonyIntent,
   HarmonyRootMode,
-  HarmonySequenceStep,
-  HarmonySequenceStepMode,
   HarmonyProgression,
   HarmonyProgressionEvent,
   HarmonyProgressionDurationValue,
@@ -47,35 +37,17 @@ export type {
   ManualHarmonyControlState,
   ResolvedHarmonyFrame,
   L4HarmonyStateExtension,
-  HarmonyChordSlot,
-  LegacyHarmonyChordSlotInput,
-  HarmonyCapturedContext,
-  HarmonyDraftChord,
-  HarmonyPlaybackBehavior,
-  SharedHarmonyChord,
-  SharedHarmonyChordSlot,
-  HarmonyRecognitionCandidate,
 } from './harmony/harmonyTypes';
 
-export const HARMONY_SLOT_COUNT = 8 as const;
 export const HARMONY_SEQUENCE_STEP_COUNT = 8 as const;
-export const HARMONY_SEQUENCE_STEP_MIN = 3 as const;
 export const HARMONY_POOL_MAX_NOTES = 8 as const;
-/** Auto retains the authored exact voicing through this many semitones of root movement. */
-export const HARMONY_AUTO_EXACT_THRESHOLD_SEMITONES = 6 as const;
 export const HARMONY_PROGRESSION_CAPACITY = 64 as const;
 export const HARMONY_PROGRESSION_DURATION_VALUES = [1, 2, 4, 8] as const;
 
-export const HARMONY_SLOT_TRIGGER_KEYS = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ','] as const;
-export const HARMONY_NOTE_KEYS = ['a', 'w', 's', 'e', 'd', 'f', 't', 'g', 'y', 'h', 'u', 'j'] as const;
-
-/** Compatibility name retained for older callers of the Harmony control. */
-export type HarmonyIntentSource = HarmonyControlSource;
 
 export const HARMONY_SOURCE_IDS = Object.freeze({
   baseline: 0,
   sequence: 1,
-  slot: 2,
   manualControl: 3,
   audition: 4,
   presetMorph: 5,
@@ -125,12 +97,6 @@ export const HARMONY_BASS_MODE_IDS = Object.freeze({
   root: 1,
   fifth: 2,
   captured: 3,
-} as const);
-
-export const HARMONY_SEQUENCE_MODE_IDS = Object.freeze({
-  auto: 0,
-  intent: 1,
-  slot: 2,
 } as const);
 
 export const MANUAL_HARMONY_MODE_IDS = Object.freeze({
@@ -200,10 +166,6 @@ function boolValue(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
-function stringValue(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.length > 0 ? value : fallback;
-}
-
 function arrayValue<T>(value: unknown, guard: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
   const result: T[] = [];
@@ -241,17 +203,6 @@ function normalizeMidiPool(notes: readonly number[]): number[] {
     if (pool.length >= HARMONY_POOL_MAX_NOTES) break;
   }
   return pool.sort((a, b) => a - b);
-}
-
-function sanitizeMidiVelocities(value: unknown): Record<string, number> | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-  const result: Record<string, number> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    const midi = Number(key);
-    if (!Number.isInteger(midi) || midi < 0 || midi > 127 || typeof raw !== 'number' || !Number.isFinite(raw)) continue;
-    result[String(midi)] = clamp(raw, 0, 1);
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function replaceOrAddInterval(intervals: number[], source: readonly number[], replacements: readonly number[], fallback: number): void {
@@ -327,7 +278,7 @@ export function buildHarmonyChordIntervals(intent: HarmonyIntent, args?: {
   return intervals.filter((interval, index, values) => values.indexOf(interval) === index).sort((a, b) => a - b);
 }
 
-export function defaultHarmonyIntent(source: HarmonyIntentSource = 'baseline', degree = 0): HarmonyIntent {
+export function defaultHarmonyIntent(source: HarmonyControlSource = 'baseline', degree = 0): HarmonyIntent {
   return {
     source,
     strength: 'bias',
@@ -347,54 +298,12 @@ export function defaultHarmonyIntent(source: HarmonyIntentSource = 'baseline', d
   };
 }
 
-export function defaultHarmonyChordSlot(id: number): HarmonyChordSlot {
-  const intent = defaultHarmonyIntent('slot', id % 7);
-  const exactMidiNotes = resolveHarmonyIntentToNotePool({ intent, rootMidi: 60, scaleId: 1, tension: 0.35 });
-  return {
-    id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
-    name: `Slot ${id + 1}`,
-    chord: {
-      intent,
-      intentSource: 'confirmed',
-      exactMidiNotes,
-      recognizedLabel: formatHarmonyIntentChordLabel(intent, { rootMidi: 60, scaleId: 1 }),
-      playbackBehavior: 'auto',
-      capturedContext: { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
-    },
-    locked: false,
-  };
-}
-
-/** A stable empty slot used by the sanitizer for absent array positions. */
-export function emptyHarmonyChordSlot(id: number): HarmonyChordSlot {
-  return {
-    id: clamp(Math.round(id), 0, HARMONY_SLOT_COUNT - 1),
-    name: `Slot ${id + 1}`,
-    chord: null,
-    locked: false,
-  };
-}
-
-export function defaultHarmonySequenceStep(id: number): HarmonySequenceStep {
-  return {
-    id: clamp(Math.round(id), 0, HARMONY_SEQUENCE_STEP_COUNT - 1),
-    enabled: true,
-    locked: false,
-    mode: 'auto',
-    degree: id % 7,
-    quality: 'auto',
-    intent: null,
-    slotId: null,
-    probability: 1,
-  };
-}
-
 export function defaultHarmonyProgressionEvent(id = 'harmony-event-0'): HarmonyProgressionEvent {
   return { id, source: { type: 'auto' }, duration: { unit: 'phrase', value: 1 } };
 }
 
 export function defaultHarmonyProgression(): HarmonyProgression {
-  return { version: 1, enabled: false, events: [defaultHarmonyProgressionEvent()], currentEventIndex: 0 };
+  return { version: 2, enabled: false, events: [defaultHarmonyProgressionEvent()], currentEventIndex: 0 };
 }
 
 function progressionEventId(value: unknown, index: number): string {
@@ -425,49 +334,35 @@ export interface HarmonyProgressionMigrationResult {
 }
 
 /**
- * Migrate/sanitize the sole authored progression and report bounded-input
- * diagnostics. Legacy sequence payloads are accepted as a version-0
- * migration and never become a second runtime authority.
+ * Validate the sole authored progression and report bounded-input
+ * diagnostics. A version 1 progression keeps its events; its slot sources
+ * (and anything else that is not a valid chord) load as Auto.
  */
-export function migrateHarmonyProgression(
-  value: unknown,
-  legacySequence?: unknown,
-  legacyEnabled?: unknown,
-): HarmonyProgressionMigrationResult {
+export function migrateHarmonyProgression(value: unknown): HarmonyProgressionMigrationResult {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : null;
-  const rawEvents = raw && Array.isArray(raw.events) ? raw.events : Array.isArray(legacySequence) ? legacySequence : [];
-  const migratedFromLegacy = !(raw && Array.isArray(raw.events));
+  const rawEvents = raw && Array.isArray(raw.events) ? raw.events : [];
   const seen = new Set<string>();
   const events: HarmonyProgressionEvent[] = [];
   for (let index = 0; index < rawEvents.length && events.length < HARMONY_PROGRESSION_CAPACITY; index += 1) {
     const item = rawEvents[index];
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
-    if (migratedFromLegacy && record.enabled === false) continue;
     let id = progressionEventId(record.id, index);
     while (seen.has(id)) id = `${id}-${index}`;
     seen.add(id);
     const durationRecord = record.duration && typeof record.duration === 'object' ? record.duration as Record<string, unknown> : null;
-    const legacyMode = record.mode;
     const sourceRecord = record.source && typeof record.source === 'object' ? record.source as Record<string, unknown> : null;
-    // `sanitizeHarmonyProgression` can receive a legacy sequence that has
-    // already passed through `sanitizeHarmonySequence` during URL decoding.
-    // Preserve its normalized `mode: 'slot'` instead of demoting it to Auto
-    // on the second migration pass.
-    const source = sourceRecord?.type === 'slot' || legacyMode === 'slot' || legacyMode === 'slotCopy' || legacyMode === 'slotFollow'
-      ? { type: 'slot' as const, slotId: clamp(finiteInteger(sourceRecord?.slotId ?? record.slotId, 0), 0, HARMONY_SLOT_COUNT - 1) }
-      : { type: 'auto' as const };
+    const chord = sourceRecord?.type === 'chord' ? normalizeChord(sourceRecord.chord) : null;
     events.push({
       id,
-      source,
+      source: chord ? { type: 'chord', chord } : { type: 'auto' },
       duration: {
-        unit: progressionDurationUnit(durationRecord?.unit ?? (record.duration === 'bar' ? 'bar' : undefined)),
-        value: progressionDurationValue(durationRecord?.value ?? record.durationBars ?? (typeof record.duration === 'number' ? record.duration : 1)),
+        unit: progressionDurationUnit(durationRecord?.unit),
+        value: progressionDurationValue(durationRecord?.value),
       },
     });
   }
   const safeEvents = events.length > 0 ? events : [defaultHarmonyProgressionEvent()];
-  const current = clamp(finiteInteger(raw?.currentEventIndex, 0), 0, safeEvents.length - 1);
   const diagnostics: HarmonyProgressionMigrationDiagnostic[] = rawEvents.length > HARMONY_PROGRESSION_CAPACITY
     ? [{
       code: 'progression-capacity-exceeded',
@@ -479,18 +374,31 @@ export function migrateHarmonyProgression(
     : [];
   return {
     progression: {
-      version: 1,
-      enabled: boolValue(raw?.enabled, Array.isArray(legacySequence) ? boolValue(legacyEnabled, false) : false),
+      version: 2,
+      enabled: boolValue(raw?.enabled, false),
       events: safeEvents,
-      currentEventIndex: current,
+      currentEventIndex: clamp(finiteInteger(raw?.currentEventIndex, 0), 0, safeEvents.length - 1),
     },
     diagnostics,
   };
 }
 
-/** Compatibility sanitizer for runtime callers that do not need diagnostics. */
-export function sanitizeHarmonyProgression(value: unknown, legacySequence?: unknown, legacyEnabled?: unknown): HarmonyProgression {
-  return migrateHarmonyProgression(value, legacySequence, legacyEnabled).progression;
+export const HARMONY_PALETTE_CAPACITY = 16 as const;
+
+/** The Palette: up to 16 valid Chords; anything else is dropped. */
+export function sanitizeHarmonyPalette(value: unknown): Chord[] {
+  const chords: Chord[] = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    const chord = normalizeChord(item);
+    if (chord) chords.push(chord);
+    if (chords.length >= HARMONY_PALETTE_CAPACITY) break;
+  }
+  return chords;
+}
+
+/** Sanitizer for runtime callers that do not need diagnostics. */
+export function sanitizeHarmonyProgression(value: unknown): HarmonyProgression {
+  return migrateHarmonyProgression(value).progression;
 }
 
 /** Resolve the canonical event at an absolute transport position. Bar-based
@@ -550,7 +458,7 @@ export function reduceHarmonyProgression(progression: HarmonyProgression, comman
     let copyId = `${events[index]!.id}-copy`;
     let copySuffix = 2;
     while (usedIds.has(copyId)) copyId = `${events[index]!.id}-copy-${copySuffix++}`;
-    const copy = { ...events[index]!, id: copyId, duration: { ...events[index]!.duration }, source: { ...events[index]!.source } } as HarmonyProgressionEvent;
+    const copy: HarmonyProgressionEvent = { ...events[index]!, id: copyId, duration: { ...events[index]!.duration }, source: structuredClone(events[index]!.source) };
     events.splice(index + 1, 0, copy);
     return { ...current, events, currentEventIndex: current.currentEventIndex > index ? current.currentEventIndex + 1 : current.currentEventIndex };
   }
@@ -573,40 +481,6 @@ export function reduceHarmonyProgression(progression: HarmonyProgression, comman
   return { ...current, events, currentEventIndex };
 }
 
-export function makeHarmonyProgressionEventUnique(
-  progression: HarmonyProgression,
-  eventId: string,
-  slots: readonly HarmonyChordSlot[],
-): { progression: HarmonyProgression; slots: HarmonyChordSlot[] } | null {
-  const event = progression.events.find((item) => item.id === eventId);
-  if (!event || event.source.type !== 'slot') return null;
-  const emptyIndex = slots.findIndex((slot) => slot.chord === null && !slot.locked);
-  if (emptyIndex < 0) return null;
-  const sourceSlot = slots[event.source.slotId];
-  if (!sourceSlot?.chord) return null;
-  // Copy only canonical fields so a legacy migration payload cannot re-enter
-  // runtime state as a second top-level intent authority.
-  const copied: HarmonyChordSlot = {
-    id: emptyIndex,
-    name: `Slot ${emptyIndex + 1}`,
-    locked: false,
-    chord: {
-      ...sourceSlot.chord,
-      intent: sourceSlot.chord.intent ? { ...sourceSlot.chord.intent } : null,
-      exactMidiNotes: [...sourceSlot.chord.exactMidiNotes],
-      capturedContext: { ...sourceSlot.chord.capturedContext },
-    },
-  };
-  const nextSlots = slots.map((slot, index) => index === emptyIndex ? copied : slot);
-  const nextProgression: HarmonyProgression = {
-    ...sanitizeHarmonyProgression(progression),
-    events: progression.events.map((item) => item.id === eventId
-      ? { ...item, source: { type: 'slot' as const, slotId: emptyIndex } }
-      : item),
-  };
-  return { progression: nextProgression, slots: nextSlots };
-}
-
 export function defaultManualHarmonyControlState(): ManualHarmonyControlState {
   return {
     enabled: false,
@@ -622,8 +496,6 @@ export function defaultManualHarmonyControlState(): ManualHarmonyControlState {
     selectedBassMode: 'off',
     activeIntent: null,
     auditionIntent: null,
-    slotTriggerMode: false,
-    activeSlotId: null,
   };
 }
 
@@ -632,7 +504,6 @@ export function defaultResolvedHarmonyFrame(rootMidi = 60, scaleId = 1, tension 
   return {
     activeSource: 'baseline',
     activeStepIndex: null,
-    activeSlotId: null,
     rootMidi,
     effectiveRootMidiAnchor: rootMidi,
     scaleId,
@@ -652,7 +523,7 @@ export function sanitizeHarmonyIntent(value: unknown, fallback = defaultHarmonyI
   if (!value || typeof value !== 'object') return fallback;
   const record = value as Record<string, unknown>;
   return {
-    source: enumValue(record.source, Object.keys(HARMONY_SOURCE_IDS) as HarmonyIntentSource[], fallback.source),
+    source: enumValue(record.source, Object.keys(HARMONY_SOURCE_IDS) as HarmonyControlSource[], fallback.source),
     strength: enumValue(record.strength, Object.keys(HARMONY_STRENGTH_IDS) as HarmonyControlStrength[], fallback.strength),
     rootMode: enumValue(record.rootMode, Object.keys(HARMONY_ROOT_MODE_IDS) as HarmonyRootMode[], fallback.rootMode),
     degree: clamp(finiteInteger(record.degree, fallback.degree), 0, 6),
@@ -668,132 +539,6 @@ export function sanitizeHarmonyIntent(value: unknown, fallback = defaultHarmonyI
     capturedMidiNotes: normalizeMidiPool(arrayValue(record.capturedMidiNotes, (item) => typeof item === 'number' ? item : null)),
     preserveCapturedVoicing: boolValue(record.preserveCapturedVoicing, fallback.preserveCapturedVoicing),
   };
-}
-
-export function sanitizeHarmonyChordSlots(value: unknown): HarmonyChordSlot[] {
-  const slots = arrayValue(value, (item) => {
-    if (!item || typeof item !== 'object') return null;
-    const record = item as Record<string, unknown>;
-    const id = clamp(finiteInteger(record.id, 0), 0, HARMONY_SLOT_COUNT - 1);
-    const legacyIntent = record.intent ? sanitizeHarmonyIntent(record.intent, defaultHarmonyIntent('slot', id % 7)) : null;
-    const hasExplicitChord = Object.prototype.hasOwnProperty.call(record, 'chord');
-    const topLevelExactMidiNotes = normalizeMidiPool(arrayValue(
-      record.exactMidiNotes ?? record.capturedMidiNotes,
-      (entry) => typeof entry === 'number' ? entry : null,
-    ));
-    const rawChord = record.chord;
-    let chord: SharedHarmonyChord | null = null;
-    if (rawChord && typeof rawChord === 'object') {
-      const chordRecord = rawChord as Record<string, unknown>;
-      const chordIntent = chordRecord.intent
-        ? sanitizeHarmonyIntent(chordRecord.intent, legacyIntent ?? defaultHarmonyIntent('slot', id % 7))
-        : legacyIntent;
-      const exactMidiNotes = normalizeMidiPool(arrayValue(
-        chordRecord.exactMidiNotes ?? chordRecord.capturedMidiNotes,
-        (entry) => typeof entry === 'number' ? entry : null,
-      ));
-      const exactRecognition = !chordIntent && exactMidiNotes.length > 0
-        ? recognizeHarmonyIntentFromMidiPool({ midiNotes: exactMidiNotes, rootMidi: 60, scaleId: 1, tension: 0.35 })
-        : null;
-      const inferredIntent = exactRecognition?.quality === 'custom' ? null : exactRecognition;
-      const semanticIntent = chordIntent ?? inferredIntent;
-      if (semanticIntent || exactMidiNotes.length > 0) {
-        const snapshot = exactMidiNotes.length > 0
-          ? exactMidiNotes
-          : resolveHarmonyIntentToNotePool({ intent: semanticIntent!, rootMidi: 60, scaleId: 1, tension: 0.35 });
-        chord = {
-          intent: semanticIntent,
-          intentSource: semanticIntent
-            ? (chordRecord.intentSource === 'inferred' || chordRecord.intentSource === 'confirmed'
-              ? chordRecord.intentSource
-              : chordIntent ? 'confirmed' : 'inferred')
-            : null,
-          exactMidiNotes: snapshot,
-          exactMidiVelocities: sanitizeMidiVelocities(chordRecord.exactMidiVelocities),
-          recognizedLabel: stringValue(
-            chordRecord.recognizedLabel,
-            semanticIntent
-              ? formatHarmonyIntentChordLabel(semanticIntent, { rootMidi: 60, scaleId: 1 })
-              : 'custom',
-          ),
-          playbackBehavior: enumValue(chordRecord.playbackBehavior, ['auto', 'relative', 'exact'] as const, 'auto'),
-          capturedContext: (() => {
-            const capturedRecord = chordRecord.capturedContext as Record<string, unknown> | null;
-            const capturedTension = finiteNumber(capturedRecord?.tension, Number.NaN);
-            return {
-              rootMidi: finiteNumber(capturedRecord?.rootMidi, 60),
-              rootMidiAnchor: finiteNumber(capturedRecord?.rootMidiAnchor, finiteNumber(capturedRecord?.rootMidi, 60)),
-              scaleId: finiteInteger(capturedRecord?.scaleId, 1),
-              ...(Number.isFinite(capturedTension) ? { tension: capturedTension } : {}),
-            };
-          })(),
-        };
-      }
-    } else if (!hasExplicitChord && (legacyIntent || topLevelExactMidiNotes.length > 0)) {
-      const legacyCaptured = legacyIntent?.capturedMidiNotes ?? [];
-      const exactMidiNotes = topLevelExactMidiNotes.length > 0
-        ? topLevelExactMidiNotes
-        : legacyCaptured.length > 0
-        ? normalizeMidiPool(legacyCaptured)
-        : resolveHarmonyIntentToNotePool({ intent: legacyIntent!, rootMidi: 60, scaleId: 1, tension: 0.35 });
-      const exactRecognition = legacyIntent
-        ? null
-        : recognizeHarmonyIntentFromMidiPool({ midiNotes: exactMidiNotes, rootMidi: 60, scaleId: 1, tension: 0.35 });
-      const recognizedIntent = legacyIntent ?? (exactRecognition?.quality === 'custom' ? null : exactRecognition);
-      chord = {
-        intent: recognizedIntent,
-        intentSource: legacyIntent ? 'confirmed' : recognizedIntent ? 'inferred' : null,
-        exactMidiNotes,
-        exactMidiVelocities: sanitizeMidiVelocities(record.exactMidiVelocities),
-        recognizedLabel: recognizedIntent
-          ? formatHarmonyIntentChordLabel(recognizedIntent, { rootMidi: 60, scaleId: 1 })
-          : 'custom',
-        playbackBehavior: legacyIntent?.preserveCapturedVoicing ? 'exact' : 'auto',
-        capturedContext: { rootMidi: 60, rootMidiAnchor: 60, scaleId: 1 },
-      };
-    }
-    return {
-      id,
-      name: stringValue(record.name, `Slot ${id + 1}`),
-      chord,
-      locked: boolValue(record.locked, false),
-    };
-  });
-  return Array.from({ length: HARMONY_SLOT_COUNT }, (_, id) => {
-    const match = slots.find((slot) => slot.id === id);
-    return match ?? emptyHarmonyChordSlot(id);
-  });
-}
-
-export function sanitizeHarmonySequence(value: unknown): HarmonySequenceStep[] {
-  const steps = arrayValue(value, (item) => {
-    if (!item || typeof item !== 'object') return null;
-    const record = item as Record<string, unknown>;
-    const id = clamp(finiteInteger(record.id, 0), 0, HARMONY_SEQUENCE_STEP_COUNT - 1);
-    const legacySlotMode = record.mode === 'slotCopy' || record.mode === 'slotFollow';
-    const mode = legacySlotMode
-      ? (record.slotId === null || record.slotId === undefined ? (record.intent ? 'intent' : 'auto') : 'slot')
-      : enumValue(record.mode, Object.keys(HARMONY_SEQUENCE_MODE_IDS) as HarmonySequenceStepMode[], 'auto');
-    return {
-      id,
-      enabled: boolValue(record.enabled, true),
-      locked: boolValue(record.locked, false),
-      mode,
-      degree: clamp(finiteInteger(record.degree, id % 7), 0, 6),
-      quality: enumValue(record.quality, Object.keys(HARMONY_QUALITY_IDS) as HarmonyChordQuality[], 'auto'),
-      intent: record.intent ? sanitizeHarmonyIntent(record.intent, defaultHarmonyIntent('sequence', id % 7)) : null,
-      slotId: record.slotId === null || record.slotId === undefined ? null : clamp(finiteInteger(record.slotId, 0), 0, HARMONY_SLOT_COUNT - 1),
-      probability: clamp(finiteNumber(record.probability, 1), 0, 1),
-    };
-  });
-  return Array.from({ length: HARMONY_SEQUENCE_STEP_COUNT }, (_, id) => {
-    const match = steps.find((step) => step.id === id);
-    return match ?? defaultHarmonySequenceStep(id);
-  });
-}
-
-export function sanitizeHarmonySequenceLength(value: unknown): number {
-  return clamp(finiteInteger(value, HARMONY_SEQUENCE_STEP_COUNT), HARMONY_SEQUENCE_STEP_MIN, HARMONY_SEQUENCE_STEP_COUNT);
 }
 
 export function sanitizeManualHarmonyControl(value: unknown): ManualHarmonyControlState {
@@ -814,8 +559,6 @@ export function sanitizeManualHarmonyControl(value: unknown): ManualHarmonyContr
     selectedBassMode: enumValue(record.selectedBassMode, Object.keys(HARMONY_BASS_MODE_IDS) as HarmonyBassMode[], fallback.selectedBassMode),
     activeIntent: record.activeIntent ? sanitizeHarmonyIntent(record.activeIntent, defaultHarmonyIntent('manualControl')) : null,
     auditionIntent: record.auditionIntent ? sanitizeHarmonyIntent(record.auditionIntent, defaultHarmonyIntent('audition')) : null,
-    slotTriggerMode: boolValue(record.slotTriggerMode, fallback.slotTriggerMode),
-    activeSlotId: record.activeSlotId === null || record.activeSlotId === undefined ? null : clamp(finiteInteger(record.activeSlotId, 0), 0, HARMONY_SLOT_COUNT - 1),
   };
 }
 
@@ -838,44 +581,14 @@ export function buildBaselineHarmonyIntent(args: {
   };
 }
 
-export function resolveSequenceIntent(args: {
-  sequenceEnabled: boolean;
-  stepIndex: number;
-  sequenceLength?: number;
-  sequence: readonly HarmonySequenceStep[];
-  slots: readonly HarmonyChordSlot[];
-  canonical?: boolean;
-}): HarmonyIntent | null {
-  if (!args.sequenceEnabled) return null;
-  const sequenceLength = args.canonical
-    ? clamp(finiteInteger(args.sequenceLength, args.sequence.length), 1, HARMONY_PROGRESSION_CAPACITY)
-    : sanitizeHarmonySequenceLength(args.sequenceLength);
-  const step = args.sequence[((Math.round(args.stepIndex) % sequenceLength) + sequenceLength) % sequenceLength];
-  if (!step || !step.enabled || step.probability <= 0) return null;
-  if (step.mode === 'slot' && step.slotId !== null) {
-    const slot = args.slots[step.slotId];
-    // `chord: null` is authoritative: an empty saved slot cannot fabricate a
-    // fallback legacy intent or produce audible material.
-    return slot?.chord?.intent ? { ...slot.chord.intent, source: 'sequence' } : null;
-  }
-  if (step.mode === 'intent' && step.intent) {
-    return { ...step.intent, source: 'sequence' };
-  }
-  return {
-    ...defaultHarmonyIntent('sequence', step.degree),
-    quality: step.quality,
-  };
-}
-
-export function resolveSlotTriggerIntent(args: {
-  manualControl: ManualHarmonyControlState;
-  slots: readonly HarmonyChordSlot[];
-  morphPercent: number;
-}): HarmonyIntent | null {
-  if (args.morphPercent > 0 && args.morphPercent < 100) return null;
-  if (!args.manualControl.slotTriggerMode || args.manualControl.activeSlotId === null) return null;
-  const slot = args.slots[args.manualControl.activeSlotId];
-  return slot?.chord?.intent ? { ...slot.chord.intent, source: 'slot' } : null;
+/** Intent for the progression event at `eventIndex`. Auto events step through the
+ * first degrees; chord events are resolved by native, so the TS frame has none. */
+export function resolveProgressionIntent(progression: HarmonyProgression, eventIndex: number): HarmonyIntent | null {
+  if (!progression.enabled) return null;
+  const length = Math.max(1, progression.events.length);
+  const index = ((Math.round(eventIndex) % length) + length) % length;
+  if (progression.events[index]?.source.type !== 'auto') return null;
+  return defaultHarmonyIntent('sequence', Math.min(index, 7) % 7);
 }
 
 export function resolveManualControlIntent(args: {
@@ -890,13 +603,11 @@ export function resolveManualControlIntent(args: {
 export function chooseActiveHarmonyIntent(args: {
   baselineIntent: HarmonyIntent;
   sequenceIntent: HarmonyIntent | null;
-  slotTriggerIntent: HarmonyIntent | null;
   manualControlIntent: HarmonyIntent | null;
   morphPercent: number;
 }): HarmonyIntent {
   const manualAllowed = args.morphPercent === 0 || args.morphPercent === 100;
   if (manualAllowed && args.manualControlIntent) return args.manualControlIntent;
-  if (manualAllowed && args.slotTriggerIntent) return args.slotTriggerIntent;
   if (args.sequenceIntent) return args.sequenceIntent;
   return args.baselineIntent;
 }
@@ -989,36 +700,6 @@ function formatCapturedVoicingChordLabel(notes: readonly number[]): string {
   return `${CHROMATIC_ROOT_LABELS[rootPc] ?? 'C'} custom`;
 }
 
-export function recognizeHarmonyIntentFromMidiPool(args: {
-  midiNotes: readonly number[];
-  previousIntent?: HarmonyIntent | null;
-  rootMidi: number;
-  scaleId: number;
-  tension: number;
-}): HarmonyIntent {
-  const previous = args.previousIntent ? sanitizeHarmonyIntent(args.previousIntent) : defaultHarmonyIntent('slot');
-  return recognizeHarmonyIntentFromCandidates({
-    midiNotes: args.midiNotes,
-    previousIntent: previous,
-    rootMidi: args.rootMidi,
-    scaleId: args.scaleId,
-    tension: args.tension,
-  });
-}
-
-/** Ranked recognition metadata for dual-representation capture and adopt UI. */
-export function recognizeHarmonyCandidatesFromMidiPool(args: {
-  midiNotes: readonly number[];
-  previousIntent?: HarmonyIntent | null;
-  rootMidi: number;
-  scaleId: number;
-  tension: number;
-  engineContext?: { rootPitchClass?: number; quality?: HarmonyChordQuality; degree?: number };
-  maxCandidates?: number;
-}): HarmonyRecognitionCandidate[] {
-  return recognizeHarmonyCandidates(args);
-}
-
 export function formatHarmonyIntentChordLabel(intent: HarmonyIntent, args?: {
   rootMidi?: number;
   scaleId?: number;
@@ -1068,7 +749,6 @@ export function resolveAuditionPreview(args: {
   return {
     activeSource: 'audition',
     activeStepIndex: null,
-    activeSlotId: null,
     rootMidi: args.rootMidi,
     effectiveRootMidiAnchor: args.rootMidi,
     scaleId: args.scaleId,
@@ -1107,22 +787,15 @@ export function resolveNextHarmonyFrame(args: {
   rootMidi: number;
   scaleId: number;
   tension: number;
-  sequenceEnabled: boolean;
+  progression: HarmonyProgression;
   stepIndex: number;
-  sequenceLength: number;
-  sequence: readonly HarmonySequenceStep[];
-  slots: readonly HarmonyChordSlot[];
   baselineIntent: HarmonyIntent;
-  canonical?: boolean;
 }): Pick<ResolvedHarmonyFrame, 'nextNotePool' | 'nextSource' | 'nextStepIndex'> {
-  const sequenceLength = args.canonical
-    ? clamp(finiteInteger(args.sequenceLength, args.sequence.length), 1, HARMONY_PROGRESSION_CAPACITY)
-    : sanitizeHarmonySequenceLength(args.sequenceLength);
-  const stepIndex = ((Math.round(args.stepIndex) % sequenceLength) + sequenceLength) % sequenceLength;
-  const nextStepIndex = args.sequenceEnabled ? (stepIndex + 1) % sequenceLength : null;
+  const length = Math.max(1, args.progression.events.length);
+  const nextStepIndex = args.progression.enabled ? (args.stepIndex + 1) % length : null;
   const nextIntent = nextStepIndex === null
     ? { ...args.baselineIntent, degree: (args.baselineIntent.degree + 3) % 7 }
-    : resolveSequenceIntent({ sequenceEnabled: true, stepIndex: nextStepIndex, sequenceLength, sequence: args.sequence, slots: args.slots, canonical: args.canonical }) ?? args.baselineIntent;
+    : resolveProgressionIntent(args.progression, nextStepIndex) ?? args.baselineIntent;
   return {
     nextNotePool: resolveHarmonyIntentToNotePool({ intent: nextIntent, rootMidi: args.rootMidi, scaleId: args.scaleId, tension: args.tension }),
     nextSource: nextIntent.source,
@@ -1145,47 +818,24 @@ export function resolveProductHarmonyState(args: {
   const state = args.state ?? {};
   const morphContext = resolvePresetMorphContext({ state, morphPercent: args.morphPercent });
   const manualControl = sanitizeManualHarmonyControl(state.manualHarmonyControl);
-  const chordSlots = sanitizeHarmonyChordSlots(
-    morphContext.bank === 'B'
-      ? state.harmonyChordSlotsB ?? state.harmonyChordSlots
-      : state.harmonyChordSlotsA ?? state.harmonyChordSlots,
-  );
   const progressionValue = morphContext.bank === 'B'
     ? state.harmonyProgressionB ?? state.harmonyProgression
     : state.harmonyProgressionA ?? state.harmonyProgression;
-  // Canonical progression is the sole runtime authority. Legacy sequence
-  // fields are consumed only by preset/URL migration before this adapter.
+  // The canonical progression is the sole runtime authority.
   const progression = sanitizeHarmonyProgression(progressionValue ?? {
-    version: 1,
     enabled: false,
     currentEventIndex: 0,
-    events: Array.from({ length: HARMONY_SEQUENCE_STEP_COUNT }, (_, index) => ({
-      id: `harmony-event-${index}`,
-      source: { type: 'auto' as const },
-      duration: { unit: 'phrase' as const, value: 1 as const },
-    })),
+    events: Array.from({ length: HARMONY_SEQUENCE_STEP_COUNT }, (_, index) => defaultHarmonyProgressionEvent(`harmony-event-${index}`)),
   });
-  const chordSequence: HarmonySequenceStep[] = progression.events.map((event, index) => {
-    // This compatibility projection exists only for downstream ABI/UI readers;
-    // it is never persisted or used as an authored decision source.
-    const legacy = defaultHarmonySequenceStep(index);
-    return event.source.type === 'slot'
-      ? { ...legacy, id: index, enabled: true, mode: 'slot', slotId: event.source.slotId, probability: 1 }
-      : { ...legacy, id: index, enabled: true, mode: 'auto', slotId: null, probability: 1 };
-  });
-  const chordSequenceEnabled = progression.enabled;
-  const chordSequenceLength = Math.max(1, progression.events.length);
-  const canonical = true;
+  const stepCount = Math.max(1, progression.events.length);
   const hasCanonicalPosition = args.barIndex !== undefined || args.phraseIndex !== undefined;
-  const canonicalPositionIndex = hasCanonicalPosition
+  const stepIndex = (hasCanonicalPosition
     ? canonicalProgressionIndexAtPosition(progression, {
       absoluteBarIndex: args.barIndex,
       phraseIndex: args.phraseIndex,
       barsPerPhrase: finiteNumber(state.transportBarsPerPhrase, 4),
     })
-    : progression.currentEventIndex;
-  const rawChordSequenceStepIndex = canonicalPositionIndex;
-  const chordSequenceStepIndex = rawChordSequenceStepIndex % chordSequenceLength;
+    : progression.currentEventIndex) % stepCount;
   const baselineIntent = buildBaselineHarmonyIntent({
     rootMidi: args.rootMidi,
     scaleId: args.scaleId,
@@ -1194,26 +844,20 @@ export function resolveProductHarmonyState(args: {
     barIndex: args.barIndex ?? 0,
     phraseIndex: args.phraseIndex ?? 0,
   });
-  const sequenceIntent = resolveSequenceIntent({ sequenceEnabled: chordSequenceEnabled, stepIndex: chordSequenceStepIndex, sequenceLength: chordSequenceLength, sequence: chordSequence, slots: chordSlots, canonical });
-  const slotTriggerIntent = resolveSlotTriggerIntent({ manualControl, slots: chordSlots, morphPercent: morphContext.morphPercent });
+  const sequenceIntent = resolveProgressionIntent(progression, stepIndex);
   const manualControlIntent = resolveManualControlIntent({ manualControl, morphPercent: morphContext.morphPercent });
-  const activeIntent = chooseActiveHarmonyIntent({ baselineIntent, sequenceIntent, slotTriggerIntent, manualControlIntent, morphPercent: morphContext.morphPercent });
+  const activeIntent = chooseActiveHarmonyIntent({ baselineIntent, sequenceIntent, manualControlIntent, morphPercent: morphContext.morphPercent });
   const nextFrame = resolveNextHarmonyFrame({
     rootMidi: args.rootMidi,
     scaleId: args.scaleId,
     tension: args.tension,
-    sequenceEnabled: chordSequenceEnabled,
-    stepIndex: chordSequenceStepIndex,
-    sequenceLength: chordSequenceLength,
-    sequence: chordSequence,
-    slots: chordSlots,
-    canonical,
+    progression,
+    stepIndex,
     baselineIntent,
   });
   const resolvedHarmonyFrame: ResolvedHarmonyFrame = {
     activeSource: activeIntent.source,
-    activeStepIndex: activeIntent.source === 'sequence' ? chordSequenceStepIndex : null,
-    activeSlotId: activeIntent.source === 'slot' ? manualControl.activeSlotId : null,
+    activeStepIndex: activeIntent.source === 'sequence' ? stepIndex : null,
     rootMidi: args.rootMidi,
     effectiveRootMidiAnchor: args.rootMidiAnchor ?? args.rootMidi,
     scaleId: args.scaleId,
@@ -1229,12 +873,7 @@ export function resolveProductHarmonyState(args: {
   };
   return {
     manualControl,
-    chordSlots,
-    chordSequence,
-    chordSequenceEnabled,
-    chordSequenceLength,
-    chordSequenceStepIndex,
-    progression: { ...progression, currentEventIndex: chordSequenceStepIndex },
+    progression: { ...progression, currentEventIndex: stepIndex },
     resolvedHarmonyFrame,
   };
 }

@@ -131,7 +131,6 @@ function makeSnapshot({ laneCount = 4 } = {}) {
       controlMode: 0,
       controlStrength: 0,
       activeSource: 0,
-      activeSlotId: -1,
       activeStepIndex: -1,
       manualControlAvailable: true,
       notePoolCount: 3,
@@ -142,10 +141,7 @@ function makeSnapshot({ laneCount = 4 } = {}) {
       nextSource: 0,
       nextStepIndex: -1,
       manualControl: { strength: 'bias' },
-      chordSlots: [],
-      chordSequence: [],
-      chordSequenceEnabled: false,
-      chordSequenceStepIndex: 0,
+      progression: { enabled: false },
       resolvedHarmonyFrame: { degree: 0, quality: 'auto' },
     },
     sources: [makeSource(1), makeSource(2)],
@@ -693,30 +689,6 @@ await runCheckWithReport({
       'synth lane macro dirty diff did not emit lane macro events',
     );
 
-    const harmonySlotBase = clone(base);
-    harmonySlotBase.harmony.activeSource = 0;
-    harmonySlotBase.harmony.notePoolCount = 3;
-    harmonySlotBase.harmony.notePoolMidi = [60, 64, 67, 0, 0, 0, 0, 0];
-    harmonySlotBase.harmony.nextNotePoolCount = 3;
-    harmonySlotBase.harmony.nextNotePoolMidi = [62, 65, 69, 0, 0, 0, 0, 0];
-    harmonySlotBase.harmony.resolvedHarmonyFrame = { degree: 0, quality: 'auto' };
-    harmonySlotBase.harmony.manualControl = { strength: 'bias' };
-    const harmonySlotNext = clone(harmonySlotBase);
-    harmonySlotNext.harmony.controlMode = 3;
-    harmonySlotNext.harmony.controlStrength = 1;
-    harmonySlotNext.harmony.activeSource = 2;
-    harmonySlotNext.harmony.notePoolCount = 4;
-    harmonySlotNext.harmony.notePoolMidi = [67, 70, 74, 77, 0, 0, 0, 0];
-    harmonySlotNext.harmony.nextNotePoolCount = 4;
-    harmonySlotNext.harmony.nextNotePoolMidi = [69, 72, 76, 79, 0, 0, 0, 0];
-    harmonySlotNext.harmony.resolvedHarmonyFrame = { degree: 4, quality: 'min7' };
-    harmonySlotNext.harmony.manualControl = { strength: 'force' };
-    const harmonySlotDiff = adapterHarness.buildCoreProductSnapshotDiff(harmonySlotBase, harmonySlotNext);
-    assert(
-      harmonySlotDiff.applied === false && harmonySlotDiff.reason === 'harmony-mode-change',
-      'slot-sourced note pool changes must full-reload now that no native event can carry them',
-    );
-
     const assetNext = clone(base);
     assetNext.assetRefs = [11, 99];
     const assetDiff = adapterHarness.buildCoreProductSnapshotDiff(base, assetNext);
@@ -1005,7 +977,6 @@ await runCheckWithReport({
         legacyPadExactReloadReason: legacyPadExactDiff.reason,
         legacyLeadExactReloadReason: legacyLeadExactDiff.reason,
         legacyDrumExactReloadReason: legacyDrumExactDiff.reason,
-        harmonySlotDiffReloaded: harmonySlotDiff.applied === false,
         padOverrideReloadReason: padOverrideDiff.reason,
         leadOverrideReloadReason: leadOverrideDiff.reason,
         endpointReloadReason: endpointDiff.reason,

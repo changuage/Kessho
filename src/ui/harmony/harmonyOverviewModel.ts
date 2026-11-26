@@ -1,16 +1,12 @@
-import { HARMONY_PROGRESSION_CAPACITY, reduceHarmonyProgression, type HarmonyChordSlot } from '../../audio/CoreProductHarmonyControl';
+import { HARMONY_PROGRESSION_CAPACITY, reduceHarmonyProgression } from '../../audio/CoreProductHarmonyControl';
+import { chordName } from '../../audio/harmony/chord';
 import type { HarmonyProgression, HarmonyProgressionEvent } from '../../audio/harmony/harmonyTypes';
-import { analyzeHarmonyBank, planEmptyUnusedHarmonySlot, planReplaceHarmonySlotReferences, type HarmonyReferenceState } from '../../audio/harmony/harmonyBankAnalysis';
-import type { ProductPlayConfig } from '../../audio/productPlaySequencer';
-
-export type HarmonyOverviewMode = 'arrange' | 'edit' | 'manage';
 
 export interface HarmonyOverviewRow {
   id: string;
   index: number;
   source: HarmonyProgressionEvent['source'];
   duration: HarmonyProgressionEvent['duration'];
-  slotId: number | null;
   label: string;
   exactMidiNotes: readonly number[];
   relation: HarmonyVoiceLeadingRelation | null;
@@ -69,15 +65,14 @@ export function analyzeHarmonyVoiceLeading(previous: readonly number[], current:
   };
 }
 
-export function overviewRows(progression: HarmonyProgression, slots: readonly HarmonyChordSlot[]): HarmonyOverviewRow[] {
+export function overviewRows(progression: HarmonyProgression, key: { rootPitchClass: number; scaleId: number }): HarmonyOverviewRow[] {
   let previousNotes: readonly number[] = [];
   return progression.events.map((event, index) => {
-    const slotId = event.source.type === 'slot' ? event.source.slotId : null;
-    const slot = slotId == null ? null : slots.find((entry) => entry.id === slotId);
-    const exactMidiNotes = slot?.chord?.exactMidiNotes ?? [];
+    const chord = event.source.type === 'chord' ? event.source.chord : null;
+    const exactMidiNotes = chord ? chord.notes.map((note) => Math.round(note.midi)) : [];
     const relation = index === 0 ? null : analyzeHarmonyVoiceLeading(previousNotes, exactMidiNotes);
     previousNotes = exactMidiNotes;
-    return { id: event.id, index, source: event.source, duration: event.duration, slotId, label: slot?.chord?.recognizedLabel || slot?.name || (slotId == null ? 'Auto' : `S${slotId + 1}`), exactMidiNotes, relation };
+    return { id: event.id, index, source: event.source, duration: event.duration, label: chord ? chordName(chord, key.rootPitchClass, key.scaleId) : 'Auto', exactMidiNotes, relation };
   });
 }
 
@@ -115,74 +110,14 @@ export function applyHarmonyOverviewAction(progression: HarmonyProgression, sele
   return result(next, Math.min(selectedIndex, next.events.length - 1));
 }
 
-export function makeUniqueHarmonySlot(slots: readonly HarmonyChordSlot[], sourceId: number): { ok: boolean; slots: HarmonyChordSlot[]; slotId: number | null; error?: string } {
-  const source = slots.find((slot) => slot.id === sourceId);
-  const target = slots.find((slot) => !slot.locked && !slot.chord);
-  if (!source?.chord) return { ok: false, slots: slots.slice() as HarmonyChordSlot[], slotId: null, error: 'Source slot is empty' };
-  if (!target) return { ok: false, slots: slots.slice() as HarmonyChordSlot[], slotId: null, error: 'No empty slot is available' };
-  const chord = { ...source.chord, intent: source.chord.intent ? { ...source.chord.intent, extensions: [...source.chord.intent.extensions], capturedMidiNotes: [...source.chord.intent.capturedMidiNotes] } : null, exactMidiNotes: [...source.chord.exactMidiNotes] };
-  return { ok: true, slots: slots.map((slot) => slot.id === target.id ? { ...slot, chord, name: `${source.name} copy` } : slot), slotId: target.id };
-}
-
 export function updateHarmonyOverviewDuration(progression: HarmonyProgression, index: number, unit: HarmonyProgressionEvent['duration']['unit'], value: HarmonyProgressionEvent['duration']['value']): HarmonyProgression {
   return { ...progression, events: progression.events.map((event, eventIndex) => eventIndex === index ? { ...event, duration: { unit, value } } : event) };
 }
 
-export function updateHarmonyOverviewSource(progression: HarmonyProgression, index: number, slotId: number | null): HarmonyProgression {
+/** Until the chord editor exists, an event's source can only be set back to Auto. */
+export function clearHarmonyOverviewChord(progression: HarmonyProgression, index: number): HarmonyProgression {
   return {
     ...progression,
-    events: progression.events.map((event, eventIndex) => eventIndex === index
-      ? { ...event, source: slotId == null ? { type: 'auto' as const } : { type: 'slot' as const, slotId } }
-      : event),
+    events: progression.events.map((event, eventIndex) => eventIndex === index ? { ...event, source: { type: 'auto' as const } } : event),
   };
-}
-
-export function toggleHarmonyOverviewNote(slots: readonly HarmonyChordSlot[], slotId: number, note: number): HarmonyChordSlot[] {
-  return slots.map((slot) => {
-    if (slot.id !== slotId || !slot.chord) return slot;
-    const exactMidiNotes = slot.chord.exactMidiNotes.includes(note) ? slot.chord.exactMidiNotes.filter((value) => value !== note) : [...slot.chord.exactMidiNotes, note].sort((a, b) => a - b);
-    return { ...slot, chord: { ...slot.chord, exactMidiNotes } };
-  });
-}
-
-export function analyzeOverviewBank(state: HarmonyReferenceState) {
-  return analyzeHarmonyBank(state);
-}
-
-export function planOverviewReplaceReferences(state: HarmonyReferenceState, sourceId: number, targetId: number) {
-  return planReplaceHarmonySlotReferences(state, sourceId, targetId);
-}
-
-export function planOverviewEmptyUnusedSlot(state: HarmonyReferenceState, slotId: number) {
-  return planEmptyUnusedHarmonySlot(state, slotId);
-}
-
-export function productPlayConfigsToHarmonySeqChoices(
-  configs: readonly ProductPlayConfig[],
-): NonNullable<HarmonyReferenceState['seqPlayChoices']> {
-  return configs.map((config, lane) => ({
-    lane,
-    steps: config.chord.steps.map((step, index) => ({ id: index, slotId: step.slotId })),
-  }));
-}
-
-/** Apply an atomic Manage Pool reference plan while retaining every unrelated
- * Product Play field and structurally sharing lanes whose choices did not move. */
-export function applyHarmonySeqChoiceReferences(
-  configs: readonly ProductPlayConfig[],
-  choices: HarmonyReferenceState['seqPlayChoices'],
-): ProductPlayConfig[] {
-  if (!choices) return configs.slice();
-  return configs.map((config, lane) => {
-    const nextLane = choices.find((candidate) => Number(candidate.lane) === lane);
-    if (!nextLane) return config;
-    let changed = false;
-    const steps = config.chord.steps.map((step, index) => {
-      const slotId = nextLane.steps[index]?.slotId ?? nextLane.steps[index]?.chordSlotId ?? step.slotId;
-      if (slotId === step.slotId) return step;
-      changed = true;
-      return { ...step, slotId };
-    });
-    return changed ? { ...config, chord: { ...config.chord, steps } } : config;
-  });
 }

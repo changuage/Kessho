@@ -7,45 +7,27 @@ import { SCALE_FAMILIES } from '../../audio/scales';
 import type { ProductManualSynthNote, ProductManualSynthSource } from '../../audio/product/ProductEngineTypes';
 import type { ProductLiveNoteEvent } from '../../audio/product/liveNoteEvents';
 import {
-  HARMONY_PROGRESSION_CAPACITY,
   defaultHarmonyIntent,
   resolveHarmonyIntentToNotePool,
-  sanitizeHarmonyProgression,
   sanitizeHarmonyIntent,
   type HarmonyProgression,
   sanitizeManualHarmonyControl,
   type HarmonyBassMode,
   type HarmonyChordQuality,
-  type HarmonyChordSlot,
   type HarmonyControlStrength,
   type HarmonyIntent,
-  type HarmonySequenceStep,
   type ManualHarmonyControlMode,
   type ManualHarmonyControlState,
   type ResolvedHarmonyFrame,
 } from '../../audio/CoreProductHarmonyControl';
-import { sharedChordFromDraft } from '../../audio/harmony/harmonyChordAdapters';
 import { DEFAULT_HARMONY_SCALE_INTERVALS, HARMONY_SCALE_INTERVALS } from '../../audio/harmony/harmonyScaleIntervals';
 import './HarmonyEnginePanel.css';
 import LiveChordKeyboard from './live/LiveChordKeyboard';
-import useHarmonyChordCapture from './useHarmonyChordCapture';
-import { draftFromCapturedNotes, harmonyDraftWithIntent, resolveHarmonyDraftRerootPreview, setDraftPlaybackBehavior } from './harmonyDraftChord';
-import { draftFromSlot, updateDraftExactNotes } from './shared/harmonyDraftHelpers';
-import RecognitionResolution from './shared/RecognitionResolution';
 import useHarmonySuggestions from './useHarmonySuggestions';
 import SuggestionGrid from './shared/SuggestionGrid';
-import { insertHarmonySuggestion, replaceHarmonySuggestion, saveHarmonySuggestion } from './harmonySuggestionActions';
 import HarmonyOverviewSurface from './HarmonyOverviewSurface';
-import type { HarmonyOverviewMode } from './harmonyOverviewModel';
-import { analyzeOverviewBank, applyHarmonySeqChoiceReferences, productPlayConfigsToHarmonySeqChoices, updateHarmonyOverviewSource } from './harmonyOverviewModel';
-import { planHarmonyPrint, transformHarmonyChord } from '../../audio/harmony/harmonyTransform';
-import type { TonalContextCandidate } from '../../audio/harmony/tonalContextAnalysis';
-import { normalizeProductPlayConfigs } from '../../audio/productPlaySequencer';
-import type { HarmonyReferenceState } from '../../audio/harmony/harmonyBankAnalysis';
 import { useLiveNoteInput } from '../keyboard/liveNoteInput';
-import { manualChordInversionLabel, recognizeClosestManualChord } from './harmonyManualChordIdentity';
-import { HarmonySlotStrip } from './HarmonySlotStrip';
-import { harmonyPerformanceBankIndex, harmonyPerformanceBankScope, harmonyPerformanceBankTrigger } from './harmonyPerformanceBank';
+import { harmonyPerformanceBankIndex, harmonyPerformanceBankTrigger } from './harmonyPerformanceBank';
 import { readHarmonyAuditionSource, writeHarmonyAuditionSource } from './harmonyAuditionPreference';
 import { harmonyAuditionVelocity } from './harmonyAuditionLevel';
 
@@ -150,10 +132,6 @@ export interface HarmonyEnginePanelProps {
   workspaceView?: 'simple' | 'detail' | 'overview';
   onHarmonyLiveLayerChange?: HarmonyLiveLayerChangeHandler;
   isRunning?: boolean;
-  selectedSlotId: number;
-  onSelectedSlotChange?: (slotId: number) => void;
-  canUndo?: boolean;
-  onUndo?: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -179,7 +157,6 @@ function sourceLabel(source: ResolvedHarmonyFrame['activeSource'] | null): strin
   if (!source) return 'None';
   if (source === 'baseline') return 'Auto Harmony';
   if (source === 'manualControl') return 'Manual';
-  if (source === 'slot') return 'Slot';
   if (source === 'presetMorph') return 'Morph';
   return source.charAt(0).toUpperCase() + source.slice(1);
 }
@@ -223,24 +200,6 @@ function intentTitle(intent: HarmonyIntent | null | undefined): string {
   return [root, quality, ...extensions].join(' ');
 }
 
-function compactIntentChordLabel(intent: HarmonyIntent): string {
-  const root = intent.rootMode === 'degree'
-    ? ROMAN_DEGREES[clamp(intent.degree, 0, 6)] ?? 'I'
-    : noteName(intent.rootNote);
-  const quality = ({
-    auto: '', maj: '', min: 'm', dim: 'dim', sus: 'sus', maj7: 'maj7', min7: 'm7',
-    dom7: '7', add9: 'add9', six: '6', sixNine: '6/9', nine: '9', quartal: 'quartal',
-    cluster: 'cluster', custom: 'custom',
-  } satisfies Record<HarmonyChordQuality, string>)[intent.quality];
-  const extension = intent.extensions
-    .map((item) => ({ six: '6', min7: 'm7', maj7: 'maj7', dom7: '7', add9: 'add9', nine: '9', sixNine: '6/9' }[item] ?? item))
-    .find((item) => item !== quality) ?? '';
-  const bass = intent.bassMode === 'captured' && intent.bassNote != null
-    ? `/${noteName(intent.bassNote)}`
-    : '';
-  return `${root}${quality}${extension}${bass}`;
-}
-
 function statePatch(patch: Record<string, unknown>): SliderState {
   return patch as unknown as SliderState;
 }
@@ -257,35 +216,8 @@ function releaseFocusedHarmonyControl(target: EventTarget | null): void {
   if (target.matches('button, select, summary, [role="button"], [tabindex]')) target.blur();
 }
 
-function bankKeys(bank: HarmonyBank): { slots: string; progression: string } {
-  return bank === 'B'
-    ? { slots: 'harmonyChordSlotsB', progression: 'harmonyProgressionB' }
-    : { slots: 'harmonyChordSlotsA', progression: 'harmonyProgressionA' };
-}
-
-/** Convert the editor row shape into the canonical authored model. */
-function canonicalProgressionFromSequence(
-  sequence: readonly HarmonySequenceStep[],
-  base: HarmonyProgression,
-): HarmonyProgression {
-  const events = sequence.slice(0, HARMONY_PROGRESSION_CAPACITY).map((step, index) => ({
-    id: base.events[index]?.id ?? `harmony-event-${index}`,
-    source: step.slotId !== null && step.mode === 'slot'
-      ? { type: 'slot' as const, slotId: step.slotId }
-      : { type: 'auto' as const },
-    duration: base.events[index]?.duration ?? { unit: 'phrase' as const, value: 1 as const },
-  }));
-  const safeEvents = events.length > 0 ? events : base.events;
-  return sanitizeHarmonyProgression({
-    ...base,
-    events: safeEvents,
-    currentEventIndex: Math.min(base.currentEventIndex, Math.max(0, safeEvents.length - 1)),
-  });
-}
-
-function shouldMirrorBaseBank(record: Record<string, unknown>, bank: HarmonyBank): boolean {
-  if (bank !== 'A') return false;
-  return record.harmonyChordSlotsA === undefined && record.harmonyChordSlotsB === undefined;
+function progressionKey(bank: HarmonyBank): 'harmonyProgressionA' | 'harmonyProgressionB' {
+  return bank === 'B' ? 'harmonyProgressionB' : 'harmonyProgressionA';
 }
 
 function modeForIntentUpdate(mode: ManualHarmonyControlMode, manualLocked: boolean): ManualHarmonyControlMode {
@@ -393,11 +325,8 @@ function HarmonySummaryCard({
   showPolicyControls = true,
   suggestionBank = [],
   suggestionAxis,
-  onSuggestionSelect,
   onSuggestionPress,
   onSuggestionRelease,
-  selectedSuggestion,
-  onSuggestionSave,
 }: {
   bank: HarmonyBank;
   rootLabel: string;
@@ -416,11 +345,8 @@ function HarmonySummaryCard({
   showPolicyControls?: boolean;
   suggestionBank?: readonly (import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null)[];
   suggestionAxis?: readonly number[];
-  onSuggestionSelect?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
   onSuggestionPress?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
   onSuggestionRelease?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
-  selectedSuggestion?: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null;
-  onSuggestionSave?: (suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => void;
 }) {
   const tensionCharacter = tensionCharacterFor(tension);
   const scaleBand = tensionScaleBandLabel(tension);
@@ -429,11 +355,9 @@ function HarmonySummaryCard({
     ? 'Manual control locked'
     : resolvedFrame.activeStepIndex !== null
       ? `Step ${resolvedFrame.activeStepIndex + 1} / 8`
-      : resolvedFrame.activeSlotId !== null
-        ? `Slot ${resolvedFrame.activeSlotId + 1}`
-        : chordSequenceEnabled
-          ? 'Sequence armed'
-          : 'Using auto harmony';
+      : chordSequenceEnabled
+        ? 'Sequence armed'
+        : 'Using auto harmony';
 
   return (
     <div className="harmony-summary-card">
@@ -506,19 +430,13 @@ function HarmonySummaryCard({
         </div>
       </div>}
       {suggestionBank.length > 0 && <div className="harmony-suggestion-dock" aria-label="Harmony suggestions">
-        <div className="harmony-suggestion-dock-header"><strong>Suggestions</strong><span>Hold to preview · Shift+key saves next open slot</span></div>
+        <div className="harmony-suggestion-dock-header"><strong>Suggestions</strong><span>Hold to preview</span></div>
         <SuggestionGrid
           suggestions={suggestionBank.map((suggestion) => suggestion ? { ...suggestion, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes } : null)}
           axis={suggestionAxis}
-          onSelect={onSuggestionSelect ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionSelect(full); } : undefined}
           onPress={onSuggestionPress ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionPress(full); } : undefined}
           onRelease={onSuggestionRelease ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionRelease(full); } : undefined}
-          onSave={onSuggestionSave ? (suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) onSuggestionSave(full); } : undefined}
         />
-        {selectedSuggestion && <div className="harmony-suggestion-action-dock" aria-label="Selected suggestion actions">
-          <strong>{selectedSuggestion.label}</strong>
-          <button type="button" onClick={() => selectedSuggestion && onSuggestionSave?.(selectedSuggestion)}>Save S#</button>
-        </div>}
       </div>}
       <div className="harmony-summary-grid">
         <HarmonyStatusTile
@@ -583,11 +501,6 @@ function ManualVoicingPreview({
   auditionEnabled,
   onAuditionSourceChange,
   onAuditionPreview,
-  onCapture,
-  canWriteState,
-  writeLocked,
-  captureSlotId,
-  slots,
 }: {
   label: string;
   notes: readonly number[];
@@ -595,11 +508,6 @@ function ManualVoicingPreview({
   auditionEnabled: boolean;
   onAuditionSourceChange: (source: ProductManualSynthSource) => void;
   onAuditionPreview: () => void;
-  onCapture?: () => void;
-  canWriteState: boolean;
-  writeLocked: boolean;
-  captureSlotId: number;
-  slots: readonly HarmonyChordSlot[];
 }) {
   return (
     <div className="harmony-manual-preview">
@@ -628,20 +536,6 @@ function ManualVoicingPreview({
         >
           Play
         </button>
-        {onCapture && (
-          <div className="harmony-capture-group">
-            <button
-              type="button"
-              className="harmony-subtle-button"
-              onClick={onCapture}
-              disabled={!canWriteState || writeLocked || slots[captureSlotId]?.locked}
-              title={`Snapshot current chord into Slot ${captureSlotId + 1}`}
-              {...harmonyHelpAttrs('harmonyManualCapture')}
-            >
-              Capture S{captureSlotId + 1}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -649,21 +543,13 @@ function ManualVoicingPreview({
 
 function ChordModifierPanel({
   manual,
-  recognizedLabel,
-  recognizedInversion,
-  recognitionNoteCount,
-  inputMethod,
-  playbackBehavior,
+  chordLabel,
   canWriteState,
   onQualityChange,
   onToggleExtension,
 }: {
   manual: ManualHarmonyControlState;
-  recognizedLabel: string;
-  recognizedInversion: number | null;
-  recognitionNoteCount: number;
-  inputMethod: 'played' | 'builder';
-  playbackBehavior: 'auto' | 'relative' | 'exact';
+  chordLabel: string;
   canWriteState: boolean;
   onQualityChange: (quality: HarmonyChordQuality) => void;
   onToggleExtension: (extension: string) => void;
@@ -672,15 +558,8 @@ function ChordModifierPanel({
     <div className="harmony-modifier-panel">
       <div className="harmony-chord-type-heading">
         <div className="harmony-panel-label">Chord Type</div>
-        <strong>{recognizedLabel}</strong>
-        <div className="harmony-chord-type-status">
-          <small>{inputMethod === 'played' ? 'Played chord' : 'Chord builder'}</small>
-          <small>{playbackBehavior === 'relative' ? 'Relative' : playbackBehavior === 'exact' ? 'Exact' : 'Auto'}</small>
-          <small>{recognizedInversion == null ? `${recognitionNoteCount}/3 notes` : manualChordInversionLabel(recognizedInversion)}</small>
-        </div>
-        <p>{inputMethod === 'played'
-          ? 'Your retained keyboard gesture is the chord. Choose a root or chord type to build instead.'
-          : 'Root, quality, and extensions define the chord. Playing notes switches back to your gesture.'}</p>
+        <strong>{chordLabel}</strong>
+        <p>Root, quality, and extensions define the chord.</p>
       </div>
       <div className="harmony-control-cluster">
         <span>Quality</span>
@@ -728,36 +607,28 @@ function VoicingAdvancedDisclosure({
   manual,
   open,
   canWriteState,
-  preserveExactVoicing,
   blendWithSequence,
   onToggleOpen,
   onOctaveChange,
   onInversionChange,
   onSpreadChange,
   onBassModeChange,
-  onPreserveExactVoicingChange,
   onBlendChange,
   route,
   onRouteChange,
-  playbackBehavior,
-  onPlaybackBehaviorChange,
 }: {
   manual: ManualHarmonyControlState;
   open: boolean;
   canWriteState: boolean;
-  preserveExactVoicing: boolean;
   blendWithSequence: boolean;
   onToggleOpen: () => void;
   onOctaveChange: (delta: number) => void;
   onInversionChange: (delta: number) => void;
   onSpreadChange: (spread: number) => void;
   onBassModeChange: (bassMode: HarmonyBassMode) => void;
-  onPreserveExactVoicingChange: (preserve: boolean) => void;
   onBlendChange: (blend: boolean) => void;
   route: 'track' | 'harmony';
   onRouteChange: (route: 'track' | 'harmony') => void;
-  playbackBehavior: 'auto' | 'relative' | 'exact';
-  onPlaybackBehaviorChange: (behavior: 'auto' | 'relative' | 'exact') => void;
 }) {
   return (
     <div className="harmony-advanced-disclosure">
@@ -770,14 +641,6 @@ function VoicingAdvancedDisclosure({
             <span>Route</span>
             <button type="button" className={route === 'track' ? 'active' : ''} onClick={() => onRouteChange('track')}>Track</button>
             <button type="button" className={route === 'harmony' ? 'active' : ''} onClick={() => onRouteChange('harmony')}>Harmony</button>
-          </div>
-          <div className="harmony-stepper">
-            <span>Playback</span>
-            {(['auto', 'relative', 'exact'] as const).map((behavior) => (
-              <button key={behavior} type="button" className={playbackBehavior === behavior ? 'active' : ''} onClick={() => onPlaybackBehaviorChange(behavior)}>
-                {behavior[0]!.toUpperCase() + behavior.slice(1)}
-              </button>
-            ))}
           </div>
           <div className="harmony-stepper">
             <span>Octave</span>
@@ -829,15 +692,6 @@ function VoicingAdvancedDisclosure({
             />
             Blend with sequence
           </label>
-          <label className="harmony-checkbox-row" title="Preserve the exact MIDI notes from a captured voicing" {...harmonyHelpAttrs('harmonyManualPreserve')}>
-            <input
-              type="checkbox"
-              checked={preserveExactVoicing}
-              onChange={(event) => onPreserveExactVoicingChange(event.target.checked)}
-              disabled={!canWriteState}
-            />
-            Preserve exact voicing
-          </label>
         </div>
       )}
     </div>
@@ -847,32 +701,21 @@ function VoicingAdvancedDisclosure({
 function ManualVoicingPopup({
   scaleLabel,
   manual,
-  slots,
   manualLocked,
   canWriteState,
   advancedOpen,
-  previewLabel,
-  recognizedLabel,
-  recognizedInversion,
-  recognitionNoteCount,
-  inputMethod,
+  chordLabel,
   previewNotes,
   semanticNotes,
-  exactNotes,
   keyboardRootNote,
   scaleRootMidi,
   scaleIntervals,
   auditionSource,
   auditionEnabled,
-  preserveExactVoicing,
-  writeLocked,
-  captureSlotId,
   onAuditionSourceChange,
   onAuditionPreview,
   route,
   onRouteChange,
-  playbackBehavior,
-  onPlaybackBehaviorChange,
   rerootSemitones,
   onRerootChange,
   onAdvancedOpenChange,
@@ -886,43 +729,28 @@ function ManualVoicingPopup({
   onInversionChange,
   onSpreadChange,
   onBassModeChange,
-  onPreserveExactVoicingChange,
-  onCapture,
   onLiveNoteDown,
   onLiveNoteUp,
   onReleaseAll,
-  onToggleExactNote,
-  onMoveExactNote,
   onCommandKeyDown,
 }: {
   scaleLabel: string;
   manual: ManualHarmonyControlState;
-  slots: readonly HarmonyChordSlot[];
   manualLocked: boolean;
   canWriteState: boolean;
   advancedOpen: boolean;
-  previewLabel: string;
-  recognizedLabel: string;
-  recognizedInversion: number | null;
-  recognitionNoteCount: number;
-  inputMethod: 'played' | 'builder';
+  chordLabel: string;
   previewNotes: readonly number[];
   semanticNotes: readonly number[];
-  exactNotes: readonly number[];
   keyboardRootNote: number;
   scaleRootMidi: number;
   scaleIntervals: readonly number[];
   auditionSource: ProductManualSynthSource;
   auditionEnabled: boolean;
-  preserveExactVoicing: boolean;
-  writeLocked: boolean;
-  captureSlotId: number;
   onAuditionSourceChange: (source: ProductManualSynthSource) => void;
   onAuditionPreview: () => void;
   route: 'track' | 'harmony';
   onRouteChange: (route: 'track' | 'harmony') => void;
-  playbackBehavior: 'auto' | 'relative' | 'exact';
-  onPlaybackBehaviorChange: (behavior: 'auto' | 'relative' | 'exact') => void;
   rerootSemitones: number;
   onRerootChange: (semitones: number) => void;
   onAdvancedOpenChange: (open: boolean) => void;
@@ -936,35 +764,25 @@ function ManualVoicingPopup({
   onInversionChange: (delta: number) => void;
   onSpreadChange: (spread: number) => void;
   onBassModeChange: (bassMode: HarmonyBassMode) => void;
-  onPreserveExactVoicingChange: (preserve: boolean) => void;
-  onCapture: () => void;
   onLiveNoteDown: (midi: number, velocity: number, source: 'onscreen' | 'qwerty' | 'midi') => void;
   onLiveNoteUp: (midi: number, source: 'onscreen' | 'qwerty' | 'midi') => void;
   onReleaseAll: () => void;
-  onToggleExactNote: (midi: number, present: boolean) => void;
-  onMoveExactNote: (midi: number, octaves: number) => void;
   onCommandKeyDown: (event: KeyboardEvent) => void;
 }) {
   return (
     <div className="harmony-popup harmony-manual-popup" tabIndex={0} aria-label="Manual harmony voicing">
       <ManualVoicingHeader scaleLabel={scaleLabel} manualLocked={manualLocked} onClear={onClear} canWriteState={canWriteState} />
       <ManualVoicingPreview
-        label={previewLabel}
+        label={chordLabel}
         notes={previewNotes}
         auditionSource={auditionSource}
         auditionEnabled={auditionEnabled}
         onAuditionSourceChange={onAuditionSourceChange}
         onAuditionPreview={onAuditionPreview}
-        onCapture={onCapture}
-        canWriteState={canWriteState}
-        writeLocked={writeLocked}
-        captureSlotId={captureSlotId}
-        slots={slots}
       />
       <div className="harmony-manual-workspace">
         <LiveChordKeyboard
           scope={{ kind: 'draft', owner: 'harmony-detail' }}
-          notes={exactNotes}
           semanticNotes={semanticNotes}
           rootNote={keyboardRootNote}
           previewRootNote={keyboardRootNote + rerootSemitones}
@@ -978,19 +796,13 @@ function ManualVoicingPopup({
           onReleaseAll={onReleaseAll}
           onSetRoot={onRootChange}
           onSetDegree={(degree) => onDegreeChange(degree - 1)}
-          onToggleExactNote={onToggleExactNote}
-          onMoveExactNote={onMoveExactNote}
           onRerootChange={onRerootChange}
           onCommandKeyDown={onCommandKeyDown}
         />
         <div className="harmony-right-panel">
           <ChordModifierPanel
             manual={manual}
-            recognizedLabel={recognizedLabel}
-            recognizedInversion={recognizedInversion}
-            recognitionNoteCount={recognitionNoteCount}
-            inputMethod={inputMethod}
-            playbackBehavior={playbackBehavior}
+            chordLabel={chordLabel}
             canWriteState={canWriteState}
             onQualityChange={onQualityChange}
             onToggleExtension={onToggleExtension}
@@ -999,19 +811,15 @@ function ManualVoicingPopup({
             manual={manual}
             open={advancedOpen}
             canWriteState={canWriteState}
-            preserveExactVoicing={preserveExactVoicing}
             blendWithSequence={manual.strength === 'bias'}
             onToggleOpen={() => onAdvancedOpenChange(!advancedOpen)}
             onOctaveChange={onOctaveChange}
             onInversionChange={onInversionChange}
             onSpreadChange={onSpreadChange}
             onBassModeChange={onBassModeChange}
-            onPreserveExactVoicingChange={onPreserveExactVoicingChange}
             onBlendChange={(blend) => onStrengthChange(blend ? 'bias' : 'force')}
             route={route}
             onRouteChange={onRouteChange}
-            playbackBehavior={playbackBehavior}
-            onPlaybackBehaviorChange={onPlaybackBehaviorChange}
           />
         </div>
       </div>
@@ -1019,25 +827,16 @@ function ManualVoicingPopup({
   );
 }
 
-export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, onTransientStateChange, onAuditionNote, onAuditionNotes, onLiveNoteStart, onLiveNoteStop, workspaceView = 'overview', onHarmonyLiveLayerChange, isRunning = false, selectedSlotId, onSelectedSlotChange, canUndo = false, onUndo }: HarmonyEnginePanelProps) {
+type HarmonySuggestionTriggerKey = import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey;
+
+export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, onTransientStateChange, onAuditionNote, onAuditionNotes, onLiveNoteStart, onLiveNoteStop, workspaceView = 'overview', onHarmonyLiveLayerChange, isRunning = false }: HarmonyEnginePanelProps) {
   const [voicingAdvancedOpen, setVoicingAdvancedOpen] = useState(false);
   const [auditionSource, setAuditionSource] = useState<ProductManualSynthSource>(readHarmonyAuditionSource);
   const [manualRoute, setManualRoute] = useState<'track' | 'harmony'>('track');
   const [rerootSemitones, setRerootSemitones] = useState(0);
   const [selectedStepId, setSelectedStepId] = useState(0);
-  const [overviewMode, setOverviewMode] = useState<HarmonyOverviewMode>('arrange');
-  const [selectedSuggestion, setSelectedSuggestion] = useState<import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion | null>(null);
   const [detailSuggestionsOpen, setDetailSuggestionsOpen] = useState(false);
-  const [overviewSuggestionsOpen, setOverviewSuggestionsOpen] = useState(false);
-  const [suggestionActionError, setSuggestionActionError] = useState<string | null>(null);
   const [keyboardOwned, setKeyboardOwned] = useState(false);
-  const [detailInputMethod, setDetailInputMethod] = useState<'played' | 'builder'>('builder');
-  const suggestionsOpen = workspaceView === 'overview' ? overviewSuggestionsOpen : detailSuggestionsOpen;
-  const setSuggestionsOpen = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((next) => {
-    const update = (previous: boolean) => typeof next === 'function' ? next(previous) : next;
-    if (workspaceView === 'overview') setOverviewSuggestionsOpen(update);
-    else setDetailSuggestionsOpen(update);
-  }, [workspaceView]);
   const { announceHelp } = useSliderHelp();
   const lastHelpTargetRef = useRef<string>('');
   useEffect(() => writeHarmonyAuditionSource(auditionSource), [auditionSource]);
@@ -1060,52 +859,22 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     scaleId: harmonyProjection.engine.scaleId,
     scaleName: harmonyProjection.engine.scaleName,
     tension: harmonyProjection.tension,
-    morphPercent: harmonyProjection.activeFrame.morphPercent,
     isEndpoint: harmonyProjection.isEndpoint,
     manualControl: harmonyProjection.manualControl,
-    chordSlots: harmonyProjection.slots,
-    chordSequence: harmonyProjection.chordSequence,
-    chordSequenceEnabled: harmonyProjection.chordSequenceEnabled,
-    chordSequenceLength: harmonyProjection.chordSequenceLength,
-    chordSequenceStepIndex: harmonyProjection.chordSequenceStepIndex,
     progression: harmonyProjection.canonicalProgression,
     resolvedHarmonyFrame: harmonyProjection.activeFrame,
   }), [harmonyProjection]);
 
-  const record = state as unknown as Record<string, unknown>;
-  const persistedPlayConfigs = useMemo(
-    () => Array.isArray(record.synthPlayConfigs) ? normalizeProductPlayConfigs(record.synthPlayConfigs, 4) : null,
-    [record.synthPlayConfigs],
-  );
-  const seqPlayChoices = useMemo<HarmonyReferenceState['seqPlayChoices']>(
-    () => persistedPlayConfigs ? productPlayConfigsToHarmonySeqChoices(persistedPlayConfigs) : undefined,
-    [persistedPlayConfigs],
-  );
-  const endpointProgressions = useMemo<HarmonyReferenceState['progressions']>(() => {
-    const endpoints: NonNullable<HarmonyReferenceState['progressions']>[number][] = [];
-    if (record.harmonyProgressionA !== undefined) endpoints.push({ endpoint: 'A', progression: sanitizeHarmonyProgression(record.harmonyProgressionA) });
-    if (record.harmonyProgressionB !== undefined) endpoints.push({ endpoint: 'B', progression: sanitizeHarmonyProgression(record.harmonyProgressionB) });
-    if (endpoints.length === 0) endpoints.push({ endpoint: harmonyProjection.bank, progression: harmonyProjection.canonicalProgression });
-    return endpoints;
-  }, [harmonyProjection.bank, harmonyProjection.canonicalProgression, record.harmonyProgressionA, record.harmonyProgressionB]);
   const manual = harmonyContext.manualControl;
-  const slots = harmonyContext.chordSlots;
-  const sequence = harmonyContext.chordSequence;
   const progression = harmonyContext.progression;
   const resolvedFrame = harmonyContext.resolvedHarmonyFrame;
   const canWriteState = Boolean(onStateChange);
   const manualLocked = !resolvedFrame.manualControlAvailable || !harmonyContext.isEndpoint;
   const writeLocked = !harmonyContext.isEndpoint;
   const liveTakeoverLocked = writeLocked || Boolean(harmonyProjection?.engine.morphLocked);
-  const detailCapture = useHarmonyChordCapture({
-    context: { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId },
-    source: 'onscreen',
-    enabled: workspaceView === 'detail' && canWriteState,
-  });
-  const { draft: detailDraft, capture: detailCaptureState, noteDown: captureNoteDown, noteUp: captureNoteUp, releaseAll: releaseCapturedNotes, reset: resetCapturedDraft, setDraft: setCapturedDraft } = detailCapture;
   const [auditionError, setAuditionError] = useState<string | null>(null);
-  const detailLiveNoteInput = useLiveNoteInput({
-    start: onLiveNoteStart ?? (async (event) => {
+  const liveNoteHandlers = (failure: string) => ({
+    start: onLiveNoteStart ?? (async (event: ProductLiveNoteEvent) => {
       onAuditionNote?.({
         source: event.instrument as ProductManualSynthSource,
         midi: event.note,
@@ -1114,42 +883,15 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
       });
     }),
     stop: onLiveNoteStop ?? (() => undefined),
-    onStartFailure: ({ error }) => setAuditionError(`Could not start preview: ${error.message}`),
+    onStartFailure: ({ error }: { error: Error }) => setAuditionError(`${failure}: ${error.message}`),
   });
-  const suggestionLiveNoteInput = useLiveNoteInput({
-    start: onLiveNoteStart ?? (async (event) => {
-      onAuditionNote?.({
-        source: event.instrument as ProductManualSynthSource,
-        midi: event.note,
-        velocity: event.velocity,
-        durationMs: auditionDurationMs(event.instrument as ProductManualSynthSource),
-      });
-    }),
-    stop: onLiveNoteStop ?? (() => undefined),
-    onStartFailure: ({ error }) => setAuditionError(`Could not start suggestion: ${error.message}`),
-  });
-  const slotLiveNoteInput = useLiveNoteInput({
-    start: onLiveNoteStart ?? (async (event) => {
-      onAuditionNote?.({
-        source: event.instrument as ProductManualSynthSource,
-        midi: event.note,
-        velocity: event.velocity,
-        durationMs: auditionDurationMs(event.instrument as ProductManualSynthSource),
-      });
-    }),
-    stop: onLiveNoteStop ?? (() => undefined),
-    onStartFailure: ({ error }) => setAuditionError(`Could not start slot preview: ${error.message}`),
-  });
+  const detailLiveNoteInput = useLiveNoteInput(liveNoteHandlers('Could not start preview'));
+  const suggestionLiveNoteInput = useLiveNoteInput(liveNoteHandlers('Could not start suggestion'));
   const suggestionLiveInputIdsRef = useRef<string[]>([]);
-  const slotLiveInputIdsRef = useRef<string[]>([]);
   const releaseSuggestionLiveNotes = useCallback(() => {
     suggestionLiveNoteInput.releaseAll();
     suggestionLiveInputIdsRef.current = [];
   }, [suggestionLiveNoteInput]);
-  const releaseSlotLiveNotes = useCallback(() => {
-    slotLiveNoteInput.releaseAll();
-    slotLiveInputIdsRef.current = [];
-  }, [slotLiveNoteInput]);
   const harmonyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const harmonyGestureRevisionRef = useRef(0);
   const onHarmonyLiveLayerChangeRef = useRef(onHarmonyLiveLayerChange);
@@ -1178,41 +920,26 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     onHarmonyLiveLayerChangeRef.current?.({ ...layer, latched: false });
   }, []);
   const overviewActiveLayerRef = useRef<HarmonyLiveLayer | null>(null);
-  const overviewSourceContext = useCallback((rootPitchClass: number, scaleId: number, scaleName: string): TonalContextCandidate => ({ rootPitchClass: pitchClass(rootPitchClass), scaleId: Math.round(scaleId), scaleName, score: 1, confidence: 1, noteCoverage: 1, diatonicChordFit: 1, rootBassEvidence: 1, cadenceEvidence: 1, orderEvidence: 1, confirmedRecognition: 1 }), []);
-  const playOverviewNotes = useCallback((notes: readonly number[], slotId?: number | null, relativeOffset?: number) => {
+  const playOverviewNotes = useCallback((notes: readonly number[], relativeOffset?: number) => {
     if (harmonyProjection?.engine.morphLocked) return;
-    const exact = [...notes];
-    const sourceSlot = slotId == null ? null : slots.find((slot) => slot.id === slotId) ?? null;
-    const analysis = analyzeOverviewBank({ slots: slots as never, progression, sequence });
-    const sourceContext = analysis.sourceContext ?? overviewSourceContext(sourceSlot?.chord?.capturedContext.rootMidi ?? harmonyContext.rootMidi, sourceSlot?.chord?.capturedContext.scaleId ?? harmonyContext.scaleId, harmonyContext.scaleName);
-    const effectiveContext = overviewSourceContext(harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.scaleName);
-    const transformedBase = sourceSlot?.chord ? transformHarmonyChord({ chord: sourceSlot.chord, sourceContext, effectiveContext, underlyingNotes: resolvedFrame.currentNotePool, tension: harmonyContext.tension, autoUsesSemantic: sourceSlot.chord.playbackBehavior !== 'auto' || sourceSlot.chord.intentSource === 'confirmed', customFallback: true }).exactMidiNotes : exact;
-    const transformed = relativeOffset == null ? transformedBase : resolvedFrame.currentNotePool.map((note) => Math.max(0, Math.min(127, note + relativeOffset)));
+    const pool = relativeOffset == null
+      ? [...notes]
+      : resolvedFrame.currentNotePool.map((note) => Math.max(0, Math.min(127, note + relativeOffset)));
     const layer: HarmonyLiveLayer = {
       kind: 'harmony-takeover',
       scope: 'overview',
       target: 'overview',
-      ...(sourceSlot?.chord ? { draft: draftFromSlot(sourceSlot) } : {}),
-      frame: {
-        ...resolvedFrame,
-        currentNotePool: transformed,
-        nextNotePool: transformed,
-        activeSource: sourceSlot?.chord?.playbackBehavior === 'exact' ? 'slot' : 'manualControl',
-      },
+      frame: { ...resolvedFrame, currentNotePool: pool, nextNotePool: pool, activeSource: 'manualControl' },
       latched: false,
     };
     overviewActiveLayerRef.current = layer;
     startHeldHarmonyLayer(layer);
-  }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.scaleName, harmonyContext.tension, harmonyProjection?.engine.morphLocked, overviewSourceContext, progression, resolvedFrame, sequence, slots, startHeldHarmonyLayer]);
+  }, [harmonyProjection?.engine.morphLocked, resolvedFrame, startHeldHarmonyLayer]);
   const latchOverview = useCallback(() => {
     if (!overviewActiveLayerRef.current || harmonyProjection?.engine.morphLocked) return;
-    const layer = overviewActiveLayerRef.current;
-    overviewActiveLayerRef.current = { ...layer, latched: true };
+    overviewActiveLayerRef.current = { ...overviewActiveLayerRef.current, latched: true };
     onHarmonyLiveLayerChangeRef.current?.(overviewActiveLayerRef.current);
   }, [harmonyProjection?.engine.morphLocked]);
-  const releaseOverview = useCallback(() => {
-    releaseHarmonyLayer();
-  }, [releaseHarmonyLayer]);
   const stopOverview = useCallback(() => {
     overviewActiveLayerRef.current = null;
     harmonyGestureRevisionRef.current += 1;
@@ -1229,13 +956,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     if (!onStateChange) return;
     onStateChange((prev) => statePatch({ ...(prev as unknown as Record<string, unknown>), ...patch }));
   }, [onStateChange]);
-
-  const patchSlots = useCallback((nextSlots: HarmonyChordSlot[], extraPatch: Record<string, unknown> = {}) => {
-    const keys = bankKeys(harmonyContext.bank);
-    const patch: Record<string, unknown> = { ...extraPatch, [keys.slots]: nextSlots };
-    if (shouldMirrorBaseBank(record, harmonyContext.bank)) patch.harmonyChordSlots = nextSlots;
-    applyPatch(patch);
-  }, [applyPatch, harmonyContext.bank, record]);
 
   const updateManual = useCallback((nextManual: ManualHarmonyControlState) => {
     applyPatch({ manualHarmonyControl: sanitizeManualHarmonyControl(nextManual) });
@@ -1278,16 +998,8 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     const mergedManual = sanitizeManualHarmonyControl({ ...manual, ...selection, mode: nextMode });
     const source: HarmonyIntent['source'] = nextMode === 'control' && !manualLocked ? 'manualControl' : 'audition';
     const intent = selectedBaseIntent(source, intentOverrides);
-    setCapturedDraft(harmonyDraftWithIntent(detailDraft, intent));
     if (nextMode === 'control' && !manualLocked) {
-      updateManual({
-        ...mergedManual,
-        enabled: true,
-        activeIntent: intent,
-        auditionIntent: null,
-        slotTriggerMode: false,
-        activeSlotId: null,
-      });
+      updateManual({ ...mergedManual, enabled: true, activeIntent: intent, auditionIntent: null });
       return;
     }
     const dispatchManual = nextMode === 'audition' ? updateManualTransient : updateManual;
@@ -1296,24 +1008,13 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
       enabled: false,
       activeIntent: nextMode === 'audition' ? mergedManual.activeIntent : null,
       auditionIntent: { ...intent, source: 'audition' },
-      slotTriggerMode: false,
-      activeSlotId: null,
     });
-  }, [detailDraft, manual, manualLocked, selectedBaseIntent, setCapturedDraft, updateManual, updateManualTransient]);
+  }, [manual, manualLocked, selectedBaseIntent, updateManual, updateManualTransient]);
 
   const clearManualControl = useCallback(() => {
-    setDetailInputMethod('builder');
-    resetCapturedDraft();
     releaseHarmonyLayer();
-    updateManual({
-      ...manual,
-      enabled: false,
-      activeIntent: null,
-      auditionIntent: null,
-      slotTriggerMode: false,
-      activeSlotId: null,
-    });
-  }, [manual, releaseHarmonyLayer, resetCapturedDraft, updateManual]);
+    updateManual({ ...manual, enabled: false, activeIntent: null, auditionIntent: null });
+  }, [manual, releaseHarmonyLayer, updateManual]);
 
   const resolveIntentPreviewNotes = useCallback((intent: HarmonyIntent) => (
     resolveHarmonyIntentToNotePool({
@@ -1349,61 +1050,11 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     playPreviewNotes(resolveIntentPreviewNotes({ ...intent, source: 'audition' }));
   }, [playPreviewNotes, resolveIntentPreviewNotes]);
 
-  const captureSelectedToSlot = useCallback((slotId: number) => {
-    if (writeLocked) return;
-    const currentSlot = slots[slotId];
-    if (!currentSlot || currentSlot.locked) return;
-    const intent = selectedBaseIntent('slot', {
-      source: 'slot',
-      rootMode: manual.auditionIntent?.rootMode ?? manual.activeIntent?.rootMode ?? 'absolute',
-    });
-    const generatedNotes = resolveHarmonyIntentToNotePool({
-      intent,
-      rootMidi: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-    const captureNotes = detailInputMethod === 'builder' ? generatedNotes : detailDraft.exactMidiNotes;
-    const captureIdentity = recognizeClosestManualChord(captureNotes, {
-      rootMidi: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-    const capturedChord = captureNotes.length > 0
-      ? sharedChordFromDraft({
-        ...detailDraft,
-        intent: detailInputMethod === 'builder' ? intent : detailDraft.intent,
-        intentSource: detailInputMethod === 'builder' ? 'confirmed' : detailDraft.intentSource,
-        exactMidiNotes: captureNotes,
-        recognizedLabel: detailInputMethod === 'builder' ? compactIntentChordLabel(intent) : captureIdentity?.label ?? detailDraft.recognizedLabel,
-        playbackBehavior: detailInputMethod === 'builder' ? 'relative' : detailDraft.playbackBehavior,
-      })
-      : sharedChordFromDraft({
-        ...detailDraft,
-        intent,
-        intentSource: 'confirmed',
-        exactMidiNotes: generatedNotes,
-        capturedContext: {
-          rootMidi: harmonyContext.rootMidi,
-          rootMidiAnchor: harmonyContext.rootMidi,
-          scaleId: harmonyContext.scaleId,
-          tension: harmonyContext.tension,
-        },
-        recognizedLabel: intentTitle(intent),
-        playbackBehavior: 'relative',
-        source: 'manualVoicing',
-      });
-    patchSlots(slots.map((slot) => slot.id === slotId
-      ? { ...slot, chord: capturedChord, name: slot.name || `Slot ${slotId + 1}` }
-      : slot));
-  }, [detailDraft, detailInputMethod, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manual, patchSlots, selectedBaseIntent, slots, writeLocked]);
-
   const setStrength = useCallback((strength: HarmonyControlStrength) => {
     applyManualSelection({ strength }, { strength });
   }, [applyManualSelection]);
 
   const setRoot = useCallback((rootNote: number) => {
-    setDetailInputMethod('builder');
     const selectedRootNote = pitchClass(rootNote);
     const intentOverrides: Partial<HarmonyIntent> = { rootMode: 'absolute', rootNote: selectedRootNote };
     applyManualSelection({ selectedRootNote }, intentOverrides);
@@ -1411,7 +1062,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, previewAuditionIntent, selectedBaseIntent]);
 
   const setDegree = useCallback((degree: number) => {
-    setDetailInputMethod('builder');
     const safeDegree = clamp(Math.round(degree), 0, 6);
     const intentOverrides: Partial<HarmonyIntent> = { rootMode: 'degree', degree: safeDegree };
     applyManualSelection({ selectedDegree: safeDegree }, intentOverrides);
@@ -1419,7 +1069,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, previewAuditionIntent, selectedBaseIntent]);
 
   const setQuality = useCallback((quality: HarmonyChordQuality) => {
-    setDetailInputMethod('builder');
     const selectedQuality: HarmonyChordQuality = manual.selectedQuality === quality ? 'auto' : quality;
     const intentOverrides: Partial<HarmonyIntent> = { quality: selectedQuality };
     applyManualSelection({ selectedQuality }, intentOverrides);
@@ -1427,7 +1076,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, manual.selectedQuality, previewAuditionIntent, selectedBaseIntent]);
 
   const toggleExtension = useCallback((extension: string) => {
-    setDetailInputMethod('builder');
     const selectedExtensions = manual.selectedExtensions.includes(extension)
       ? manual.selectedExtensions.filter((item) => item !== extension)
       : [...manual.selectedExtensions, extension].slice(0, 8);
@@ -1437,7 +1085,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, manual.selectedExtensions, previewAuditionIntent, selectedBaseIntent]);
 
   const setOctave = useCallback((delta: number) => {
-    setDetailInputMethod('builder');
     const selectedOctave = clamp(manual.selectedOctave + delta, 0, 8);
     const intentOverrides: Partial<HarmonyIntent> = { octave: selectedOctave };
     applyManualSelection({ selectedOctave }, intentOverrides);
@@ -1445,7 +1092,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, manual.selectedOctave, previewAuditionIntent, selectedBaseIntent]);
 
   const setInversion = useCallback((delta: number) => {
-    setDetailInputMethod('builder');
     const selectedInversion = clamp(manual.selectedInversion + delta, -4, 4);
     const intentOverrides: Partial<HarmonyIntent> = { inversion: selectedInversion };
     applyManualSelection({ selectedInversion }, intentOverrides);
@@ -1453,7 +1099,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, manual.selectedInversion, previewAuditionIntent, selectedBaseIntent]);
 
   const setSpread = useCallback((spread: number) => {
-    setDetailInputMethod('builder');
     const selectedSpread = clamp(spread, 0, 1);
     const intentOverrides: Partial<HarmonyIntent> = { spread: selectedSpread };
     applyManualSelection({ selectedSpread }, intentOverrides);
@@ -1461,7 +1106,6 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   }, [applyManualSelection, previewAuditionIntent, selectedBaseIntent]);
 
   const setBassMode = useCallback((bassMode: HarmonyBassMode) => {
-    setDetailInputMethod('builder');
     const intentOverrides: Partial<HarmonyIntent> = { bassMode };
     applyManualSelection({ selectedBassMode: bassMode }, intentOverrides);
     previewAuditionIntent(selectedBaseIntent('audition', intentOverrides));
@@ -1491,113 +1135,30 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     }
   }, [setOctave, setQuality, toggleExtension]);
 
-  const activeIntentLabel = useMemo(() => {
-    if (manual.slotTriggerMode && manual.activeSlotId !== null) {
-      const slot = slots[manual.activeSlotId];
-      return slot ? `Slot ${slot.id + 1} ${intentTitle(slot.chord?.intent)}` : 'Slot';
-    }
-    return intentTitle(manual.activeIntent ?? manual.auditionIntent ?? selectedBaseIntent('audition'));
-  }, [manual.activeIntent, manual.activeSlotId, manual.auditionIntent, manual.slotTriggerMode, selectedBaseIntent, slots]);
-
-  const manualPreviewIntent = useMemo(() => {
-    return manual.auditionIntent ?? manual.activeIntent ?? selectedBaseIntent(manual.mode === 'control' ? 'manualControl' : 'audition');
-  }, [manual.activeIntent, manual.auditionIntent, manual.mode, selectedBaseIntent]);
-  const heldManualNotes = useMemo(
-    () => [...detailCaptureState.heldNotes].sort((left, right) => left - right),
-    [detailCaptureState.heldNotes],
+  const manualPreviewIntent = useMemo(
+    () => manual.auditionIntent ?? manual.activeIntent ?? selectedBaseIntent(manual.mode === 'control' ? 'manualControl' : 'audition'),
+    [manual.activeIntent, manual.auditionIntent, manual.mode, selectedBaseIntent],
   );
-  const manualRecognitionNotes = heldManualNotes.length >= 3
-    ? heldManualNotes
-    : detailDraft.exactMidiNotes;
-  const closestManualChord = useMemo(() => {
-    return recognizeClosestManualChord(manualRecognitionNotes, {
-      rootMidi: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-  }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualRecognitionNotes]);
-
-  const manualPreviewNotes = useMemo(() => {
-    if (detailInputMethod === 'played' && detailDraft.exactMidiNotes.length > 0) {
-      return resolveHarmonyDraftRerootPreview(detailDraft, harmonyContext.rootMidi, rerootSemitones, harmonyContext.scaleId);
-    }
-    return resolveHarmonyIntentToNotePool({
-      intent: manualPreviewIntent,
-      rootMidi: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-  }, [detailDraft, detailInputMethod, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualPreviewIntent, rerootSemitones]);
-
-  const activeScaleIntervals = HARMONY_SCALE_INTERVALS[Math.round(harmonyContext.scaleId)]
-    ?? DEFAULT_HARMONY_SCALE_INTERVALS;
-  const manualSemanticNotes = useMemo(() => {
-    const intent = detailDraft.intent ?? manualPreviewIntent;
-    return resolveHarmonyIntentToNotePool({
-      intent,
-      rootMidi: harmonyContext.rootMidi + rerootSemitones,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-  }, [detailDraft.intent, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualPreviewIntent, rerootSemitones]);
-  const builderChordIdentity = useMemo(() => recognizeClosestManualChord(manualSemanticNotes, {
+  const chordLabel = intentTitle(manualPreviewIntent);
+  const manualPreviewNotes = useMemo(() => resolveHarmonyIntentToNotePool({
+    intent: manualPreviewIntent,
     rootMidi: harmonyContext.rootMidi,
     scaleId: harmonyContext.scaleId,
     tension: harmonyContext.tension,
-  }), [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualSemanticNotes]);
-  const displayedChordIdentity = detailInputMethod === 'builder' ? builderChordIdentity : closestManualChord;
+  }), [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualPreviewIntent]);
+  const activeScaleIntervals = HARMONY_SCALE_INTERVALS[Math.round(harmonyContext.scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
+  const manualSemanticNotes = useMemo(() => resolveHarmonyIntentToNotePool({
+    intent: manualPreviewIntent,
+    rootMidi: harmonyContext.rootMidi + rerootSemitones,
+    scaleId: harmonyContext.scaleId,
+    tension: harmonyContext.tension,
+  }), [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, manualPreviewIntent, rerootSemitones]);
   const detailKeyboardRootNote = useMemo(() => {
-    const intent = detailDraft.intent ?? manualPreviewIntent;
-    const root = intent.rootMode === 'degree'
-      ? harmonyContext.rootMidi + (activeScaleIntervals[clamp(intent.degree, 0, activeScaleIntervals.length - 1)] ?? 0)
-      : intent.rootNote;
+    const root = manualPreviewIntent.rootMode === 'degree'
+      ? harmonyContext.rootMidi + (activeScaleIntervals[clamp(manualPreviewIntent.degree, 0, activeScaleIntervals.length - 1)] ?? 0)
+      : manualPreviewIntent.rootNote;
     return pitchClass(root);
-  }, [activeScaleIntervals, detailDraft.intent, harmonyContext.rootMidi, manualPreviewIntent]);
-  const updateExactNote = useCallback((midi: number, present: boolean) => {
-    if (writeLocked) return;
-    setDetailInputMethod('played');
-    const normalizedMidi = clamp(Math.round(midi), 0, 127);
-    const current = detailDraft.exactMidiNotes;
-    const next = present
-      ? [...current, normalizedMidi]
-      : current.filter((note) => note !== normalizedMidi);
-    const edited = updateDraftExactNotes(detailDraft, next, {
-      rootMidi: harmonyContext.rootMidi,
-      rootMidiAnchor: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-    setCapturedDraft({
-      ...edited,
-      intentSource: edited.intentSource ?? null,
-      semanticCandidates: edited.semanticCandidates ?? [],
-      quality: edited.quality ?? null,
-      extensions: edited.extensions ?? [],
-      source: edited.source ?? 'matrix',
-    });
-  }, [detailDraft, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, setCapturedDraft, writeLocked]);
-  const moveExactNote = useCallback((midi: number, octaves: number) => {
-    if (writeLocked || !detailDraft.exactMidiNotes.includes(midi)) return;
-    setDetailInputMethod('played');
-    const moved = clamp(midi + Math.round(octaves) * 12, 0, 127);
-    const next = detailDraft.exactMidiNotes.map((note) => note === midi ? moved : note);
-    const edited = updateDraftExactNotes(detailDraft, next, {
-      rootMidi: harmonyContext.rootMidi,
-      rootMidiAnchor: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-    setCapturedDraft({
-      ...edited,
-      intentSource: edited.intentSource ?? null,
-      semanticCandidates: edited.semanticCandidates ?? [],
-      quality: edited.quality ?? null,
-      extensions: edited.extensions ?? [],
-      source: edited.source ?? 'matrix',
-    });
-  }, [detailDraft, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, setCapturedDraft, writeLocked]);
-
-  const preserveExactVoicing = Boolean((manual.activeIntent ?? manual.auditionIntent)?.preserveCapturedVoicing);
+  }, [activeScaleIntervals, harmonyContext.rootMidi, manualPreviewIntent]);
 
   const playManualPreview = useCallback(() => {
     if (manualRoute === 'harmony') {
@@ -1607,18 +1168,10 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
         scope: 'detail',
         target: 'detail',
         latched: false,
-        draft: {
-          ...detailDraft,
-          intent: detailDraft.intent ?? manualPreviewIntent,
-          intentSource: detailDraft.intentSource ?? 'confirmed',
-          exactMidiNotes: notes,
-          source: 'manualVoicing',
-        },
         frame: {
           ...resolvedFrame,
           activeSource: 'audition',
           activeStepIndex: null,
-          activeSlotId: null,
           currentNotePool: notes,
           nextNotePool: notes,
           rootMidi: notes[0] ?? resolvedFrame.rootMidi,
@@ -1632,16 +1185,16 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
     }
     releaseHarmonyLayer();
     playPreviewNotes(manualPreviewNotes);
-  }, [detailDraft, isRunning, manualPreviewIntent, manualPreviewNotes, manualRoute, playPreviewNotes, releaseHarmonyLayer, resolvedFrame, startHarmonyLayer]);
+  }, [isRunning, manualPreviewNotes, manualRoute, playPreviewNotes, releaseHarmonyLayer, resolvedFrame, startHarmonyLayer]);
 
   const suggestionController = useHarmonySuggestions({
     rootMidi: harmonyContext.rootMidi,
     scaleId: harmonyContext.scaleId,
     tension: harmonyContext.tension,
     currentDraft: {
-      intent: detailDraft.intent ?? manual.activeIntent ?? manual.auditionIntent,
-      exactMidiNotes: detailDraft.exactMidiNotes,
-      recognizedLabel: detailDraft.recognizedLabel,
+      intent: manual.activeIntent ?? manual.auditionIntent,
+      exactMidiNotes: [],
+      recognizedLabel: chordLabel,
     },
     previousChord: resolvedFrame.currentNotePool,
     nextChord: resolvedFrame.nextNotePool,
@@ -1668,15 +1221,13 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
       }
       startHeldHarmonyLayer({
         kind: 'draft-live',
-        scope: workspaceView === 'simple' ? 'suggestion' : workspaceView === 'overview' ? 'overview' : 'detail',
-        target: workspaceView === 'simple' ? 'global' : workspaceView === 'overview' ? 'overview' : 'detail',
+        scope: workspaceView === 'simple' ? 'suggestion' : 'overview',
+        target: workspaceView === 'simple' ? 'global' : 'overview',
         latched: false,
-        draft: { ...detailDraft, intent: suggestion.intent, exactMidiNotes: notes, recognizedLabel: suggestion.label, source: 'suggestion' },
         frame: {
           ...resolvedFrame,
           activeSource: 'audition',
           activeStepIndex: null,
-          activeSlotId: null,
           currentNotePool: notes,
           nextNotePool: notes,
           rootMidi: notes[0] ?? resolvedFrame.rootMidi,
@@ -1694,143 +1245,22 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
   });
 
   const suggestionBank = suggestionController.bank;
-  const pressSuggestion = suggestionController.press;
-  const releaseSuggestion = suggestionController.release;
-  const stopSuggestions = suggestionController.stop;
-  const suggestionKeyboardOwned = workspaceView === 'detail' || workspaceView === 'overview' || keyboardOwned;
   const suggestionAxis = useMemo(() => Array.from({ length: Math.max(1, suggestionController.axis.max - suggestionController.axis.min + 1) }, (_, index) => suggestionController.axis.min + index), [suggestionController.axis.max, suggestionController.axis.min]);
-  const selectSuggestion = useCallback((suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => {
-    setDetailInputMethod('builder');
-    setSelectedSuggestion(suggestion);
-    setSuggestionActionError(null);
-    setCapturedDraft(harmonyDraftWithIntent({ ...detailDraft, exactMidiNotes: [...suggestion.exactMidiNotes], recognizedLabel: suggestion.label, source: 'suggestion' }, suggestion.intent));
-  }, [detailDraft, setCapturedDraft]);
+  const suggestionKeyboardOwned = workspaceView === 'detail' || (workspaceView === 'simple' && keyboardOwned);
 
-  const applySuggestionActionResult = useCallback((result: ReturnType<typeof saveHarmonySuggestion>) => {
-    if (!result.ok) { setSuggestionActionError(result.error ?? 'Suggestion action failed'); return; }
-    const keys = bankKeys(harmonyContext.bank);
-    const patch: Record<string, unknown> = {};
-    if (result.state.slots !== slots) {
-      patch[keys.slots] = result.state.slots;
-      if (shouldMirrorBaseBank(record, harmonyContext.bank)) patch.harmonyChordSlots = result.state.slots;
-    }
-    if (result.state.progression && result.state.progression !== progression) {
-      patch[keys.progression] = result.state.progression;
-    } else if (result.state.sequence && result.state.sequence !== sequence) {
-      patch[keys.progression] = canonicalProgressionFromSequence(result.state.sequence, progression);
-    }
-    if (Object.keys(patch).length > 0) applyPatch(patch);
-    if (result.slotId !== null) onSelectedSlotChange?.(result.slotId);
-    setSuggestionActionError(null);
-  }, [applyPatch, harmonyContext.bank, onSelectedSlotChange, progression, record, sequence, slots]);
-
-  const saveSelectedSuggestion = useCallback((suggestion = selectedSuggestion) => {
-    if (!suggestion || writeLocked) return;
-    setSelectedSuggestion(suggestion);
-    applySuggestionActionResult(saveHarmonySuggestion({ slots, progression, sequence }, suggestion, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
-  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedSuggestion, sequence, slots, writeLocked]);
-  const replaceSelectedSuggestion = useCallback(() => {
-    if (!selectedSuggestion || writeLocked) return;
-    applySuggestionActionResult(replaceHarmonySuggestion({ slots, progression, sequence }, selectedSuggestion, selectedStepId, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
-  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedStepId, selectedSuggestion, sequence, slots, writeLocked]);
-  const useSuggestionInOverview = useCallback((suggestion: import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestion) => {
-    if (writeLocked) return;
-    setSelectedSuggestion(suggestion);
-    applySuggestionActionResult(replaceHarmonySuggestion(
-      { slots, progression, sequence },
-      suggestion,
-      selectedStepId,
-      { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId },
-    ));
-  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedStepId, sequence, slots, writeLocked]);
-  const insertSelectedSuggestion = useCallback(() => {
-    if (!selectedSuggestion || writeLocked) return;
-    applySuggestionActionResult(insertHarmonySuggestion({ slots, progression, sequence }, selectedSuggestion, selectedStepId, { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId }));
-  }, [applySuggestionActionResult, harmonyContext.rootMidi, harmonyContext.scaleId, progression, selectedStepId, selectedSuggestion, sequence, slots, writeLocked]);
-
-  const saveCurrentChordToSlot = useCallback((slotId: number) => {
-    const target = slots[slotId];
-    if (!target || target.locked || writeLocked) return;
-    if (workspaceView === 'detail') {
-      captureSelectedToSlot(slotId);
-      onSelectedSlotChange?.(slotId);
-      return;
-    }
-    const event = progression.events[Math.max(0, Math.min(progression.events.length - 1, selectedStepId))];
-    const sourceSlot = event?.source.type === 'slot' ? slots[event.source.slotId] : null;
-    const sourceChord = sourceSlot?.chord;
-    const exactMidiNotes = sourceChord?.exactMidiNotes?.length ? sourceChord.exactMidiNotes : resolvedFrame.currentNotePool;
-    if (exactMidiNotes.length === 0) return;
-    const recognition = recognizeClosestManualChord(exactMidiNotes, {
-      rootMidi: harmonyContext.rootMidi,
-      scaleId: harmonyContext.scaleId,
-      tension: harmonyContext.tension,
-    });
-    const chord: NonNullable<HarmonyChordSlot['chord']> = sourceChord
-      ? {
-        ...sourceChord,
-        intent: sourceChord.intent ? { ...sourceChord.intent, extensions: [...sourceChord.intent.extensions], alterations: [...(sourceChord.intent.alterations ?? [])], capturedMidiNotes: [...sourceChord.intent.capturedMidiNotes] } : null,
-        exactMidiNotes: [...sourceChord.exactMidiNotes],
-      }
-      : {
-        intent: null,
-        intentSource: null,
-        exactMidiNotes: [...exactMidiNotes],
-        recognizedLabel: recognition?.label ?? 'Custom chord',
-        playbackBehavior: 'exact',
-        capturedContext: { rootMidi: harmonyContext.rootMidi, rootMidiAnchor: harmonyContext.rootMidi, scaleId: harmonyContext.scaleId, tension: harmonyContext.tension },
-      };
-    patchSlots(slots.map((slot) => slot.id === slotId ? { ...slot, chord, name: chord.recognizedLabel || slot.name } : slot));
-    onSelectedSlotChange?.(slotId);
-  }, [captureSelectedToSlot, harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.tension, onSelectedSlotChange, patchSlots, progression.events, resolvedFrame.currentNotePool, selectedStepId, slots, workspaceView, writeLocked]);
-
-  const previewSlot = useCallback((slotId: number) => {
-    const slot = slots[slotId];
-    if (!slot?.chord?.exactMidiNotes.length) {
-      setSuggestionActionError(`S${slotId + 1} is empty`);
-      return;
-    }
-    setSuggestionActionError(null);
-    if (workspaceView === 'overview') {
-      playOverviewNotes(slot.chord.exactMidiNotes, slot.id);
-      return;
-    }
-    releaseSlotLiveNotes();
-    slotLiveInputIdsRef.current = slot.chord.exactMidiNotes.slice(0, 8).map((midi, index) => {
-      const inputId = `harmony-slot:${slotId}:${index}:${midi}`;
-      slotLiveNoteInput.noteOn(inputId, {
-        source: 'ui-pad',
-        instrument: auditionSource,
-        note: midi,
-        velocity: harmonyAuditionVelocity(auditionSource, index === 0 ? .78 : .64),
-      });
-      return inputId;
-    });
-  }, [auditionSource, playOverviewNotes, releaseSlotLiveNotes, slotLiveNoteInput, slots, workspaceView]);
-
-  const releaseSlotPreview = useCallback(() => {
-    if (workspaceView === 'overview') releaseOverview();
-    else releaseSlotLiveNotes();
-  }, [releaseOverview, releaseSlotLiveNotes, workspaceView]);
-
+  // Z..comma hold-to-preview the suggestion bank: always in Simple, and in Detail
+  // while the tray is open or `/` is held.
   useEffect(() => {
-    const held = new Map<string, 'slot' | 'suggestion'>();
+    if (!suggestionKeyboardOwned) return;
+    const held = new Map<string, HarmonySuggestionTriggerKey>();
     let slashHeld = false;
     let slashUsed = false;
-    if (!suggestionKeyboardOwned) return;
     const releaseAll = () => {
-      for (const [key, kind] of held) {
-        if (kind === 'suggestion') releaseSuggestion(key as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey);
-      }
+      for (const trigger of held.values()) suggestionController.release(trigger);
       held.clear();
-      stopSuggestions();
-      releaseSlotPreview();
+      suggestionController.stop();
       slashHeld = false;
       slashUsed = false;
-    };
-    const cleanupHeld = () => {
-      if (held.size === 0) return;
-      releaseAll();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isTextInputTarget(event.target)) return;
@@ -1842,53 +1272,29 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
         return;
       }
       const normalizedKey = event.code || event.key.toLowerCase();
-      const slotIndex = harmonyPerformanceBankIndex(event.code, event.key);
-      if (slotIndex < 0 || held.has(normalizedKey) || event.repeat) return;
-      const suggestionMode = workspaceView === 'simple' || harmonyPerformanceBankScope(suggestionsOpen, slashHeld) === 'suggestions';
+      const index = harmonyPerformanceBankIndex(event.code, event.key);
+      if (index < 0 || held.has(normalizedKey) || event.repeat) return;
+      if (workspaceView === 'detail' && !detailSuggestionsOpen && !slashHeld) return;
       if (slashHeld) slashUsed = true;
       event.preventDefault();
       releaseFocusedHarmonyControl(event.target);
-      if (suggestionMode) {
-        const trigger = harmonyPerformanceBankTrigger(slotIndex)!;
-        const suggestion = suggestionBank[slotIndex] ?? null;
-        if (!suggestion) {
-          setSuggestionActionError(`Suggestion ${slotIndex + 1} is empty`);
-          return;
-        }
-        held.set(normalizedKey, 'suggestion');
-        if (event.shiftKey) {
-          setSelectedSuggestion(suggestion);
-          saveSelectedSuggestion(suggestion);
-          return;
-        }
-        pressSuggestion(trigger as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey);
-        return;
-      }
-      held.set(normalizedKey, 'slot');
-      if (event.shiftKey) {
-        saveCurrentChordToSlot(slotIndex);
-        return;
-      }
-      previewSlot(slotIndex);
+      const trigger = harmonyPerformanceBankTrigger(index) as HarmonySuggestionTriggerKey;
+      held.set(normalizedKey, trigger);
+      suggestionController.press(trigger);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code === 'Slash') {
         event.preventDefault();
-        if (slashHeld && !slashUsed) setSuggestionsOpen((open) => !open);
+        if (slashHeld && !slashUsed && workspaceView === 'detail') setDetailSuggestionsOpen((open) => !open);
         slashHeld = false;
         slashUsed = false;
         return;
       }
       const key = event.code || event.key.toLowerCase();
-      const kind = held.get(key);
-      if (!kind) return;
+      const trigger = held.get(key);
+      if (!trigger) return;
       held.delete(key);
-      if (kind === 'suggestion') {
-        const index = harmonyPerformanceBankIndex(event.code, event.key);
-        const trigger = harmonyPerformanceBankTrigger(index);
-        if (trigger) releaseSuggestion(trigger as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey);
-      }
-      else releaseSlotPreview();
+      suggestionController.release(trigger);
     };
     const onVisibility = () => { if (document.visibilityState !== 'visible') releaseAll(); };
     window.addEventListener('keydown', onKeyDown);
@@ -1900,117 +1306,26 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onVisibility);
-      cleanupHeld();
+      if (held.size > 0) releaseAll();
     };
-  }, [pressSuggestion, previewSlot, releaseSlotPreview, releaseSuggestion, saveCurrentChordToSlot, saveSelectedSuggestion, slots, suggestionBank, suggestionKeyboardOwned, suggestionsOpen, stopSuggestions, workspaceView]);
+  }, [detailSuggestionsOpen, suggestionController, suggestionKeyboardOwned, workspaceView]);
 
-  const selectedSlotChord = slots[selectedSlotId]?.chord ?? null;
-  const selectedSlotDraftKey = selectedSlotChord
-    ? [
-      selectedSlotId,
-      selectedSlotChord.recognizedLabel,
-      selectedSlotChord.playbackBehavior,
-      selectedSlotChord.exactMidiNotes.join(','),
-      selectedSlotChord.intent?.rootMode,
-      selectedSlotChord.intent?.rootNote,
-      selectedSlotChord.intent?.degree,
-      selectedSlotChord.intent?.quality,
-      selectedSlotChord.intent?.extensions.join(','),
-      selectedSlotChord.intent?.inversion,
-      selectedSlotChord.intent?.octave,
-    ].join('|')
-    : `${selectedSlotId}|empty`;
-  useEffect(() => {
-    if (!selectedSlotChord?.exactMidiNotes.length) return;
-    setDetailInputMethod('played');
-    setCapturedDraft(draftFromCapturedNotes(
-      selectedSlotChord.exactMidiNotes,
-      {
-        rootMidi: harmonyContext.rootMidi,
-        rootMidiAnchor: selectedSlotChord.capturedContext.rootMidiAnchor ?? harmonyContext.rootMidi,
-        scaleId: selectedSlotChord.capturedContext.scaleId,
-      },
-      'slot',
-      selectedSlotChord.intent,
-    ));
-  }, [harmonyContext.rootMidi, selectedSlotDraftKey, setCapturedDraft]);
-
-
-  const setPreserveExactVoicing = useCallback((preserve: boolean) => {
-    setDetailInputMethod('builder');
-    applyManualSelection({}, { preserveCapturedVoicing: preserve });
-  }, [applyManualSelection]);
-
-  const commitOverviewState = useCallback((next: {
-    progression: HarmonyProgression;
-    slots: HarmonyChordSlot[];
-    sequence?: readonly HarmonySequenceStep[] | null;
-    progressions?: HarmonyReferenceState['progressions'];
-    seqPlayChoices?: HarmonyReferenceState['seqPlayChoices'];
-  }, selectedIndex: number) => {
+  const commitProgression = useCallback((next: HarmonyProgression, selectedIndex: number) => {
     setSelectedStepId(selectedIndex);
-    const keys = bankKeys(harmonyContext.bank);
-    const patch: Record<string, unknown> = { [keys.progression]: next.progression, [keys.slots]: next.slots };
-    for (const endpoint of next.progressions ?? []) {
-      if (!endpoint.progression) continue;
-      patch[endpoint.endpoint === 'A' ? 'harmonyProgressionA' : 'harmonyProgressionB'] = endpoint.progression;
-    }
-    if (persistedPlayConfigs && next.seqPlayChoices) {
-      patch.synthPlayConfigs = applyHarmonySeqChoiceReferences(persistedPlayConfigs, next.seqPlayChoices);
-    }
-    if (record.harmonyProgressionA === undefined && record.harmonyProgressionB === undefined && harmonyContext.bank === 'A') patch.harmonyProgression = next.progression;
-    if (shouldMirrorBaseBank(record, harmonyContext.bank)) patch.harmonyChordSlots = next.slots;
+    const patch: Record<string, unknown> = { [progressionKey(harmonyContext.bank)]: next };
+    const record = state as unknown as Record<string, unknown>;
+    if (record.harmonyProgressionA === undefined && record.harmonyProgressionB === undefined && harmonyContext.bank === 'A') patch.harmonyProgression = next;
     applyPatch(patch);
-  }, [applyPatch, harmonyContext.bank, persistedPlayConfigs, record]);
-  const assignSlotToSelectedEvent = useCallback((slotId: number) => {
-    if (writeLocked || !slots[slotId]?.chord) return;
-    commitOverviewState({
-      progression: updateHarmonyOverviewSource(progression, selectedStepId, slotId),
-      slots: slots.slice() as HarmonyChordSlot[],
-      sequence,
-      progressions: endpointProgressions,
-      seqPlayChoices,
-    }, selectedStepId);
-  }, [commitOverviewState, endpointProgressions, progression, selectedStepId, seqPlayChoices, sequence, slots, writeLocked]);
-  const printOverview = useCallback(() => {
-    const analysis = analyzeOverviewBank({ slots: slots as never, progression, sequence });
-    const sourceContext = analysis.sourceContext ?? overviewSourceContext(harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.scaleName);
-    const effectiveContext = overviewSourceContext(harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.scaleName);
-    const patch = planHarmonyPrint(slots, sourceContext, effectiveContext, { tension: harmonyContext.tension, autoUsesSemantic: (chord) => chord.playbackBehavior === 'auto' && chord.intentSource === 'confirmed' });
-    if (patch.after.some((slot, index) => {
-      const beforeNotes = slots[index]?.chord?.exactMidiNotes ?? [];
-      const afterNotes = slot.chord?.exactMidiNotes ?? [];
-      return beforeNotes.length !== afterNotes.length || afterNotes.some((note, noteIndex) => note !== beforeNotes[noteIndex]);
-    })) patchSlots(patch.apply() as HarmonyChordSlot[]);
-  }, [harmonyContext.rootMidi, harmonyContext.scaleId, harmonyContext.scaleName, harmonyContext.tension, overviewSourceContext, patchSlots, progression, sequence, slots]);
+  }, [applyPatch, harmonyContext.bank, state]);
 
-  const overviewSurface = <HarmonyOverviewSurface
-    progression={progression}
-    slots={slots}
-    sequence={sequence}
-    progressions={endpointProgressions}
-    seqPlayChoices={seqPlayChoices}
-    keyboardRoot={harmonyContext.rootMidi}
-    mode={overviewMode}
-    selectedIndex={selectedStepId}
-    readOnly={!canWriteState || liveTakeoverLocked}
-    onModeChange={setOverviewMode}
-    onOverviewStateChange={commitOverviewState}
-    onPlayStart={playOverviewNotes}
-    onPlayRelease={releaseOverview}
-    onLatch={latchOverview}
-    onStop={stopOverview}
-    onPrint={printOverview}
-    canUndo={canUndo}
-    onUndo={onUndo}
-    selectedSuggestionLabel={selectedSuggestion?.label ?? null}
-    onSuggestionReplace={replaceSelectedSuggestion}
-    onSuggestionInsert={insertSelectedSuggestion}
-    onSuggestionSave={() => saveSelectedSuggestion()}
-    suggestionsOpen={suggestionsOpen}
-    onSuggestionsOpenChange={setSuggestionsOpen}
-    suggestions={<SuggestionGrid suggestions={suggestionBank.map((suggestion) => suggestion ? { ...suggestion, notes: suggestion.exactMidiNotes, audioSuggestion: suggestion } : null)} axis={suggestionAxis} onSelect={(suggestion) => { if (suggestion.audioSuggestion) useSuggestionInOverview(suggestion.audioSuggestion); }} onPress={(suggestion) => { if (suggestion.audioSuggestion) setSelectedSuggestion(suggestion.audioSuggestion); if (suggestion.triggerKey) pressSuggestion(suggestion.triggerKey as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey); }} onRelease={(suggestion) => { if (suggestion.triggerKey) releaseSuggestion(suggestion.triggerKey as import('../../audio/harmony/chordSuggestionEngine').HarmonySuggestionTriggerKey); }} onSave={(suggestion) => { if (suggestion.audioSuggestion) saveSelectedSuggestion(suggestion.audioSuggestion); }} />}
-  />;
+  const suggestionTray = () => (
+    <SuggestionGrid
+      suggestions={suggestionBank.map((suggestion) => suggestion ? { ...suggestion, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes } : null)}
+      axis={suggestionAxis}
+      onPress={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) suggestionController.press(full.triggerKey); }}
+      onRelease={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) suggestionController.release(full.triggerKey); }}
+    />
+  );
 
   return (
     <div
@@ -2022,26 +1337,13 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setKeyboardOwned(false);
       }}
     >
-      <HarmonySlotStrip
-        slots={slots}
-        activeSlotId={resolvedFrame.activeSlotId}
-        selectedSlotId={selectedSlotId}
-        context={workspaceView === 'overview' ? 'overview' : 'detail'}
-        disabled={writeLocked}
-        onSelect={onSelectedSlotChange}
-        onPreviewStart={previewSlot}
-        onPreviewEnd={releaseSlotPreview}
-        onSaveCurrent={saveCurrentChordToSlot}
-        onAssign={assignSlotToSelectedEvent}
-      />
       {workspaceView === 'simple' && <HarmonySummaryCard
         bank={harmonyContext.bank}
         rootLabel={noteName(harmonyContext.rootMidi)}
         scaleName={harmonyContext.scaleName}
         resolvedFrame={resolvedFrame}
-        showPolicyControls={workspaceView === 'simple'}
         manualLocked={manualLocked}
-        chordSequenceEnabled={harmonyContext.chordSequenceEnabled}
+        chordSequenceEnabled={progression.enabled}
         tension={harmonyContext.tension}
         rootNote={state.rootNote ?? 4}
         scaleMode={state.scaleMode ?? 'auto'}
@@ -2050,36 +1352,36 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
         onRootNoteChange={onStateChange ? (value) => applyPatch({ rootNote: value }) : undefined}
         onScaleModeChange={onStateChange ? (value) => applyPatch({ scaleMode: value }) : undefined}
         onManualScaleChange={onStateChange ? (value) => applyPatch({ manualScale: value }) : undefined}
-        suggestionBank={workspaceView === 'simple' ? suggestionBank : undefined}
-        suggestionAxis={workspaceView === 'simple' ? suggestionAxis : undefined}
-        onSuggestionSelect={workspaceView === 'simple' ? selectSuggestion : undefined}
-        onSuggestionPress={workspaceView === 'simple' ? (suggestion) => suggestionController.press(suggestion.triggerKey) : undefined}
-        onSuggestionRelease={workspaceView === 'simple' ? (suggestion) => suggestionController.release(suggestion.triggerKey) : undefined}
-        selectedSuggestion={workspaceView === 'simple' ? selectedSuggestion : null}
-        onSuggestionSave={workspaceView === 'simple' ? saveSelectedSuggestion : undefined}
+        suggestionBank={suggestionBank}
+        suggestionAxis={suggestionAxis}
+        onSuggestionPress={(suggestion) => suggestionController.press(suggestion.triggerKey)}
+        onSuggestionRelease={(suggestion) => suggestionController.release(suggestion.triggerKey)}
       />}
-      {suggestionActionError && <div className="harmony-suggestion-error" role="alert">{suggestionActionError}</div>}
       {auditionError && <div className="harmony-suggestion-error" role="alert">{auditionError}</div>}
 
-      {workspaceView === 'overview' && overviewSurface}
+      {workspaceView === 'overview' && <HarmonyOverviewSurface
+        progression={progression}
+        keyRoot={harmonyContext.rootMidi}
+        scaleId={harmonyContext.scaleId}
+        selectedIndex={selectedStepId}
+        readOnly={!canWriteState || liveTakeoverLocked}
+        onProgressionChange={commitProgression}
+        onPlayStart={playOverviewNotes}
+        onPlayRelease={releaseHarmonyLayer}
+        onLatch={latchOverview}
+        onStop={stopOverview}
+      />}
 
       {workspaceView === 'detail' && (
-        <>
         <ManualVoicingPopup
           scaleLabel={`${noteName(harmonyContext.rootMidi)} ${harmonyContext.scaleName}`}
           manual={manual}
-          slots={slots}
           manualLocked={manualLocked}
           canWriteState={canWriteState}
           advancedOpen={voicingAdvancedOpen}
-          previewLabel={displayedChordIdentity?.label ?? activeIntentLabel}
-          recognizedLabel={displayedChordIdentity?.label ?? activeIntentLabel}
-          recognizedInversion={displayedChordIdentity?.voicing.inversion ?? null}
-          recognitionNoteCount={detailInputMethod === 'builder' ? manualSemanticNotes.length : manualRecognitionNotes.length}
-          inputMethod={detailInputMethod}
+          chordLabel={chordLabel}
           previewNotes={manualPreviewNotes}
           semanticNotes={manualSemanticNotes}
-          exactNotes={detailDraft.exactMidiNotes}
           keyboardRootNote={detailKeyboardRootNote}
           scaleRootMidi={harmonyContext.rootMidi}
           scaleIntervals={activeScaleIntervals}
@@ -2087,12 +1389,8 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
           auditionEnabled={Boolean(onAuditionNote || onAuditionNotes)}
           route={manualRoute}
           onRouteChange={setManualRoute}
-          playbackBehavior={detailDraft.playbackBehavior}
-          onPlaybackBehaviorChange={(behavior) => setCapturedDraft(setDraftPlaybackBehavior(detailDraft, behavior))}
           rerootSemitones={rerootSemitones}
           onRerootChange={setRerootSemitones}
-          preserveExactVoicing={preserveExactVoicing}
-          writeLocked={writeLocked}
           onAuditionSourceChange={setAuditionSource}
           onAuditionPreview={playManualPreview}
           onAdvancedOpenChange={setVoicingAdvancedOpen}
@@ -2106,13 +1404,8 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
           onInversionChange={setInversion}
           onSpreadChange={setSpread}
           onBassModeChange={setBassMode}
-          onPreserveExactVoicingChange={setPreserveExactVoicing}
-          onCapture={() => captureSelectedToSlot(selectedSlotId)}
-          captureSlotId={selectedSlotId}
           onCommandKeyDown={handleManualKeyDown}
           onLiveNoteDown={(midi, velocity, source) => {
-            setDetailInputMethod('played');
-            captureNoteDown(midi, undefined, velocity);
             if (source === 'midi') return;
             setAuditionError(null);
             detailLiveNoteInput.noteOn(`harmony-detail:${source}:${midi}`, {
@@ -2123,34 +1416,18 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
             });
           }}
           onLiveNoteUp={(midi, source) => {
-            captureNoteUp(midi);
             if (source !== 'midi') detailLiveNoteInput.noteOff(`harmony-detail:${source}:${midi}`);
           }}
           onReleaseAll={() => {
-            releaseCapturedNotes();
             detailLiveNoteInput.releaseAll();
             releaseHarmonyLayer();
           }}
-          onToggleExactNote={updateExactNote}
-          onMoveExactNote={moveExactNote}
         />
-        <RecognitionResolution draft={detailDraft} disabled={writeLocked} onChange={setCapturedDraft} />
-        </>
       )}
       {workspaceView === 'detail' && suggestionBank.length > 0 && (
-        <details className="harmony-suggestion-dock harmony-detail-suggestions" aria-label="Detail chord suggestions" open={suggestionsOpen} onToggle={(event) => setSuggestionsOpen(event.currentTarget.open)}>
-          <summary><strong>Suggestions</strong><kbd>/</kbd><span>{selectedSuggestion?.label ?? 'Explore when needed'}</span></summary>
-          <div className="harmony-detail-suggestions-body">
-            <SuggestionGrid
-              suggestions={suggestionBank.map((suggestion) => suggestion ? { ...suggestion, notes: suggestion.exactMidiNotes, exactMidiNotes: suggestion.exactMidiNotes } : null)}
-              axis={suggestionAxis}
-              onSelect={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) selectSuggestion(full); }}
-              onPress={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) suggestionController.press(full.triggerKey); }}
-              onRelease={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) suggestionController.release(full.triggerKey); }}
-              onSave={(suggestion) => { const full = suggestionBank.find((item) => item?.id === suggestion.id); if (full) saveSelectedSuggestion(full); }}
-            />
-            {selectedSuggestion && <div className="harmony-suggestion-action-dock"><strong>{selectedSuggestion.label}</strong><button type="button" onClick={() => saveSelectedSuggestion(selectedSuggestion)}>Save suggestion</button></div>}
-          </div>
+        <details className="harmony-suggestion-dock harmony-detail-suggestions" aria-label="Detail chord suggestions" open={detailSuggestionsOpen} onToggle={(event) => setDetailSuggestionsOpen(event.currentTarget.open)}>
+          <summary><strong>Suggestions</strong><kbd>/</kbd><span>Hold to preview</span></summary>
+          <div className="harmony-detail-suggestions-body">{suggestionTray()}</div>
         </details>
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKeyboardScope } from '../../keyboard/useKeyboardScope';
-import { subscribeHarmonyMidiCapture } from '../harmonyDraftChord';
+import { subscribeHarmonyMidiCapture } from '../../midiLearn/midiHarmonyCapture';
 import '../shared/harmonyWorkspace.css';
 import {
   deriveLiveChordMidiRange,

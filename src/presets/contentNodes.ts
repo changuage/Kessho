@@ -31,7 +31,6 @@ export const PRESET_CONTENT_NODE_TYPES = [
   'drumNoiseVoice',
   'drumMembraneVoice',
   'insectsVoice',
-  'harmonyChordBank',
   // Retained node type for storage compatibility; current payloads carry a
   // canonical Harmony progression under `content.progression`.
   'harmonySequenceBank',

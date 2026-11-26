@@ -13,16 +13,13 @@ import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
 import {
   defaultManualHarmonyControlState,
-  sanitizeHarmonyChordSlots,
-  sanitizeHarmonySequence,
-  sanitizeHarmonySequenceLength,
+  sanitizeHarmonyPalette,
   sanitizeHarmonyProgression,
   sanitizeManualHarmonyControl,
-  type HarmonyChordSlot,
-  type HarmonySequenceStep,
   type HarmonyProgression,
   type ManualHarmonyControlState,
 } from '../audio/CoreProductHarmonyControl';
+import type { Chord } from '../audio/harmony/chord';
 import {
   DEFAULT_CHORDS_PER_PHRASE,
   MAX_CHORDS_PER_PHRASE,
@@ -657,40 +654,18 @@ export interface SliderState extends NatureSlotState {
   tension: number;            // 0..1 step 0.01
   chordRate: number;          // 1..8 chords per phrase step 1
   phraseLength: number;       // 4..128 seconds step 1 - harmony phrase length
-  /** @deprecated Decode-only legacy Simple progression inputs. */
-  chordProgressionEnabled: boolean | undefined;
-  chordProgressionPattern: number[] | undefined;
-  chordProgressionSteps: number | undefined;
-  chordProgressionHits: number | undefined;
-  chordProgressionRotation: number | undefined;
-  chordProgressionStepEnabled: boolean[] | undefined;
-  chordProgressionPhraseMultiplier: (1 | 2 | 4 | 8) | undefined;
-  chordProgressionClockSource: ProgressionClockSource | undefined;
   voicingSpread: number;      // 0..1 step 0.01
   waveSpread: number;         // 0..1 fraction of the chord slot - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
   harmonyMorphPercent: number; // 0..100 preset morph position used by product harmony endpoint selection
   /** @deprecated Decode-only legacy generator salt; canonical Harmony state does not persist it. */
   manualHarmonyControl: ManualHarmonyControlState;
-  harmonyChordSlots: HarmonyChordSlot[];
-  harmonyChordSlotsA: HarmonyChordSlot[] | undefined;
-  harmonyChordSlotsB: HarmonyChordSlot[] | undefined;
-  /** @deprecated Decode-only migration input; current saves use harmonyProgression. */
-  harmonyChordSequence: HarmonySequenceStep[] | undefined;
-  /** @deprecated Decode-only migration input; current saves use harmonyProgressionA. */
-  harmonyChordSequenceA: HarmonySequenceStep[] | undefined;
-  /** @deprecated Decode-only migration input; current saves use harmonyProgressionB. */
-  harmonyChordSequenceB: HarmonySequenceStep[] | undefined;
-  /** @deprecated Decode-only migration input. */
-  harmonyChordSequenceEnabled: boolean | undefined;
-  /** @deprecated Decode-only migration input. */
-  harmonyChordSequenceLength: number | undefined;
-  /** @deprecated Decode-only migration input. */
-  harmonyChordSequenceStepIndex: number | undefined;
-  /** Versioned canonical global Harmony progression (legacy sequence is a migration source only). */
+  /** Versioned canonical global Harmony progression (version 2: Auto or inline Chord events). */
   harmonyProgression: HarmonyProgression;
   harmonyProgressionA: HarmonyProgression | undefined;
   harmonyProgressionB: HarmonyProgression | undefined;
+  /** Saved Chords (max 16) used only as a copy source; never sent to native. */
+  harmonyPalette: Chord[];
   /** Canonical authored Seq 1–4 Play configuration shared by Synth and Harmony history. */
   synthPlayConfigs: ProductPlayConfig[] | undefined;
   // Synth voice ADSR
@@ -2179,12 +2154,10 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'detune',
   'harmonyMorphPercent',
   'manualHarmonyControl',
-  'harmonyChordSlots',
-  'harmonyChordSlotsA',
-  'harmonyChordSlotsB',
   'harmonyProgression',
   'harmonyProgressionA',
   'harmonyProgressionB',
+  'harmonyPalette',
   'synthAttack',
   'synthDecay',
   'synthSustain',
@@ -3003,33 +2976,26 @@ const STATE_KEYS: (keyof SliderState)[] = [
 const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'fxRoutingGraph',
   'manualHarmonyControl',
-  'harmonyChordSlots',
-  'harmonyChordSlotsA',
-  'harmonyChordSlotsB',
   'harmonyProgression',
   'harmonyProgressionA',
   'harmonyProgressionB',
+  'harmonyPalette',
   'synthSequencerFaces',
   'synthSequencerChain',
   'synthSequenceVariationBanks',
   'drumSequencerChain',
 ]);
 
-// Legacy Harmony sequence fields remain readable for old URLs/presets, but
-// are deliberately excluded from STATE_KEYS so new saves cannot author them.
-const LEGACY_HARMONY_STATE_KEYS = new Set<keyof SliderState>([
-  'harmonyChordSequence',
-  'harmonyChordSequenceA',
-  'harmonyChordSequenceB',
-  'harmonyChordSequenceEnabled',
-  'harmonyChordSequenceLength',
-  'harmonyChordSequenceStepIndex',
-]);
-const LEGACY_HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
-  'harmonyChordSequence',
-  'harmonyChordSequenceA',
-  'harmonyChordSequenceB',
-]);
+/** Retired chord-bank, sequence and Simple progression keys. They are ignored on
+ * load and never saved; there are no decoders for them. */
+export const RETIRED_CHORD_STATE_KEYS = [
+  'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB',
+  'harmonyChordSequence', 'harmonyChordSequenceA', 'harmonyChordSequenceB',
+  'harmonyChordSequenceEnabled', 'harmonyChordSequenceLength', 'harmonyChordSequenceStepIndex',
+  'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps', 'chordProgressionHits',
+  'chordProgressionRotation', 'chordProgressionStepEnabled', 'chordProgressionPhraseMultiplier',
+  'chordProgressionClockSource',
+] as const;
 
 /**
  * Default slider state with conservative values for performance
@@ -3335,30 +3301,13 @@ export const DEFAULT_STATE: SliderState = {
   tension: 0.3,
   chordRate: DEFAULT_CHORDS_PER_PHRASE,
   phraseLength: 16,
-  chordProgressionEnabled: undefined,
-  chordProgressionPattern: undefined,
-  chordProgressionSteps: undefined,
-  chordProgressionHits: undefined,
-  chordProgressionRotation: undefined,
-  chordProgressionStepEnabled: undefined,
-  chordProgressionPhraseMultiplier: undefined,
-  chordProgressionClockSource: undefined,
   voicingSpread: 0.5,
   waveSpread: 0.125,
   detune: 8,
   harmonyMorphPercent: 0,
   manualHarmonyControl: defaultManualHarmonyControlState(),
-  harmonyChordSlots: sanitizeHarmonyChordSlots(undefined),
-  harmonyChordSlotsA: undefined,
-  harmonyChordSlotsB: undefined,
-  harmonyChordSequence: undefined,
-  harmonyChordSequenceA: undefined,
-  harmonyChordSequenceB: undefined,
-  harmonyChordSequenceEnabled: undefined,
-  harmonyChordSequenceLength: undefined,
-  harmonyChordSequenceStepIndex: undefined,
   harmonyProgression: sanitizeHarmonyProgression({
-    version: 1,
+    version: 2,
     enabled: false,
     currentEventIndex: 0,
     events: Array.from({ length: 8 }, (_, index) => ({
@@ -3369,6 +3318,7 @@ export const DEFAULT_STATE: SliderState = {
   }),
   harmonyProgressionA: undefined,
   harmonyProgressionB: undefined,
+  harmonyPalette: [],
   synthPlayConfigs: undefined,
   synthAttack: 6.0,
   synthDecay: 1.0,
@@ -5831,7 +5781,7 @@ function parseJsonStateValue(value: string): unknown {
 }
 
 function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState, value: string): boolean {
-  if (!HARMONY_JSON_STATE_KEYS.has(key) && !LEGACY_HARMONY_JSON_STATE_KEYS.has(key)) return false;
+  if (!HARMONY_JSON_STATE_KEYS.has(key)) return false;
   const parsed = parseJsonStateValue(value);
   if (key === 'fxRoutingGraph') {
     state.fxRoutingGraph = normalizeFxRoutingGraphState(parsed, state as unknown as Record<string, unknown>);
@@ -5841,44 +5791,20 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
     state.manualHarmonyControl = sanitizeManualHarmonyControl(parsed);
     return true;
   }
-  if (key === 'harmonyChordSlots') {
-    state.harmonyChordSlots = sanitizeHarmonyChordSlots(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSlotsA') {
-    state.harmonyChordSlotsA = sanitizeHarmonyChordSlots(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSlotsB') {
-    state.harmonyChordSlotsB = sanitizeHarmonyChordSlots(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSequence') {
-    state.harmonyChordSequence = sanitizeHarmonySequence(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSequenceA') {
-    state.harmonyChordSequenceA = sanitizeHarmonySequence(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSequenceB') {
-    state.harmonyChordSequenceB = sanitizeHarmonySequence(parsed);
-    return true;
-  }
-  if (key === 'harmonyChordSequenceLength') {
-    state.harmonyChordSequenceLength = sanitizeHarmonySequenceLength(parsed);
-    return true;
-  }
   if (key === 'harmonyProgression') {
-    state.harmonyProgression = sanitizeHarmonyProgression(parsed, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    state.harmonyProgression = sanitizeHarmonyProgression(parsed);
     return true;
   }
   if (key === 'harmonyProgressionA') {
-    state.harmonyProgressionA = sanitizeHarmonyProgression(parsed, state.harmonyChordSequenceA ?? state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    state.harmonyProgressionA = sanitizeHarmonyProgression(parsed);
     return true;
   }
   if (key === 'harmonyProgressionB') {
-    state.harmonyProgressionB = sanitizeHarmonyProgression(parsed, state.harmonyChordSequenceB ?? state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
+    state.harmonyProgressionB = sanitizeHarmonyProgression(parsed);
+    return true;
+  }
+  if (key === 'harmonyPalette') {
+    state.harmonyPalette = sanitizeHarmonyPalette(parsed);
     return true;
   }
   if (key === 'synthSequencerFaces') {
@@ -5927,7 +5853,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
 
   const params = new URLSearchParams(search);
   const state = { ...DEFAULT_STATE };
-  let progressionPayloadSeen = false;
 
   try {
     for (const key of STATE_KEYS) {
@@ -5935,7 +5860,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       if (value === null) continue;
 
       if (decodeHarmonyJsonStateValue(state, key, value)) {
-        if (key === 'harmonyProgression' || key === 'harmonyProgressionA' || key === 'harmonyProgressionB') progressionPayloadSeen = true;
         continue;
       }
 
@@ -6014,11 +5938,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           (value === 'lead' || value === 'lead1' || value === 'lead2' || value === 'piano' || value === 'sample1' || value === 'sample2' || value === 'synth1' || value === 'synth2' || value === 'synth3' || value === 'synth4' || value === 'synth5' || value === 'synth6' || value === 'synth7' || value === 'synth8')
         ) {
           (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value === 'lead' ? 'lead1' : value;
-        } else if (
-          key === 'chordProgressionClockSource' &&
-          (value === 'harmony' || value === 'localPhrase' || value === 'globalPhrase')
-        ) {
-          state.chordProgressionClockSource = value;
         } else if (key === 'manualScale' && SCALE_FAMILIES.some((s) => s.name === value)) {
           state.manualScale = value;
         } else if (key === 'reverbEngine' && (value === 'algorithmic' || value === 'convolution')) {
@@ -6310,23 +6229,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       }
     }
 
-    // Read legacy Harmony sequence fields only as migration inputs. They are
-    // intentionally absent from STATE_KEYS/current URL output.
-    for (const key of LEGACY_HARMONY_STATE_KEYS) {
-      const value = params.get(key);
-      if (value === null) continue;
-      if (decodeHarmonyJsonStateValue(state, key, value)) continue;
-      if (key === 'harmonyChordSequenceEnabled') {
-        state.harmonyChordSequenceEnabled = value === 'true' || value === '1';
-      } else if (key === 'harmonyChordSequenceLength') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) state.harmonyChordSequenceLength = Math.max(3, Math.min(8, Math.round(parsed)));
-      } else if (key === 'harmonyChordSequenceStepIndex') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) state.harmonyChordSequenceStepIndex = Math.max(0, Math.min(7, Math.round(parsed)));
-      }
-    }
-
     // Older share URLs only carried numeric Water layer levels. Preserve
     // their activity by deriving missing flags from those stored levels.
     for (const [levelKey, enabledKey] of Object.entries(WATER_LAYER_ENABLED_BY_LEVEL) as [WaterLayerLevelKey, WaterLayerEnabledKey][]) {
@@ -6366,16 +6268,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         if (params.get('pad1ReverbSend') === null) state.pad1ReverbSend = pad1Next;
         if (params.get('pad2ReverbSend') === null) state.pad2ReverbSend = pad2Next;
       }
-    }
-
-    if (!progressionPayloadSeen) {
-      state.harmonyProgression = sanitizeHarmonyProgression(undefined, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
-      state.harmonyProgressionA = state.harmonyChordSequenceA
-        ? sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceA, state.harmonyChordSequenceEnabled)
-        : undefined;
-      state.harmonyProgressionB = state.harmonyChordSequenceB
-        ? sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceB, state.harmonyChordSequenceEnabled)
-        : undefined;
     }
 
     const sharedSequencerBpm =
@@ -6730,20 +6622,14 @@ export function migratePreset(preset: any): SavedPreset {
     }
   }
 
-  // Versioned canonical Harmony progression migration: old chord sequence
-  // payloads are copied once into the canonical key, then never consulted as
-  // a competing runtime authority.
-  if (!state.harmonyProgression || (preset.state && !Object.prototype.hasOwnProperty.call(preset.state, 'harmonyProgression'))) {
-    state.harmonyProgression = sanitizeHarmonyProgression(undefined, state.harmonyChordSequence, state.harmonyChordSequenceEnabled);
-  }
-  if (state.harmonyChordSequenceA && !state.harmonyProgressionA) state.harmonyProgressionA = sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceA, state.harmonyChordSequenceEnabled);
-  if (state.harmonyChordSequenceB && !state.harmonyProgressionB) state.harmonyProgressionB = sanitizeHarmonyProgression(undefined, state.harmonyChordSequenceB, state.harmonyChordSequenceEnabled);
-
-  // Legacy sequence fields are migration-only and must not remain an authored
-  // authority on a normalized preset state.
-  for (const key of LEGACY_HARMONY_STATE_KEYS) {
-    delete (state as unknown as Record<string, unknown>)[key];
-  }
+  // Retired chord keys are ignored. Progressions load at version 2 (a version 1
+  // progression keeps its events with slot sources turned into Auto) and the
+  // Palette is validated.
+  for (const key of RETIRED_CHORD_STATE_KEYS) delete state[key];
+  state.harmonyProgression = sanitizeHarmonyProgression(state.harmonyProgression);
+  if (state.harmonyProgressionA !== undefined) state.harmonyProgressionA = sanitizeHarmonyProgression(state.harmonyProgressionA);
+  if (state.harmonyProgressionB !== undefined) state.harmonyProgressionB = sanitizeHarmonyProgression(state.harmonyProgressionB);
+  state.harmonyPalette = sanitizeHarmonyPalette(state.harmonyPalette);
 
   const hydratedState = hydrateOptimizedStatePresetData(state);
   for (const [key, value] of Object.entries(hydratedState)) {

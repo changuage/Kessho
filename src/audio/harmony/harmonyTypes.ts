@@ -1,8 +1,9 @@
 /** Harmony domain types shared by authored state, UI projections, and runtime adapters. */
+import type { Chord } from './chord';
+
 export type HarmonyControlSource =
   | 'baseline'
   | 'sequence'
-  | 'slot'
   | 'manualControl'
   | 'audition'
   | 'presetMorph';
@@ -16,7 +17,6 @@ export type HarmonyChordExtension =
   | 'add9' | 'nine' | 'sixNine';
 export type HarmonyChordAlteration = 'b5' | '#5' | 'b9' | '#9' | '#11' | 'b13' | 'omit3' | 'omit5';
 export type HarmonyBassMode = 'off' | 'root' | 'fifth' | 'captured';
-export type HarmonySequenceStepMode = 'auto' | 'intent' | 'slot';
 export type ManualHarmonyControlMode = 'audition' | 'control' | 'capture';
 
 /** Canonical global Harmony progression.  Events are deliberately tiny so
@@ -26,7 +26,7 @@ export type HarmonyProgressionDurationUnit = 'bar' | 'phrase';
 export type HarmonyProgressionDurationValue = 1 | 2 | 4 | 8;
 export type HarmonyProgressionEventSource =
   | { type: 'auto' }
-  | { type: 'slot'; slotId: number };
+  | { type: 'chord'; chord: Chord };
 export interface HarmonyProgressionEvent {
   id: string;
   source: HarmonyProgressionEventSource;
@@ -36,7 +36,7 @@ export interface HarmonyProgressionEvent {
   };
 }
 export interface HarmonyProgression {
-  version: 1;
+  version: 2;
   enabled: boolean;
   events: HarmonyProgressionEvent[];
   currentEventIndex: number;
@@ -60,94 +60,6 @@ export interface HarmonyIntent {
   preserveCapturedVoicing: boolean;
 }
 
-export interface HarmonyRecognitionVoicing {
-  bassMidi: number;
-  inversion: number;
-  doubledPitchClasses: number[];
-  omittedChordTones: string[];
-  spread: number;
-}
-
-export interface HarmonyRecognitionCandidate {
-  intent: HarmonyIntent;
-  label: string;
-  quality: HarmonyChordQuality;
-  extensions: HarmonyChordExtension[];
-  confidence: number;
-  pitchClassScore: number;
-  contextScore: number;
-  voicing: HarmonyRecognitionVoicing;
-}
-
-export type HarmonyPlaybackBehavior = 'auto' | 'relative' | 'exact';
-export type HarmonyIntentSource = 'inferred' | 'confirmed' | null;
-
-export interface HarmonyCapturedContext {
-  /** Continuous MIDI root anchor at capture time (not a pitch class). */
-  rootMidi: number;
-  /** Alias accepted by migrated payloads and useful to callers that name it explicitly. */
-  rootMidiAnchor?: number;
-  scaleId: number;
-  /** Optional tension context retained by endpoint-aware morph planning. */
-  tension?: number;
-  capturedAt?: number;
-}
-
-export interface SharedHarmonyChord {
-  intent: HarmonyIntent | null;
-  intentSource: HarmonyIntentSource;
-  exactMidiNotes: number[];
-  /** Optional per-note MIDI attack velocity retained for exact voicing capture. */
-  exactMidiVelocities?: Record<string, number>;
-  recognizedLabel: string;
-  playbackBehavior: HarmonyPlaybackBehavior;
-  capturedContext: HarmonyCapturedContext;
-  /** Ranked semantic interpretations retained for mismatch/adopt UI. */
-  recognitionCandidates?: HarmonyRecognitionCandidate[];
-  /** True when an exact edit diverges from a confirmed semantic intent. */
-  recognitionMismatch?: boolean;
-  /** Relative/Auto custom voicings need an explicit semantic choice first. */
-  requiresSemanticSelection?: boolean;
-}
-
-export interface SharedHarmonyChordSlot {
-  id: number;
-  name: string;
-  chord: SharedHarmonyChord | null;
-  locked: boolean;
-}
-
-/** Legacy payload accepted only by the explicit Harmony slot migration boundary. */
-export interface LegacyHarmonyChordSlotInput {
-  id?: number;
-  name?: string;
-  intent?: HarmonyIntent;
-  exactMidiNotes?: number[];
-  capturedMidiNotes?: number[];
-  chord?: unknown;
-  locked?: boolean;
-}
-
-/** Canonical authored/runtime Harmony slot. Semantic intent lives in `chord`. */
-export interface HarmonyChordSlot {
-  id: number;
-  name: string;
-  chord: SharedHarmonyChord | null;
-  locked: boolean;
-}
-
-export interface HarmonySequenceStep {
-  id: number;
-  enabled: boolean;
-  locked: boolean;
-  mode: HarmonySequenceStepMode;
-  degree: number;
-  quality: HarmonyChordQuality;
-  intent: HarmonyIntent | null;
-  slotId: number | null;
-  probability: number;
-}
-
 export interface ManualHarmonyControlState {
   enabled: boolean;
   mode: ManualHarmonyControlMode;
@@ -162,14 +74,11 @@ export interface ManualHarmonyControlState {
   selectedBassMode: HarmonyBassMode;
   activeIntent: HarmonyIntent | null;
   auditionIntent: HarmonyIntent | null;
-  slotTriggerMode: boolean;
-  activeSlotId: number | null;
 }
 
 export interface ResolvedHarmonyFrame {
   activeSource: HarmonyControlSource;
   activeStepIndex: number | null;
-  activeSlotId: number | null;
   rootMidi: number;
   effectiveRootMidiAnchor: number;
   scaleId: number;
@@ -186,36 +95,6 @@ export interface ResolvedHarmonyFrame {
 
 export interface L4HarmonyStateExtension {
   manualControl: ManualHarmonyControlState;
-  chordSlots: HarmonyChordSlot[];
-  chordSequence: HarmonySequenceStep[];
-  chordSequenceEnabled: boolean;
-  chordSequenceLength: number;
-  chordSequenceStepIndex: number;
   resolvedHarmonyFrame: ResolvedHarmonyFrame;
-  /** Canonical progression; legacy chordSequence is a compatibility view. */
   progression: HarmonyProgression;
 }
-
-export interface HarmonyDraftChord {
-  intent: HarmonyIntent | null;
-  intentSource?: HarmonyIntentSource;
-  exactMidiNotes: number[];
-  /** Optional per-note MIDI attack velocity retained for exact voicing capture. */
-  exactMidiVelocities?: Record<string, number>;
-  semanticCandidates?: Array<{ intent: HarmonyIntent; confidence: number }>;
-  recognitionCandidates?: HarmonyRecognitionCandidate[];
-  recognitionMismatch?: boolean;
-  requiresSemanticSelection?: boolean;
-  quality?: HarmonyChordQuality | null;
-  extensions?: HarmonyChordExtension[];
-  playbackBehavior: HarmonyPlaybackBehavior;
-  capturedContext: HarmonyCapturedContext;
-  recognizedLabel: string;
-  editFocus: 'semantic' | 'exact' | null;
-  source?: 'qwerty' | 'midi' | 'onscreen' | 'manualVoicing' | 'matrix' | 'suggestion' | 'slot';
-  dirty?: boolean;
-}
-
-export type HarmonySemanticRoot = Pick<HarmonyIntent, 'rootMode' | 'degree' | 'rootNote'> & {
-  rootMode: HarmonyRootMode;
-};

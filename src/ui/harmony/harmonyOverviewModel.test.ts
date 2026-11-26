@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultHarmonyIntent } from '../../audio/CoreProductHarmonyControl';
+import { normalizeChord } from '../../audio/harmony/chord';
 import type { HarmonyProgression } from '../../audio/harmony/harmonyTypes';
-import { defaultProductPlayConfig } from '../../audio/productPlaySequencer';
-import { analyzeHarmonyVoiceLeading, applyHarmonyOverviewAction, applyHarmonySeqChoiceReferences, makeUniqueHarmonySlot, overviewFocusTarget, overviewRows, productPlayConfigsToHarmonySeqChoices, toggleHarmonyOverviewNote, updateHarmonyOverviewDuration, updateHarmonyOverviewSource, virtualizeOverviewRows } from './harmonyOverviewModel';
+import { analyzeHarmonyVoiceLeading, applyHarmonyOverviewAction, clearHarmonyOverviewChord, overviewFocusTarget, overviewRows, updateHarmonyOverviewDuration, virtualizeOverviewRows } from './harmonyOverviewModel';
 
-const progression = (count: number): HarmonyProgression => ({ version: 1, enabled: true, currentEventIndex: 0, events: Array.from({ length: count }, (_, id) => ({ id: `e-${id}`, source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } })) });
-const slot = (id: number, notes: number[] | null) => ({ id, name: `S${id + 1}`, locked: false, chord: notes ? { intent: defaultHarmonyIntent('slot', id % 7), intentSource: 'confirmed' as const, exactMidiNotes: notes, recognizedLabel: 'C', playbackBehavior: 'auto' as const, capturedContext: { rootMidi: 60, scaleId: 1 } } : null });
+const key = { rootPitchClass: 0, scaleId: 1 };
+const progression = (count: number): HarmonyProgression => ({ version: 2, enabled: true, currentEventIndex: 0, events: Array.from({ length: count }, (_, id) => ({ id: `e-${id}`, source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } })) });
+const fixed = (notes: number[]) => normalizeChord({ behavior: 'fixed', notes: notes.map((midi) => ({ midi })) })!;
 
 test('Arrange actions preserve selection parity and enforce 64 event cap', () => {
   const base = progression(2);
@@ -25,9 +25,19 @@ test('Arrange actions preserve selection parity and enforce 64 event cap', () =>
   assert.equal(full.progression.events.length, 64);
 });
 
+test('duplicating a chord event copies the chord instead of sharing it', () => {
+  const base = progression(1);
+  base.events[0]!.source = { type: 'chord', chord: fixed([60, 64, 67]) };
+  const duplicated = applyHarmonyOverviewAction(base, 0, 'duplicate').progression;
+  const [first, copy] = duplicated.events.map((event) => event.source);
+  assert.deepEqual(first, copy);
+  assert.notEqual((first as { chord: unknown }).chord, (copy as { chord: unknown }).chord);
+});
+
 test('rows are authored event projections and virtualization keeps stable index offsets', () => {
-  const rows = overviewRows(progression(30), [slot(0, [60, 64, 67])]);
+  const rows = overviewRows(progression(30), key);
   assert.equal(rows.length, 30);
+  assert.equal(rows[0]?.label, 'Auto');
   const window = virtualizeOverviewRows(rows, 760, 300, 76, 2);
   assert.ok(window.start > 0);
   assert.equal(window.offsetTop, window.start * 76);
@@ -35,36 +45,24 @@ test('rows are authored event projections and virtualization keeps stable index 
   assert.equal(virtualizeOverviewRows(rows.slice(0, 24), 0, 300).rows.length, 24);
 });
 
-test('Make Unique copies chord identity into first empty slot without changing source', () => {
-  const slots = [slot(0, [60, 64, 67]), slot(1, null), slot(2, null)];
-  const result = makeUniqueHarmonySlot(slots, 0);
-  assert.equal(result.ok, true);
-  assert.equal(result.slotId, 1);
-  assert.deepEqual(result.slots[0]?.chord?.exactMidiNotes, [60, 64, 67]);
-  assert.deepEqual(result.slots[1]?.chord?.exactMidiNotes, [60, 64, 67]);
-  assert.equal(makeUniqueHarmonySlot([slot(0, [60]), { ...slot(1, null), locked: true }], 0).ok, false);
-});
-
-test('duration and exact-note edits are pure and preserve unrelated events/slots', () => {
+test('duration edits are pure and a chord event can be set back to Auto', () => {
   const base = progression(2);
   const next = updateHarmonyOverviewDuration(base, 1, 'phrase', 4);
   assert.equal(next.events[1]?.duration.unit, 'phrase');
   assert.equal(base.events[1]?.duration.unit, 'bar');
-  const slots = [slot(0, [60, 64]), slot(1, null)];
-  const toggled = toggleHarmonyOverviewNote(slots, 0, 67);
-  assert.deepEqual(toggled[0]?.chord?.exactMidiNotes, [60, 64, 67]);
-  assert.deepEqual(toggleHarmonyOverviewNote(toggled, 0, 60)[0]?.chord?.exactMidiNotes, [64, 67]);
-  assert.deepEqual(slots[0]?.chord?.exactMidiNotes, [60, 64]);
+  const withChord: HarmonyProgression = { ...base, events: [{ ...base.events[0]!, source: { type: 'chord', chord: fixed([60, 64, 67]) } }, base.events[1]!] };
+  assert.equal(clearHarmonyOverviewChord(withChord, 0).events[0]?.source.type, 'auto');
+  assert.equal(withChord.events[0]?.source.type, 'chord');
 });
 
-test('row-local source changes preserve other events and voice-leading summarizes adjacent chords', () => {
+test('chord rows are named and voice-leading summarizes adjacent chords', () => {
   const base = progression(2);
-  const first = updateHarmonyOverviewSource(base, 0, 0);
-  const next = updateHarmonyOverviewSource(first, 1, 1);
-  const rows = overviewRows(next, [slot(0, [60, 64, 67, 71]), slot(1, [57, 60, 64, 67])]);
-  assert.deepEqual(rows[0]?.source, { type: 'slot', slotId: 0 });
-  assert.deepEqual(rows[1]?.source, { type: 'slot', slotId: 1 });
-  assert.equal(base.events[0]?.source.type, 'auto');
+  const withChords: HarmonyProgression = { ...base, events: [
+    { ...base.events[0]!, source: { type: 'chord', chord: fixed([60, 64, 67, 71]) } },
+    { ...base.events[1]!, source: { type: 'chord', chord: fixed([57, 60, 64, 67]) } },
+  ] };
+  const rows = overviewRows(withChords, key);
+  assert.equal(rows[0]?.label, 'C4 E4 G4 B4');
   assert.equal(rows[1]?.relation?.commonTones, 3);
   assert.equal(rows[1]?.relation?.bassDelta, -3);
   assert.match(rows[1]?.relation?.summary ?? '', /3 common/);
@@ -72,32 +70,11 @@ test('row-local source changes preserve other events and voice-leading summarize
 });
 
 test('virtualized focus restores by stable event id after a row leaves and re-enters', () => {
-  const rows = overviewRows(progression(30), [slot(0, [60])]);
+  const rows = overviewRows(progression(30), key);
   assert.equal(overviewFocusTarget(rows, rows[27]!.id, 0), rows[27]!.id);
   const visible = virtualizeOverviewRows(rows, 0, 200, 76, 1);
   assert.equal(visible.rows.some((row) => row.id === rows[27]!.id), false);
   const reentered = virtualizeOverviewRows(rows, 27 * 76, 200, 76, 1);
   assert.equal(reentered.rows.some((row) => row.id === rows[27]!.id), true);
   assert.equal(overviewFocusTarget(rows, rows[27]!.id, 0), rows[27]!.id);
-});
-
-test('Manage Pool Seq reference patches preserve unrelated Product Play fields and lane identity', () => {
-  const configs = [0, 1, 2, 3].map((lane) => ({
-    ...defaultProductPlayConfig(),
-    enabled: lane % 2 === 0,
-    chord: {
-      ...defaultProductPlayConfig().chord,
-      steps: defaultProductPlayConfig().chord.steps.map((step, index) => ({ ...step, slotId: index === 0 ? 0 : step.slotId })),
-    },
-  }));
-  const choices = productPlayConfigsToHarmonySeqChoices(configs).map((lane) => ({
-    ...lane,
-    steps: lane.steps.map((step, index) => index === 0 ? { ...step, slotId: 1 } : step),
-  }));
-  const next = applyHarmonySeqChoiceReferences(configs, choices);
-  assert.equal(next.every((config) => config.chord.steps[0]?.slotId === 1), true);
-  assert.equal(next.every((config, lane) => config.enabled === (lane % 2 === 0)), true);
-  assert.equal(next.every((config, lane) => config.arp === configs[lane]?.arp), true);
-  const unchanged = applyHarmonySeqChoiceReferences(next, productPlayConfigsToHarmonySeqChoices(next));
-  assert.equal(unchanged.every((config, lane) => config === next[lane]), true);
 });

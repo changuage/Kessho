@@ -3,6 +3,7 @@ import type React from 'react';
 import type { SliderState } from '../state';
 import type { HarmonyProjection, HarmonyLiveLayer } from '../../audio/harmony/harmonyProjection';
 import { analyzePlayingAndPreview, type TonalContextDisplay } from '../../audio/harmony/tonalContextAnalysis';
+import type { Chord } from '../../audio/harmony/chord';
 import type { HarmonyEvidenceEvent } from '../../audio/harmony/harmonyEvidence';
 import { DEFAULT_HARMONY_SCALE_INTERVALS, HARMONY_SCALE_INTERVALS } from '../../audio/harmony/harmonyScaleIntervals';
 import {
@@ -21,8 +22,7 @@ import {
 const VIEW_STORAGE_KEY = 'kessho.harmony.workspace.view';
 const HARMONY_KEYS = [
   'rootNote', 'scaleMode', 'manualScale', 'tension', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection', 'cofDriftRange', 'cofCurrentStep',
-  'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB',
-  'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB',
+  'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB', 'harmonyPalette',
   'synthPlayConfigs',
   'manualHarmonyControl',
 ] as const;
@@ -32,40 +32,31 @@ function notesFromUnknown(value: unknown): number[] {
   return value.filter((note): note is number => typeof note === 'number' && Number.isFinite(note)).slice(0, 8).map((note) => Math.round(note));
 }
 
-function eventFromSlot(slot: HarmonyProjection['slots'][number], kind: HarmonyEvidenceEvent['kind'], timestampMs: number, engineRootPitchClass: number, scaleId: number): HarmonyEvidenceEvent | null {
-  const chord = slot.chord;
-  if (!chord) return null;
-  const notes = notesFromUnknown(chord.exactMidiNotes);
+function eventFromChord(chord: Chord, timestampMs: number, engineRootPitchClass: number, scaleId: number): HarmonyEvidenceEvent | null {
+  const notes = chord.behavior === 'fixed' ? notesFromUnknown(chord.notes.map((note) => note.midi)) : [];
   const intervals = HARMONY_SCALE_INTERVALS[Math.round(scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
-  const rootPitchClass = chord.intent?.rootMode === 'degree'
-    ? (engineRootPitchClass + (intervals[((chord.intent.degree % intervals.length) + intervals.length) % intervals.length] ?? 0)) % 12
-    : chord.intent?.rootNote;
+  const octave = Math.floor(chord.degree / intervals.length);
+  const rootPitchClass = chord.behavior === 'follow'
+    ? (engineRootPitchClass + (intervals[chord.degree - octave * intervals.length] ?? 0)) % 12
+    : undefined;
   if (notes.length === 0 && rootPitchClass === undefined) return null;
-  return { kind, scope: 'playing', ...(notes.length > 0 ? { notes } : {}), ...(rootPitchClass !== undefined ? { rootPitchClass } : {}), confirmed: chord.intentSource === 'confirmed', audible: true, timestampMs };
+  return { kind: 'progression', scope: 'playing', ...(notes.length > 0 ? { notes } : {}), ...(rootPitchClass !== undefined ? { rootPitchClass } : {}), confirmed: true, audible: true, timestampMs };
 }
 
 function eventFromLiveLayer(
   layer: HarmonyLiveLayer | null | undefined,
   timestampMs: number,
-  engineRootPitchClass: number,
-  scaleId: number,
 ): HarmonyEvidenceEvent | null {
-  if (!layer) return null;
-  const draft = layer.draft ?? null;
-  const frame = layer.frame;
-  const notes = notesFromUnknown(draft?.exactMidiNotes ?? frame?.currentNotePool);
-  const intent = draft?.intent ?? null;
-  const intervals = HARMONY_SCALE_INTERVALS[Math.round(scaleId)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
-  const rootPitchClass = intent?.rootMode === 'degree' && typeof intent.degree === 'number'
-    ? (engineRootPitchClass + (intervals[((Math.round(intent.degree) % intervals.length) + intervals.length) % intervals.length] ?? 0)) % 12
-    : typeof intent?.rootNote === 'number' ? intent.rootNote : frame ? frame.rootMidi % 12 : undefined;
-  if (notes.length === 0 && rootPitchClass === undefined) return null;
-  return { kind: 'livePlay', scope: 'preview', ...(notes.length > 0 ? { notes } : {}), ...(rootPitchClass !== undefined ? { rootPitchClass } : {}), audible: true, timestampMs };
+  const frame = layer?.frame;
+  if (!frame) return null;
+  const notes = notesFromUnknown(frame.currentNotePool);
+  if (notes.length === 0) return null;
+  return { kind: 'livePlay', scope: 'preview', notes, rootPitchClass: frame.rootMidi % 12, audible: true, timestampMs };
 }
 
 /**
  * Read-only workspace bridge. It derives advisory Playing/Preview labels from
- * canonical progression + authored slots + a weak baseline. No state or Engine
+ * canonical progression chords + a weak baseline. No state or Engine
  * mutation occurs, and Seq trigger payloads can be layered in separately via
  * harmonyEvidenceFromTriggerObservations when Product exposes them.
  */
@@ -73,14 +64,8 @@ export function deriveHarmonyWorkspaceTonalContext(projection: HarmonyProjection
   const playingEvidence: HarmonyEvidenceEvent[] = [];
   const progression = projection.progression;
   for (let index = 0; index < progression.length && index < 64; index += 1) {
-    const event = progression[index]!;
-    const slot = event.slotId === null ? null : projection.slots.find((candidate) => candidate.id === event.slotId) ?? null;
-    const slotEvent = slot ? eventFromSlot(slot, 'progression', nowMs - (progression.length - index) * 250, projection.engine.effectiveRootNote, projection.engine.scaleId) : null;
-    if (slotEvent) playingEvidence.push(slotEvent);
-  }
-  for (const slot of projection.slots.slice(0, 8)) {
-    if (!slot.chord || (!slot.locked && slot.chord.intentSource !== 'confirmed')) continue;
-    const event = eventFromSlot(slot, 'slot', nowMs - 100, projection.engine.effectiveRootNote, projection.engine.scaleId);
+    const chord = progression[index]!.chord;
+    const event = chord ? eventFromChord(chord, nowMs - (progression.length - index) * 250, projection.engine.effectiveRootNote, projection.engine.scaleId) : null;
     if (event) playingEvidence.push(event);
   }
   if (isRunning) {
@@ -91,7 +76,7 @@ export function deriveHarmonyWorkspaceTonalContext(projection: HarmonyProjection
   }
   const baselineNotes = projection.underlyingFrame.currentNotePool.slice(0, 8);
   playingEvidence.push({ kind: 'baseline', scope: 'playing', notes: baselineNotes, rootPitchClass: projection.engine.effectiveRootNote, strength: 1, audible: true, timestampMs: nowMs });
-  const previewEvent = eventFromLiveLayer(projection.liveLayer, nowMs, projection.engine.effectiveRootNote, projection.engine.scaleId);
+  const previewEvent = eventFromLiveLayer(projection.liveLayer, nowMs);
   return analyzePlayingAndPreview({
     engine: { rootPitchClass: projection.engine.effectiveRootNote, scaleId: projection.engine.scaleId, scaleName: projection.engine.scaleName },
     playingEvidence,
