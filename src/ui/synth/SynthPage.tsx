@@ -1,4 +1,5 @@
 import { cycleSequencerRatchet } from '../../audio/seqEvolveCore';
+import { placeChordFromPalette, removeChordFromPalette, saveChordToPalette } from '../../audio/harmony/chordPalette';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type SerializedStepOverrides, type SliderMode, type SliderState } from '../state';
 import { useEuclideanSequencer, type EvolveConfig, type SequencerViewMode, type StepOverrides, type SubLaneKind, type SubLaneState, type PitchSettings } from '../sequencer/useEuclideanSequencer';
@@ -108,6 +109,7 @@ import {
   withNotesCellArticulation,
   withNotesCellChord,
   withNotesCellIntervals,
+  withNotesCellPlacedChord,
   withNotesCellKind,
 } from '../sequencer/notesCellEdits';
 import {
@@ -4797,6 +4799,7 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
   );
   const primaryNotesIndex = notesSelection.length > 0 ? notesSelection[notesSelection.length - 1]! : null;
   const primaryNotesCell = primaryNotesIndex == null ? null : shownNotesCells[primaryNotesIndex] ?? null;
+  const harmonyPalette = Array.isArray(state.harmonyPalette) ? state.harmonyPalette : [];
   const notesUndoKey = `${seq.activeTab}:${selectedVariationId}`;
   const canUndoNotes = (notesUndoRef.current.get(notesUndoKey)?.length ?? 0) > 0;
   const notesCellLabels = useMemo(
@@ -9364,6 +9367,13 @@ const SynthPage: React.FC<SynthPageProps> = (props) => {
                     if (clip) editSelectedNotesCells(() => cloneNotesCell(clip));
                   }}
                   onUndo={undoNotesCells}
+                  palette={harmonyPalette}
+                  onSaveChord={(chord) => onStateChange?.((current) => ({ ...current, harmonyPalette: saveChordToPalette(current.harmonyPalette ?? [], chord).palette }))}
+                  onPlacePalette={(index) => {
+                    if (!harmonyPalette[index]) return;
+                    editSelectedNotesCells((cell, variation) => withNotesCellPlacedChord(cell, placeChordFromPalette(harmonyPalette, index)!, notesCellContext(variation)));
+                  }}
+                  onRemovePalette={(index) => onStateChange?.((current) => ({ ...current, harmonyPalette: removeChordFromPalette(current.harmonyPalette ?? [], index) }))}
                   arpEditor={primaryNotesCell ? (
                     <div className="seq-variation-arp-editor">
                       <ArpContourEditor

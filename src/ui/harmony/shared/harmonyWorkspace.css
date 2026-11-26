@@ -395,3 +395,23 @@
     left: 0;
   }
 }
+
+.harmony-voicing {
+  display: grid;
+  gap: var(--k-sp-4);
+  min-width: 0;
+  padding-top: var(--k-sp-4);
+  border-top: 1px solid var(--k-border, rgba(247, 250, 252, .12));
+}
+
+.harmony-voicing-head {
+  display: flex;
+  align-items: center;
+  gap: var(--k-sp-4);
+  font-size: var(--k-fs-3);
+}
+
+.harmony-voicing-head strong {
+  font-weight: var(--k-fw-semi);
+  color: var(--k-text);
+}

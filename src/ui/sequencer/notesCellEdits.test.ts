@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultProductArpConfig } from '../../audio/productArpeggiator';
+import { placeChordFromPalette } from '../../audio/harmony/chordPalette';
 import { createFixedChord } from '../../audio/harmony/chord';
 import { createRestNotesCell, notesCellNotes, type NotesCell } from './synthSequenceVariations';
 import {
@@ -9,6 +10,7 @@ import {
   pushNotesUndo,
   withNotesCellArticulation,
   withNotesCellKind,
+  withNotesCellPlacedChord,
 } from './notesCellEdits';
 
 const context = { root: 60, stepBeats: 0.25 };
@@ -54,4 +56,17 @@ test('the undo stack keeps the latest 64 entries and ignores a repeated push of 
   assert.equal(stack.length, NOTES_UNDO_DEPTH);
   assert.equal(stack[0], arrays[10]);
   assert.equal(pushNotesUndo(stack, arrays[arrays.length - 1]!), stack);
+});
+
+test('placing a Palette chord into several cells gives each cell its own copy', () => {
+  const palette = [createFixedChord([{ midi: 60 }, { midi: 64 }])];
+  const cells: NotesCell[] = [createRestNotesCell(), { kind: 'chord', chord: createFixedChord([{ midi: 50 }]), gateBeats: 1, articulation: 'chord' }];
+  const placed = cells.map((cell) => withNotesCellPlacedChord(cell, placeChordFromPalette(palette, 0)!, context));
+  assert.deepEqual(placed.map((cell) => cell.kind), ['chord', 'chord']);
+  assert.equal(placed[0]!.gateBeats, 0.25, 'a rest takes the step length');
+  assert.equal(placed[1]!.gateBeats, 1, 'a sounding cell keeps its length');
+  assert.deepEqual(placed[0]!.chord, palette[0]);
+  placed[0]!.chord!.notes[0]!.midi = 99;
+  assert.equal(placed[1]!.chord!.notes[0]!.midi, 60);
+  assert.equal(palette[0]!.notes[0]!.midi, 60);
 });

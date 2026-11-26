@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeChord } from '../../audio/harmony/chord';
+import { chordName, createFollowChord, normalizeChord } from '../../audio/harmony/chord';
 import type { HarmonyProgression } from '../../audio/harmony/harmonyTypes';
-import { analyzeHarmonyVoiceLeading, applyHarmonyOverviewAction, clearHarmonyOverviewChord, overviewFocusTarget, overviewRows, updateHarmonyOverviewDuration, virtualizeOverviewRows } from './harmonyOverviewModel';
+import { analyzeHarmonyVoiceLeading, applyHarmonyOverviewAction, setHarmonyOverviewChord, setHarmonyOverviewSource, overviewFocusTarget, overviewRows, updateHarmonyOverviewDuration, virtualizeOverviewRows } from './harmonyOverviewModel';
 
+const chordNameOf = (chord: ReturnType<typeof createFollowChord>) => chordName(chord, key.rootPitchClass, key.scaleId);
 const key = { rootPitchClass: 0, scaleId: 1 };
 const progression = (count: number): HarmonyProgression => ({ version: 2, enabled: true, currentEventIndex: 0, events: Array.from({ length: count }, (_, id) => ({ id: `e-${id}`, source: { type: 'auto' as const }, duration: { unit: 'bar' as const, value: 1 as const } })) });
 const fixed = (notes: number[]) => normalizeChord({ behavior: 'fixed', notes: notes.map((midi) => ({ midi })) })!;
@@ -51,7 +52,7 @@ test('duration edits are pure and a chord event can be set back to Auto', () => 
   assert.equal(next.events[1]?.duration.unit, 'phrase');
   assert.equal(base.events[1]?.duration.unit, 'bar');
   const withChord: HarmonyProgression = { ...base, events: [{ ...base.events[0]!, source: { type: 'chord', chord: fixed([60, 64, 67]) } }, base.events[1]!] };
-  assert.equal(clearHarmonyOverviewChord(withChord, 0).events[0]?.source.type, 'auto');
+  assert.equal(setHarmonyOverviewSource(withChord, 0, 'auto').events[0]?.source.type, 'auto');
   assert.equal(withChord.events[0]?.source.type, 'chord');
 });
 
@@ -77,4 +78,19 @@ test('virtualized focus restores by stable event id after a row leaves and re-en
   const reentered = virtualizeOverviewRows(rows, 27 * 76, 200, 76, 1);
   assert.equal(reentered.rows.some((row) => row.id === rows[27]!.id), true);
   assert.equal(overviewFocusTarget(rows, rows[27]!.id, 0), rows[27]!.id);
+});
+
+test('switching an event to Chord starts from a Follow chord and keeps an existing chord', () => {
+  const base = progression(2);
+  const withFollow = setHarmonyOverviewSource(base, 1, 'chord', 4);
+  const source = withFollow.events[1]!.source;
+  assert.equal(source.type, 'chord');
+  assert.deepEqual((source as { chord: unknown }).chord, createFollowChord(4));
+  assert.equal(withFollow.events[0]!.source.type, 'auto');
+  assert.equal(base.events[1]!.source.type, 'auto');
+  assert.equal(setHarmonyOverviewSource(withFollow, 1, 'chord', 0), withFollow, 'repeated Chord keeps the authored chord');
+  assert.deepEqual(setHarmonyOverviewSource(base, 0, 'chord').events[0]!.source, { type: 'chord', chord: createFollowChord(0) }, 'degree 0 by default');
+  const edited = setHarmonyOverviewChord(withFollow, 1, createFollowChord(2));
+  assert.equal(overviewRows(edited, key)[1]?.label, chordNameOf(createFollowChord(2)));
+  assert.equal(overviewRows(withFollow, key)[0]?.label, 'Auto');
 });

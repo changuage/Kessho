@@ -1365,6 +1365,9 @@ export function HarmonyEnginePanel({ state, harmonyProjection, onStateChange, on
         scaleId={harmonyContext.scaleId}
         selectedIndex={selectedStepId}
         readOnly={!canWriteState || liveTakeoverLocked}
+        palette={Array.isArray(state.harmonyPalette) ? state.harmonyPalette : []}
+        onPaletteChange={canWriteState ? (palette) => applyPatch({ harmonyPalette: palette }) : undefined}
+        fallbackDegree={resolvedFrame.degree}
         onProgressionChange={commitProgression}
         onPlayStart={playOverviewNotes}
         onPlayRelease={releaseHarmonyLayer}

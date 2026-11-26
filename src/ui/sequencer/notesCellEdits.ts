@@ -49,6 +49,11 @@ export function withNotesCellChord(cell: NotesCell, chord: NonNullable<NotesCell
   return { ...cell, kind: 'chord', chord };
 }
 
+/** Place a Palette chord into a cell of any kind: it becomes a Chord cell holding `chord` (already a copy). */
+export function withNotesCellPlacedChord(cell: NotesCell, chord: NonNullable<NotesCell['chord']>, context: NotesCellKindContext): NotesCell {
+  return withNotesCellChord(withNotesCellKind(cell, 'chord', context), chord);
+}
+
 /** Replace the intervals of a Harmony cell; an empty list keeps the harmony pitch itself. */
 export function withNotesCellIntervals(cell: NotesCell, intervals: ChordNote[]): NotesCell {
   return { ...cell, kind: 'harmony', intervals: intervals.length > 0 ? intervals : [{ midi: 0, velocity: 1 }] };

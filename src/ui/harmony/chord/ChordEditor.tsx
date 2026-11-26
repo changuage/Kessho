@@ -26,6 +26,8 @@ export interface ChordEditorProps {
   scaleId: number;
   /** Adds the chord to the Palette; the button shows only when given. */
   onSave?: (chord: Chord) => void;
+  /** Why Save is unavailable (Palette full, chord already saved); disables the button. */
+  saveBlockedReason?: string | null;
   /** Cap on Fixed notes: 8 for an authored chord, 32 inside a sequencer cell. */
   maxNotes?: number;
   disabled?: boolean;
@@ -100,6 +102,7 @@ export const ChordEditor: React.FC<ChordEditorProps> = ({
   keyRoot,
   scaleId,
   onSave,
+  saveBlockedReason = null,
   maxNotes = CHORD_MAX_NOTES,
   disabled = false,
 }) => {
@@ -201,7 +204,7 @@ export const ChordEditor: React.FC<ChordEditorProps> = ({
           onChange={setBehavior}
           options={[{ id: 'follow', label: 'Follow' }, { id: 'fixed', label: 'Fixed' }]}
         />
-        {onSave ? <button type="button" className="chord-editor-action" disabled={disabled} onClick={() => onSave(value)}>Save</button> : null}
+        {onSave ? <button type="button" className="chord-editor-action" disabled={disabled || Boolean(saveBlockedReason)} title={saveBlockedReason ?? undefined} aria-description={saveBlockedReason ?? undefined} onClick={() => onSave(value)}>Save</button> : null}
       </header>
 
       {fixed ? null : (

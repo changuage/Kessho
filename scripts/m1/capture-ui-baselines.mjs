@@ -12,6 +12,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 const root = process.cwd();
 const PORT = Number(process.env.KESSHO_PORT || 4198);
 const outDir = resolve(root, process.env.KESSHO_SCREENSHOT_DIR || 'docs/ui/harmony-handoff/m1-baselines');
+// KESSHO_PROGRESSION_EDITOR=1 also edits a progression event in Global's Harmony Overview (Auto to Chord,
+// Save to the Palette) and captures the card, then the Synth Notes cell editor with the Palette row.
+const captureProgressionEditor = process.env.KESSHO_PROGRESSION_EDITOR === '1';
 const captureNotesEditor = process.env.KESSHO_NOTES_EDITOR === '1';
 const VIEWPORTS = [
   { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
@@ -111,6 +114,36 @@ async function captureNotesEditorStates(page, vp) {
   await shoot(page, vp, 'synth-trigger-lane-labels', page.locator('.seq-trigger-always').first());
 }
 
+async function captureProgressionEditorStates(page, vp) {
+  const overview = page.getByRole('tab', { name: 'Overview', exact: true }).first();
+  await overview.scrollIntoViewIfNeeded();
+  await overview.click();
+  await delay(400);
+  const surface = page.locator('.harmony-overview-surface').first();
+  await surface.waitFor({ timeout: 10000 });
+  await page.getByRole('button', { name: 'Add event' }).click();
+  await page.getByRole('button', { name: /^Select E2,/ }).click();
+  await page.getByRole('combobox', { name: 'E2 chord source' }).selectOption('chord');
+  await delay(300);
+  await page.getByRole('group', { name: 'Degree' }).getByRole('button').nth(4).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: /^Palette chord/ }).first().click();
+  await delay(300);
+  await surface.scrollIntoViewIfNeeded();
+  await shoot(page, vp, 'global-harmony-progression-editor', surface);
+  await shoot(page, vp, 'global-harmony-card-progression-editor');
+}
+
+async function captureNotesPalette(page, vp) {
+  const lane = page.locator('[data-testid="notes-lane"]').first();
+  await lane.scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: /^Notes cell 2,/ }).click();
+  await page.getByRole('group', { name: 'Cell kind' }).getByRole('button', { name: 'Chord', exact: true }).click();
+  await page.getByRole('button', { name: /^Palette chord/ }).first().click();
+  await delay(300);
+  await shoot(page, vp, 'synth-notes-editor-palette', lane);
+}
+
 async function settle(page) {
   await page.waitForFunction(() => !document.body.innerText.includes('Loading'), null, { timeout: 15000 }).catch(() => {});
   await delay(1200);
@@ -144,12 +177,18 @@ try {
             await settle(page);
             viewName = view.toLowerCase();
           }
+          if (captureProgressionEditor && def.id === 'global') {
+            try { await captureProgressionEditorStates(page, vp); } catch (e) { failures.push(`Progression editor @ ${vp.width}: ${e.message}`); }
+          }
           await page.evaluate(() => window.scrollTo(0, 0));
           const file = `${def.id}-${viewName}-${vp.width}.jpg`;
           await page.screenshot({ path: join(outDir, file), type: 'jpeg', quality: 70, fullPage: true });
           const { size } = await stat(join(outDir, file));
           captured.push({ file, page: def.label, view: viewName, width: vp.width, size });
           console.log(`captured ${file} (${(size / 1024).toFixed(0)} KB)`);
+          if (captureProgressionEditor && def.id === 'synth' && view === 'Detail') {
+            try { await captureNotesPalette(page, vp); } catch (e) { failures.push(`Notes Palette @ ${vp.width}: ${e.message}`); }
+          }
           if (captureNotesEditor && def.id === 'synth' && view === 'Detail') {
             try { await captureNotesEditorStates(page, vp); } catch (e) { failures.push(`Notes editor @ ${vp.width}: ${e.message}`); }
           }

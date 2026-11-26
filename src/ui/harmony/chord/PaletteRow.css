@@ -1,0 +1,70 @@
+.palette-row {
+  display: grid;
+  gap: var(--k-sp-3);
+  min-width: 0;
+}
+
+.palette-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--k-sp-4);
+  font-size: var(--k-fs-3);
+}
+
+.palette-row-head strong {
+  font-weight: var(--k-fw-semi);
+  color: var(--k-text);
+}
+
+.palette-row-count,
+.palette-row-empty {
+  color: var(--k-text-soft);
+  font-size: var(--k-fs-3);
+}
+
+.palette-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-sp-2);
+}
+
+.palette-chip {
+  min-height: var(--k-hit-min);
+  padding: 0 var(--k-sp-4);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-control);
+  color: var(--k-text-soft);
+  font: inherit;
+  font-size: var(--k-fs-4);
+  font-weight: var(--k-fw-medium);
+  cursor: pointer;
+}
+
+.palette-chip:hover:not(:disabled) {
+  background: var(--k-control-hover);
+  color: var(--k-text);
+}
+
+.palette-chip[aria-pressed="true"] {
+  border-color: var(--k-on-border);
+  background: var(--k-on-bg);
+  color: var(--k-on-text);
+  font-weight: var(--k-fw-bold);
+}
+
+.palette-chip:focus-visible {
+  outline: 2px solid var(--k-ring-color);
+  outline-offset: 1px;
+}
+
+.palette-chip:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.palette-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-sp-3);
+}

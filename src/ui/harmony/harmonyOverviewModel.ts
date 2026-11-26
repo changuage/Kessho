@@ -1,5 +1,5 @@
 import { HARMONY_PROGRESSION_CAPACITY, reduceHarmonyProgression } from '../../audio/CoreProductHarmonyControl';
-import { chordName } from '../../audio/harmony/chord';
+import { chordName, createFollowChord, previewChordNotes, type Chord } from '../../audio/harmony/chord';
 import type { HarmonyProgression, HarmonyProgressionEvent } from '../../audio/harmony/harmonyTypes';
 
 export interface HarmonyOverviewRow {
@@ -61,7 +61,7 @@ export function analyzeHarmonyVoiceLeading(previous: readonly number[], current:
     bassDelta,
     topDelta,
     totalMovement,
-    summary: `${commonTones} common · ${direction} · move ${totalMovement}`,
+    summary: `${commonTones} common, ${direction}, move ${totalMovement}`,
   };
 }
 
@@ -69,7 +69,7 @@ export function overviewRows(progression: HarmonyProgression, key: { rootPitchCl
   let previousNotes: readonly number[] = [];
   return progression.events.map((event, index) => {
     const chord = event.source.type === 'chord' ? event.source.chord : null;
-    const exactMidiNotes = chord ? chord.notes.map((note) => Math.round(note.midi)) : [];
+    const exactMidiNotes = chord ? previewChordNotes(chord, key.rootPitchClass, key.scaleId).map(Math.round) : [];
     const relation = index === 0 ? null : analyzeHarmonyVoiceLeading(previousNotes, exactMidiNotes);
     previousNotes = exactMidiNotes;
     return { id: event.id, index, source: event.source, duration: event.duration, label: chord ? chordName(chord, key.rootPitchClass, key.scaleId) : 'Auto', exactMidiNotes, relation };
@@ -114,10 +114,27 @@ export function updateHarmonyOverviewDuration(progression: HarmonyProgression, i
   return { ...progression, events: progression.events.map((event, eventIndex) => eventIndex === index ? { ...event, duration: { unit, value } } : event) };
 }
 
-/** Until the chord editor exists, an event's source can only be set back to Auto. */
-export function clearHarmonyOverviewChord(progression: HarmonyProgression, index: number): HarmonyProgression {
+/** Switch one event between Auto and Chord. Auto to Chord starts from a Follow
+ * chord on `fallbackDegree` (the event's current engine degree); an event that
+ * is already a Chord keeps it. */
+export function setHarmonyOverviewSource(progression: HarmonyProgression, index: number, type: 'auto' | 'chord', fallbackDegree = 0): HarmonyProgression {
+  const current = progression.events[index]?.source.type;
+  if (current === undefined || current === type) return progression;
   return {
     ...progression,
-    events: progression.events.map((event, eventIndex) => eventIndex === index ? { ...event, source: { type: 'auto' as const } } : event),
+    events: progression.events.map((event, eventIndex) => {
+      if (eventIndex !== index) return event;
+      if (type === 'auto') return { ...event, source: { type: 'auto' as const } };
+      if (event.source.type === 'chord') return event;
+      return { ...event, source: { type: 'chord' as const, chord: createFollowChord(Math.round(fallbackDegree)) } };
+    }),
+  };
+}
+
+/** Set one event's chord (an edit, or a copy placed from the Palette). */
+export function setHarmonyOverviewChord(progression: HarmonyProgression, index: number, chord: Chord): HarmonyProgression {
+  return {
+    ...progression,
+    events: progression.events.map((event, eventIndex) => eventIndex === index ? { ...event, source: { type: 'chord' as const, chord } } : event),
   };
 }

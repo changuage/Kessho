@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { Chord, ChordNote } from '../../audio/harmony/chord';
+import { chordPaletteSaveBlock } from '../../audio/harmony/chordPalette';
 import { ChordEditor, ChordSegment } from '../harmony/chord/ChordEditor';
+import PaletteRow from '../harmony/chord/PaletteRow';
 import DragNumber from '../drums/DragNumber';
 import {
   resolveNotesCellArticulation,
@@ -44,6 +46,12 @@ export interface NotesLanePanelProps {
   onCopy: () => void;
   onPlace: () => void;
   onUndo: () => void;
+  /** Saved chords shared with Global's Harmony card. */
+  palette: readonly Chord[];
+  onSaveChord: (chord: Chord) => void;
+  /** Copies a Palette chip into every selected cell, as one undoable edit. */
+  onPlacePalette: (index: number) => void;
+  onRemovePalette: (index: number) => void;
   /** The ARP configuration editor for the shown cell, when it plays as Arp. */
   arpEditor: React.ReactNode;
 }
@@ -105,7 +113,7 @@ const HarmonyIntervals: React.FC<{
  */
 export const NotesLanePanel: React.FC<NotesLanePanelProps> = ({
   lane, cells, selected, hasClipboard, canUndo, keyRoot, scaleId, gateMax, disabled = false,
-  onSelect, onClose, onLaneChange, onKind, onArticulation, onChord, onIntervals, onGate, onCopy, onPlace, onUndo, arpEditor,
+  onSelect, onClose, onLaneChange, onKind, onArticulation, onChord, onIntervals, onGate, onCopy, onPlace, onUndo, palette, onSaveChord, onPlacePalette, onRemovePalette, arpEditor,
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const shownIndex = selected.length > 0 ? selected[selected.length - 1]! : null;
@@ -215,7 +223,16 @@ export const NotesLanePanel: React.FC<NotesLanePanelProps> = ({
             options={[{ id: 'rest', label: 'Rest' }, { id: 'harmony', label: 'Harmony' }, { id: 'chord', label: 'Chord' }]}
           />
           {shown.kind === 'chord' && shown.chord ? (
-            <ChordEditor value={shown.chord} onChange={onChord} keyRoot={keyRoot} scaleId={scaleId} maxNotes={32} disabled={disabled} />
+            <ChordEditor
+              value={shown.chord}
+              onChange={onChord}
+              keyRoot={keyRoot}
+              scaleId={scaleId}
+              maxNotes={32}
+              disabled={disabled}
+              onSave={onSaveChord}
+              saveBlockedReason={chordPaletteSaveBlock(palette, shown.chord)}
+            />
           ) : null}
           {shown.kind === 'harmony' ? (
             <HarmonyIntervals intervals={shown.intervals ?? []} disabled={disabled} onChange={onIntervals} />
@@ -248,9 +265,18 @@ export const NotesLanePanel: React.FC<NotesLanePanelProps> = ({
               {effective === 'arp' ? arpEditor : null}
             </>
           )}
+          <PaletteRow
+            palette={palette}
+            keyRoot={keyRoot}
+            scaleId={scaleId}
+            targetLabel={selectionLabel.toLowerCase()}
+            disabled={disabled}
+            onPlace={onPlacePalette}
+            onRemove={onRemovePalette}
+          />
           <div className="notes-editor-actions" role="group" aria-label="Cell actions">
             <button type="button" className="chord-editor-action" disabled={disabled} onClick={onCopy}>Copy</button>
-            <button type="button" className="chord-editor-action" disabled={disabled || !hasClipboard} onClick={onPlace}>Place</button>
+            <button type="button" className="chord-editor-action" disabled={disabled || !hasClipboard} onClick={onPlace}>Paste</button>
             <button type="button" className="chord-editor-action" disabled={disabled || !canUndo} onClick={onUndo}>Undo</button>
           </div>
         </section>
