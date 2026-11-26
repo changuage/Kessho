@@ -96,7 +96,14 @@ The TS variation model moves to cells in T6, so the printer writes what native p
   - Morph, Distance, Slice and Reverse keep the base lane's state.
 - **One variation per print:** the printer writes only the target variation, merges it into the current bank and commits only if the bank revision is unchanged. A take longer than 32 steps at the chosen resolution fails with `capacity` and is kept.
 - **Native playback:** `offset_beats` delays each note by its offset at the current tempo, and `destination_source_id` (when non-zero) sends the note to that source.
-- **Deleted:** the generated-capture-to-Euclid path (`useGeneratedSequenceCapture`, `commitGeneratedCaptureToEuclid`, `generatedCaptureProductCommit` and the helpers only they use), which the app never calls. The fixed-window capture policy and the Random producer taps follow in T6c, once the recorded capture path is the only one.
+- **Deleted:** the generated-capture-to-Euclid path (`useGeneratedSequenceCapture`, `commitGeneratedCaptureToEuclid`, `generatedCaptureProductCommit` and the helpers only they use), which the app never calls. The fixed-window capture policy and the Random producer taps are D7b (T6c).
+
+### D7b · Capture sources and the fixed window (T6c)
+- **Random taps:** the arrangement producers in `ProductArrangementSequencer.cpp` (Random Chords and Random Notes) push their accepted note events into the same native capture ring as Walker and Orbit, with capture modes `RANDOM_CHORDS` = 3 and `RANDOM_NOTES` = 4. Each event keeps its real timestamp, velocity, gate and target source. They are tapped only when the capture config's mode mask selects them. Producer algorithms are unchanged.
+- **App sources:** `RecordedNoteSource` gains `randomChords` and `randomNotes`. When a Random producer is running, the print strip offers it as a source next to the lane's own source.
+- **Two capture policies:**
+  - `fixed`, the default for Print: capture starts at the next bar, runs exactly the chosen length, then finishes and drains by itself, and nothing loops or is swept.
+  - `rolling`, for live replace and overdub recording: the existing behaviour, which keeps the last N beats until Finish.
 
 ### D8 · Persistence: new keys, no chord decoders
 - **New keys:** `harmonyProgression` (and its A/B endpoints) at version 2, whose events are `{ type: 'auto' }` or `{ type: 'chord', chord: Chord }`, plus `harmonyPalette`. In T7, the Notes-lane cells replace `stepMetadata` inside `synthSequenceVariations`, with a format version bump.
