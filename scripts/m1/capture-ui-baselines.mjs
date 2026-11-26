@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // M1 UI screenshot baselines. Usage: node scripts/m1/capture-ui-baselines.mjs
 // Set KESSHO_BASE_URL to use an already running dev server. Audio is never started.
+// KESSHO_SCREENSHOT_DIR overrides the output folder (default: the M1 baselines).
+// KESSHO_NOTES_EDITOR=1 also opens the Synth Detail view's first Notes cell and captures the editor.
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +11,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const root = process.cwd();
 const PORT = Number(process.env.KESSHO_PORT || 4198);
-const outDir = resolve(root, 'docs/ui/harmony-handoff/m1-baselines');
+const outDir = resolve(root, process.env.KESSHO_SCREENSHOT_DIR || 'docs/ui/harmony-handoff/m1-baselines');
+const captureNotesEditor = process.env.KESSHO_NOTES_EDITOR === '1';
 const VIEWPORTS = [
   { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
   { width: 1280, height: 900, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
@@ -81,6 +84,33 @@ async function openPage(browser, baseUrl, vp) {
   return { context, page };
 }
 
+async function shoot(page, vp, name, locator) {
+  const file = `${name}-${vp.width}.jpg`;
+  const options = { path: join(outDir, file), type: 'jpeg', quality: 80 };
+  if (locator) await locator.screenshot(options); else await page.screenshot({ ...options, fullPage: true });
+  console.log(`captured ${file}`);
+  return file;
+}
+
+// Select the first Notes cell and capture the inline editor: a Follow chord, the same
+// chord pinned to Fixed, the lane settings and the trigger lane's cell labels.
+async function captureNotesEditorStates(page, vp) {
+  const lane = page.locator('[data-testid="notes-lane"]').first();
+  await lane.scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: /^Notes cell 1,/ }).click();
+  await page.getByRole('group', { name: 'Cell kind' }).getByRole('button', { name: 'Chord', exact: true }).click();
+  await delay(300);
+  await shoot(page, vp, 'synth-detail-notes-editor-follow');
+  await shoot(page, vp, 'synth-notes-lane-follow', lane);
+  await page.getByRole('group', { name: 'Chord behaviour' }).getByRole('button', { name: 'Fixed', exact: true }).click();
+  await delay(300);
+  await shoot(page, vp, 'synth-notes-lane-fixed', lane);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await delay(300);
+  await shoot(page, vp, 'synth-notes-lane-settings', lane);
+  await shoot(page, vp, 'synth-trigger-lane-labels', page.locator('.seq-trigger-always').first());
+}
+
 async function settle(page) {
   await page.waitForFunction(() => !document.body.innerText.includes('Loading'), null, { timeout: 15000 }).catch(() => {});
   await delay(1200);
@@ -120,6 +150,9 @@ try {
           const { size } = await stat(join(outDir, file));
           captured.push({ file, page: def.label, view: viewName, width: vp.width, size });
           console.log(`captured ${file} (${(size / 1024).toFixed(0)} KB)`);
+          if (captureNotesEditor && def.id === 'synth' && view === 'Detail') {
+            try { await captureNotesEditorStates(page, vp); } catch (e) { failures.push(`Notes editor @ ${vp.width}: ${e.message}`); }
+          }
         }
       } catch (e) {
         failures.push(`${def.label} @ ${vp.width}: ${e.message}`);

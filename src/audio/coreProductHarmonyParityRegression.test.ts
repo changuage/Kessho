@@ -11,10 +11,6 @@ import {
   resolveProductArpPatternDetails,
   type ProductArpHarmonyContext,
 } from './productArpeggiator';
-import {
-  normalizeProductPlayConfig,
-  resolveProductPlayEnginePattern,
-} from './productPlaySequencer';
 import { createRng, getUtcBucket } from './rng';
 import { getScaleNotesInRange, SCALE_FAMILIES, selectScaleFamily } from './scales';
 import { KESSHO_PRODUCT_EVENT_IDS } from './generated/kesshoProductEvents';
@@ -283,64 +279,6 @@ function resolveEnabledArp(config: Record<string, unknown>, harmony: ProductArpH
   return result;
 }
 
-const migratedPlay = normalizeProductPlayConfig({
-  enabled: true,
-  direction: 'down',
-  pulseCount: 5,
-  pulseMask: 0xffff,
-  tonePattern: [0, 2, 1, 3, 4],
-});
-assert.equal(migratedPlay.enabled, true, 'Product Play migration should preserve legacy ARP enabled state');
-assert.equal(migratedPlay.mode, 'arp', 'Product Play migration should load legacy ARP as ARP mode');
-assert.equal(migratedPlay.arp.flow, 'down', 'Product Play migration should preserve legacy ARP flow');
-assert.equal(migratedPlay.arp.length, 5, 'Product Play migration should preserve legacy ARP length');
-
-const disabledDesignedPlay = normalizeProductPlayConfig({
-  enabled: false,
-  mode: 'chord',
-  chord: {
-    length: 12,
-    style: 'strum',
-    steps: Array.from({ length: 16 }, (_, index) => ({ active: index !== 2, slotId: (index + 1) % 8 })),
-  },
-});
-assert.equal(disabledDesignedPlay.enabled, false, 'Product Play should keep disabled state without dropping design');
-assert.equal(disabledDesignedPlay.mode, 'chord', 'Product Play should preserve disabled chord mode');
-assert.equal(disabledDesignedPlay.chord.choiceLength, 12, 'Product Play should preserve disabled chord-choice length');
-assert.equal('active' in (disabledDesignedPlay.chord.steps[2] ?? {}), false, 'Product Play chord choices should not carry active state');
-
-const defaultChordLength8 = normalizeProductPlayConfig({
-  enabled: false,
-  mode: 'chord',
-  chord: { length: 8 },
-});
-assert.equal(defaultChordLength8.chord.steps.length, 16, 'Product Play chord mode should always preserve 16 stored steps');
-assert.equal(defaultChordLength8.chord.steps[0]?.slotId, 0, 'Product Play chord mode should default step 1 to S1');
-assert.equal(defaultChordLength8.chord.steps[7]?.slotId, 7, 'Product Play chord mode should default the final live step to S8');
-assert.equal('active' in (defaultChordLength8.chord.steps[8] ?? {}), false, 'Product Play chord mode should keep stored choices slot-only');
-const defaultChordLength12 = normalizeProductPlayConfig({
-  enabled: false,
-  mode: 'chord',
-  chord: { length: 12 },
-});
-assert.equal(defaultChordLength12.chord.steps[10]?.slotId, 2, 'Product Play chord mode should default newly included choices by slot');
-assert.equal(defaultChordLength12.chord.steps[11]?.slotId, 3, 'Product Play chord mode should default choice 12 by slot');
-const rememberedChordLength10 = normalizeProductPlayConfig({
-  enabled: false,
-  mode: 'chord',
-  chord: {
-    length: 10,
-    steps: Array.from({ length: 16 }, (_, index) => ({ active: index === 10 || index === 11, slotId: index % 8 })),
-  },
-});
-const rememberedChordLength12 = normalizeProductPlayConfig({
-  ...rememberedChordLength10,
-  chord: { ...rememberedChordLength10.chord, length: 12 },
-});
-assert.equal(rememberedChordLength10.chord.steps[10]?.slotId, 2, 'Product Play chord mode should preserve choice 11 above a shorter length');
-assert.equal(rememberedChordLength12.chord.steps[10]?.slotId, 2, 'Product Play chord mode should restore stored choice 11 when length expands');
-assert.equal(rememberedChordLength12.chord.steps[11]?.slotId, 3, 'Product Play chord mode should restore stored choice 12 when length expands');
-
 const legacyArp = normalizeProductArpConfig({
   enabled: true,
   direction: 'up',
@@ -375,29 +313,6 @@ assert.equal(rememberedLength10Details?.length, 10, 'Product arp should only res
 assert.equal(rememberedLength12Details?.[10]?.enabled, true, 'Product arp should restore remembered step 11 when length expands');
 assert.equal(rememberedLength12Details?.[11]?.enabled, true, 'Product arp should restore remembered step 12 when length expands');
 
-const continuousArpPlayConfig = normalizeProductPlayConfig({
-  enabled: true,
-  mode: 'arp',
-  arp: {
-    enabled: true,
-    flow: 'up',
-    rate: 1,
-    length: 4,
-    pulseMask: 0b1111,
-    contour: Array.from({ length: 16 }, () => 0),
-  },
-});
-const continuousArpEnginePattern = resolveProductPlayEnginePattern({
-  config: continuousArpPlayConfig,
-  harmony: productArpTestHarmony([60, 64, 67, 71]),
-  laneIndex: 0,
-  triggerPattern: [true, false, false, false, true, false, false, false],
-});
-assert.deepEqual(
-  continuousArpEnginePattern?.midiPattern,
-  [60, 64, 67, 71],
-  'Product Play ARP should pass the resolved arp pitch lane to Product Core in hit-bound mode',
-);
 const arpOverrideEvents = createCoreProductSynthSequencerStepOverrideEvents({
   playArps: [
     {
@@ -444,19 +359,6 @@ assert.equal(
   18,
   'a lane-scoped ARP commit must not clear or rebuild its sequencer step lane',
 );
-const sequenceBoundArpEnginePattern = resolveProductPlayEnginePattern({
-  config: continuousArpPlayConfig,
-  harmony: productArpTestHarmony([60, 64, 67, 71]),
-  laneIndex: 0,
-  pitchBindingMode: 'sequence',
-  triggerPattern: [true, false, false, false, true, false, false, false],
-});
-assert.deepEqual(
-  sequenceBoundArpEnginePattern?.midiPattern,
-  [60, 64, 67, 71],
-  'sequence-bound Product Play ARP should still pass the compact arp pitch lane to Product Core',
-);
-
 const contourHarmony = productArpTestHarmony([60, 62, 64, 67, 69]);
 assert.deepEqual(
   resolveEnabledArp({

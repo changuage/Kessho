@@ -4,7 +4,6 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createSequencer } from '../../audio/drumSequencer';
 import { registerHooks } from 'node:module';
-import { SeqStepDetailPanel } from './SeqStepDetailPanel';
 
 test('every trigger step has a numbered inspection button that never toggles notes', async () => {
   const hooks = registerHooks({
@@ -41,16 +40,41 @@ test('every trigger step has a numbered inspection button that never toggles not
   assert.equal(toggles, 0);
 });
 
-test('the shared length editor remains visible in every step mode', () => {
-  for (const mode of ['note', 'chord', 'arp'] as const) {
-    const html = renderToStaticMarkup(<SeqStepDetailPanel
-      selectedStep={0} stepCount={8} mode={mode} onModeChange={() => {}}
-      sharedControls={<label>Length<input type="number" defaultValue={2} /></label>}
-      note={<span>Note values</span>} chord={<span>Chord values</span>} arp={<span>Arp span</span>}
-    />);
-    assert.match(html, /Length/);
-    assert.match(html, /value="2"/);
+test('the trigger lane labels the Notes cell each hit plays and selects it', async () => {
+  const hooks = registerHooks({
+    load(url, context, nextLoad) {
+      return url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : nextLoad(url, context);
+    },
+  });
+  const { default: SeqLane } = await import('../drums/SeqLane');
+  hooks.deregister();
+  const sequencer = createSequencer(0);
+  const selected: number[] = [];
+  const labels = Array.from({ length: sequencer.trigger.steps }, (_, step) => step % 2 === 0 ? step / 2 : null);
+  let tree: React.ReactNode;
+  function Probe() {
+    tree = SeqLane({
+      sequencer, lane: 'trigger', color: '#fff', playhead: -1,
+      notesCellLabels: labels, onSelectNotesCell: (cell) => selected.push(cell),
+    });
+    return null;
   }
+  renderToStaticMarkup(<Probe />);
+  const names: string[] = [];
+  function visit(node: React.ReactNode): void {
+    React.Children.forEach(node, (child) => {
+      if (!React.isValidElement(child)) return;
+      if (child.props.className === 'seq-step-notes-cell') {
+        if (!child.props.disabled) { names.push(String(child.props['aria-label'])); child.props.onClick(); }
+      }
+      visit(child.props.children);
+    });
+  }
+  visit(tree);
+  assert.equal(names[0], 'Notes cell 1 plays at step 1');
+  assert.equal(names[1], 'Notes cell 2 plays at step 3');
+  assert.equal(names.length, Math.ceil(sequencer.trigger.steps / 2));
+  assert.deepEqual(selected, Array.from({ length: names.length }, (_, index) => index));
 });
 
 test('printed nudge follows its own step or sounded-hit phase and hides inactive variation cursors', async () => {

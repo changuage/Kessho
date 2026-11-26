@@ -1,0 +1,207 @@
+.notes-lane {
+  min-width: 0;
+  margin: var(--k-sp-4) 0;
+}
+
+.notes-lane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-sp-4);
+  padding: var(--k-sp-3) 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.notes-lane-title {
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
+}
+
+.notes-lane-body {
+  display: grid;
+  gap: var(--k-sp-3);
+  padding: var(--k-sp-4) 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.notes-setting-label {
+  color: var(--k-text-muted);
+  font-size: var(--k-fs-4);
+}
+
+.notes-lane-settings-btn,
+.notes-lane-direction {
+  min-height: var(--k-hit-min);
+}
+
+.notes-lane-settings-btn {
+  padding: 0 var(--k-sp-5);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-control);
+  color: var(--k-text-soft);
+  font: inherit;
+  font-size: var(--k-fs-4);
+  cursor: pointer;
+}
+
+.notes-lane-settings-btn[aria-expanded="true"] {
+  border-color: var(--k-on-border);
+  background: var(--k-on-bg);
+  color: var(--k-on-text);
+  font-weight: var(--k-fw-bold);
+}
+
+.notes-lane-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-sp-4) var(--k-sp-5);
+}
+
+.notes-lane-direction {
+  width: var(--k-hit-min);
+}
+
+.notes-lane-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: var(--k-sp-2);
+}
+
+.notes-cell {
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  padding: var(--k-sp-1);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-control);
+  color: var(--k-text-soft);
+  font: inherit;
+  font-size: var(--k-fs-3);
+  cursor: pointer;
+}
+
+.notes-cell:hover:not(:disabled) {
+  background: var(--k-control-hover);
+  color: var(--k-text);
+}
+
+.notes-cell[aria-pressed="true"] {
+  border-color: var(--k-on-border);
+  background: var(--k-on-bg);
+  color: var(--k-on-text);
+  font-weight: var(--k-fw-bold);
+}
+
+.notes-cell:focus-visible,
+.notes-lane-settings-btn:focus-visible,
+.notes-lane-direction:focus-visible {
+  outline: 2px solid var(--k-ring-color);
+  outline-offset: 1px;
+}
+
+.notes-cell-mark {
+  display: flex;
+  min-height: 1.1em;
+  align-items: center;
+  justify-content: center;
+}
+
+.notes-cell small {
+  color: var(--k-text-muted);
+  font-size: var(--k-fs-1);
+  line-height: 1;
+}
+
+.notes-cell[aria-pressed="true"] small {
+  color: inherit;
+}
+
+.notes-cell-stack {
+  display: block;
+  width: 12px;
+  height: 9px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  position: relative;
+}
+
+.notes-cell-stack::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: currentColor;
+  content: "";
+}
+
+.notes-editor {
+  display: grid;
+  gap: var(--k-sp-4);
+  padding-top: var(--k-sp-4);
+  border-top: var(--k-card-head-rule);
+  min-width: 0;
+}
+
+.notes-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-sp-4);
+  font-size: var(--k-fs-5);
+}
+
+.notes-editor-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-sp-4) var(--k-sp-5);
+  color: var(--k-text-soft);
+  font-size: var(--k-fs-4);
+}
+
+.notes-editor-gate {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-sp-3);
+}
+
+.notes-editor-gate input {
+  width: 72px;
+  min-height: var(--k-hit-min);
+  padding: 0 var(--k-sp-3);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg-inset);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.notes-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-sp-3);
+}
+
+.notes-intervals {
+  display: grid;
+  gap: var(--k-sp-3);
+}
+
+@media (max-width: 680px) {
+  .notes-cell {
+    min-height: var(--k-hit-touch);
+  }
+
+  .notes-lane-settings-btn,
+  .notes-lane-direction,
+  .notes-editor-gate input {
+    min-height: var(--k-hit-touch);
+  }
+}

@@ -13,8 +13,7 @@
 }
 
 .harmony-engine-panel .harmony-engine-header,
-.harmony-engine-panel .harmony-popup-header,
-.harmony-engine-panel .harmony-lab-section-title {
+.harmony-engine-panel .harmony-popup-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -22,8 +21,7 @@
 }
 
 .harmony-engine-panel .harmony-engine-title,
-.harmony-engine-panel .harmony-popup-header span,
-.harmony-engine-panel .harmony-lab-section-title {
+.harmony-engine-panel .harmony-popup-header span {
   font-size: var(--k-fs-4);
   font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
@@ -39,21 +37,10 @@
   color: rgba(232, 220, 196, 0.68);
 }
 
-.harmony-engine-panel .harmony-engine-actions,
-.harmony-engine-panel .harmony-slot-trigger-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.harmony-engine-panel .harmony-engine-action,
-.harmony-engine-panel .harmony-segment,
 .harmony-engine-panel .harmony-chip,
 .harmony-engine-panel .harmony-subtle-button,
 .harmony-engine-panel .harmony-primary-button,
-.harmony-engine-panel .harmony-stepper button,
-.harmony-engine-panel .harmony-slot-trigger {
+.harmony-engine-panel .harmony-stepper button {
   border: 1px solid rgba(232, 220, 196, 0.14);
   border-radius: var(--radius-md);
   background: rgba(255,255,255,0.035);
@@ -62,8 +49,6 @@
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-.harmony-engine-panel .harmony-engine-action,
-.harmony-engine-panel .harmony-segment,
 .harmony-engine-panel .harmony-subtle-button,
 .harmony-engine-panel .harmony-primary-button {
   min-height: 28px;
@@ -74,21 +59,15 @@
   text-transform: uppercase;
 }
 
-.harmony-engine-panel .harmony-engine-action:hover,
-.harmony-engine-panel .harmony-segment:hover,
 .harmony-engine-panel .harmony-chip:hover,
 .harmony-engine-panel .harmony-subtle-button:hover,
-.harmony-engine-panel .harmony-stepper button:hover,
-.harmony-engine-panel .harmony-slot-trigger:hover {
+.harmony-engine-panel .harmony-stepper button:hover {
   transform: translateY(-1px);
   background: rgba(255,255,255,0.075);
   border-color: rgba(184, 224, 255, 0.28);
 }
 
-.harmony-engine-panel .harmony-engine-action.active,
-.harmony-engine-panel .harmony-segment.active,
-.harmony-engine-panel .harmony-chip.active,
-.harmony-engine-panel .harmony-slot-trigger.active {
+.harmony-engine-panel .harmony-chip.active {
   background: color-mix(in srgb, var(--harmony-ice) 12%, rgba(255,255,255,0.04));
   border-color: color-mix(in srgb, var(--harmony-ice) 32%, rgba(232,220,196,0.16));
   color: color-mix(in srgb, var(--harmony-ice) 86%, #fff);
@@ -132,12 +111,7 @@
   outline-offset: 2px;
 }
 
-.harmony-engine-panel .harmony-slot-trigger-row {
-  margin-top: 10px;
-}
-
-.harmony-engine-panel .harmony-chip span,
-.harmony-engine-panel .harmony-slot-trigger span {
+.harmony-engine-panel .harmony-chip span {
   font-size: var(--k-fs-1);
   font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
@@ -207,30 +181,6 @@
   flex: 1;
   height: 3px;
   accent-color: var(--harmony-ice);
-}
-
-.harmony-engine-panel .harmony-slot-trigger {
-  display: inline-flex;
-  min-width: 48px;
-  min-height: 32px;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5px 8px;
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-semi);
-}
-
-.harmony-engine-panel .harmony-slot-trigger.locked {
-  border-style: dashed;
-}
-
-.harmony-engine-panel .harmony-lab-section {
-  margin-top: 12px;
-}
-
-.harmony-engine-panel .harmony-lab-section-title {
-  margin-bottom: 8px;
 }
 
 .harmony-engine-panel .harmony-summary-card {
@@ -369,43 +319,13 @@
   color: rgba(184, 220, 168, 0.92);
 }
 
-.harmony-engine-panel .harmony-manual-popup,
-.harmony-engine-panel .harmony-lab-popup {
+.harmony-engine-panel .harmony-manual-popup {
   margin-top: 8px;
 }
 
 .harmony-engine-panel .harmony-manual-popup {
   container-name: harmony-manual;
   container-type: inline-size;
-}
-
-.harmony-engine-panel .harmony-lab-popup {
-  padding: 14px 18px 16px;
-}
-
-.harmony-engine-panel .harmony-popup-header.chord-lab-header {
-  align-items: flex-start;
-}
-
-.harmony-engine-panel .harmony-lab-status-pills {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.harmony-engine-panel .harmony-lab-status-pills span {
-  min-height: 26px;
-  padding: 6px 9px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.12);
-  background: rgba(255,255,255,0.035);
-  color: rgba(232, 220, 196, 0.72);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-transform: uppercase;
 }
 
 .harmony-engine-panel .harmony-lock-message {
@@ -419,48 +339,13 @@
   line-height: 1.35;
 }
 
-.harmony-engine-panel .harmony-voicing-switch-row,
-.harmony-engine-panel .harmony-panel-topline,
-.harmony-engine-panel .harmony-slot-strip-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.harmony-engine-panel .harmony-segment-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-}
-
-.harmony-engine-panel .harmony-segment-group.compact span,
-.harmony-engine-panel .harmony-segment-group.wrap span,
 .harmony-engine-panel .harmony-control-cluster > span,
-.harmony-engine-panel .harmony-panel-topline > span,
-.harmony-engine-panel .harmony-slot-strip-header > span,
-.harmony-engine-panel .harmony-panel-label,
-.harmony-engine-panel .harmony-inspector-title {
+.harmony-engine-panel .harmony-panel-label {
   font-size: var(--k-fs-1);
   font-weight: var(--k-fw-semi);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.56);
-}
-
-.harmony-engine-panel .harmony-segment.control.active {
-  border-color: rgba(255, 135, 145, 0.42);
-  background: rgba(255, 112, 138, 0.14);
-  color: rgba(255, 220, 224, 0.96);
-}
-
-.harmony-engine-panel .harmony-segment.capture.active {
-  border-color: rgba(123, 154, 109, 0.48);
-  background: rgba(123, 154, 109, 0.18);
-  color: rgba(220, 244, 206, 0.96);
 }
 
 .harmony-engine-panel .harmony-manual-preview {
@@ -533,8 +418,7 @@
 }
 
 .harmony-engine-panel .harmony-right-panel,
-.harmony-engine-panel .harmony-modifier-panel,
-.harmony-engine-panel .harmony-inspector {
+.harmony-engine-panel .harmony-modifier-panel {
   min-width: 0;
   padding: 10px;
   border-radius: var(--radius-md);
@@ -577,22 +461,6 @@
   text-transform: uppercase;
 }
 
-.harmony-engine-panel .harmony-chord-type-status {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.harmony-engine-panel .harmony-chord-type-status small {
-  padding: 2px 5px;
-  border: 1px solid rgba(184, 224, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(184, 224, 255, 0.055);
-  color: var(--harmony-journey-ice);
-  font-size: var(--k-fs-1);
-}
-
 .harmony-engine-panel .harmony-chord-type-heading p {
   grid-column: 1 / -1;
   max-width: 52ch;
@@ -618,11 +486,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-
-.harmony-engine-panel .harmony-chip-row--wrap .harmony-chip {
-  font-size: var(--k-fs-2);
-  padding: 3px 8px;
 }
 
 .harmony-engine-panel .harmony-chip em {
@@ -667,386 +530,6 @@
   font-weight: var(--k-fw-bold);
 }
 
-.harmony-engine-panel .harmony-slot-bank {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
-  gap: 8px;
-}
-
-.harmony-engine-panel .harmony-slot-object,
-.harmony-engine-panel .harmony-step-object {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-  padding: 11px;
-  overflow: hidden;
-  text-align: left;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(255,255,255,0.025);
-  color: rgba(232, 220, 196, 0.76);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.harmony-engine-panel .harmony-slot-object {
-  min-height: 74px;
-  padding: 9px 10px;
-}
-
-.harmony-engine-panel .harmony-slot-object:hover,
-.harmony-engine-panel .harmony-step-object:hover {
-  border-color: rgba(184, 224, 255, 0.24);
-}
-
-.harmony-engine-panel .harmony-slot-object.selected,
-.harmony-engine-panel .harmony-step-object.selected {
-  border-color: rgba(184, 224, 255, 0.34);
-  background: rgba(184, 224, 255, 0.07);
-}
-
-.harmony-engine-panel .harmony-slot-object.referenced {
-  border-color: rgba(184, 224, 255, 0.22);
-  background: rgba(184, 224, 255, 0.045);
-}
-
-.harmony-engine-panel .harmony-slot-object.active,
-.harmony-engine-panel .harmony-step-object.active {
-  border-color: rgba(232, 220, 196, 0.22);
-  background: rgba(232, 220, 196, 0.045);
-}
-
-.harmony-engine-panel .harmony-slot-object.selected.active,
-.harmony-engine-panel .harmony-step-object.selected.active {
-  border-color: rgba(184, 224, 255, 0.36);
-  background: rgba(184, 224, 255, 0.075);
-}
-
-.harmony-engine-panel .harmony-slot-object.locked,
-.harmony-engine-panel .harmony-step-object.locked {
-  border-style: dashed;
-}
-
-.harmony-engine-panel .harmony-slot-object span,
-.harmony-engine-panel .harmony-step-object span {
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.08em;
-  color: rgba(232, 220, 196, 0.56);
-}
-
-.harmony-engine-panel .harmony-slot-object strong,
-.harmony-engine-panel .harmony-step-object strong {
-  overflow: hidden;
-  color: rgba(255,255,255,0.92);
-  font-size: var(--k-fs-4);
-  font-weight: var(--k-fw-semi);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.harmony-engine-panel .harmony-slot-object em,
-.harmony-engine-panel .harmony-slot-object small,
-.harmony-engine-panel .harmony-step-object em {
-  color: rgba(232, 220, 196, 0.58);
-  font-size: var(--k-fs-1);
-  font-style: normal;
-  font-weight: var(--k-fw-semi);
-}
-
-.harmony-engine-panel .harmony-sequence-strip {
-  display: grid;
-  grid-template-columns: repeat(var(--harmony-step-count, 8), minmax(0, 1fr));
-  gap: 4px;
-  padding: 9px 10px 10px;
-  background: rgba(0,0,0,0.13);
-}
-
-.harmony-engine-panel .harmony-step-object {
-  display: grid;
-  grid-template-rows: 12px minmax(54px, 1fr);
-  gap: 3px;
-  min-height: 78px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: center;
-}
-
-.harmony-engine-panel .harmony-step-object.muted {
-  opacity: 0.42;
-}
-
-.harmony-engine-panel .harmony-step-number {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(232, 220, 196, 0.38);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  line-height: 1;
-}
-
-.harmony-engine-panel .harmony-step-cell {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  align-content: center;
-  gap: 3px;
-  padding: 8px 6px 10px;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  border: 2px solid rgba(232, 220, 196, 0.12);
-  background: rgba(12, 14, 18, 0.78);
-  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
-}
-
-.harmony-engine-panel .harmony-step-object:hover .harmony-step-cell {
-  border-color: rgba(184, 224, 255, 0.28);
-  background: rgba(184, 224, 255, 0.045);
-}
-
-.harmony-engine-panel .harmony-step-object.selected .harmony-step-cell {
-  border-color: rgba(184, 224, 255, 0.52);
-  background: rgba(184, 224, 255, 0.08);
-}
-
-.harmony-engine-panel .harmony-step-object.active .harmony-step-cell {
-  border-color: rgba(184, 224, 255, 0.72);
-  box-shadow: 0 0 10px rgba(184, 224, 255, 0.24);
-}
-
-.harmony-engine-panel .harmony-step-object.active .harmony-step-number {
-  color: var(--harmony-ice);
-}
-
-.harmony-engine-panel .harmony-step-object i {
-  position: absolute;
-  left: 7px;
-  right: 7px;
-  bottom: 5px;
-  height: 3px;
-  transform-origin: left center;
-  border-radius: 999px;
-  background: rgba(184, 224, 255, 0.58);
-}
-
-.harmony-engine-panel .harmony-step-object strong,
-.harmony-engine-panel .harmony-step-object em {
-  position: relative;
-  z-index: 1;
-}
-
-.harmony-engine-panel .harmony-inspector {
-  margin-top: 14px;
-}
-
-.harmony-engine-panel .harmony-inspector-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.harmony-engine-panel .harmony-inspector-heading small,
-.harmony-engine-panel .harmony-lab-section-title small {
-  color: rgba(232, 220, 196, 0.5);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-.harmony-engine-panel .harmony-lab-section-title > span {
-  min-width: 0;
-}
-
-.harmony-engine-panel .harmony-lab-section-title .harmony-segment {
-  min-height: 26px;
-  padding: 4px 9px;
-}
-
-.harmony-engine-panel .harmony-progression-lane {
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(0,0,0,0.14);
-}
-
-.harmony-engine-panel .harmony-progression-lane .harmony-lab-section-title {
-  margin-bottom: 0;
-  padding: 7px 9px;
-  border-bottom: 1px solid rgba(232, 220, 196, 0.08);
-  background: rgba(255,255,255,0.035);
-}
-
-.harmony-engine-panel .harmony-progression-lane.disabled .harmony-sequence-strip {
-  opacity: 0.42;
-}
-
-.harmony-engine-panel .harmony-progression-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-}
-
-.harmony-engine-panel .harmony-seq-enable,
-.harmony-engine-panel .harmony-step-count-pills button {
-  min-height: 22px;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(232, 220, 196, 0.14);
-  background: rgba(255,255,255,0.035);
-  color: rgba(232, 220, 196, 0.72);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.harmony-engine-panel .harmony-seq-enable.on,
-.harmony-engine-panel .harmony-step-count-pills button.active {
-  border-color: rgba(184, 224, 255, 0.38);
-  background: rgba(184, 224, 255, 0.12);
-  color: var(--harmony-ice);
-}
-
-.harmony-engine-panel .harmony-step-count-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: rgba(232, 220, 196, 0.58);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.harmony-engine-panel .harmony-step-count-control input {
-  width: 36px;
-  min-height: 22px;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(232, 220, 196, 0.14);
-  background: rgba(0,0,0,0.22);
-  color: rgba(255,255,255,0.9);
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-semi);
-  text-align: center;
-}
-
-.harmony-engine-panel .harmony-step-count-pills {
-  display: flex;
-  gap: 3px;
-}
-
-.harmony-engine-panel .harmony-inspector-grid {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 12px 14px;
-  margin-top: 12px;
-  align-items: end;
-}
-
-.harmony-engine-panel .harmony-inspector-grid label {
-  display: grid;
-  gap: 4px;
-  grid-column: span 4;
-  min-width: 0;
-}
-
-.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group {
-  grid-column: span 4;
-  align-self: stretch;
-}
-
-.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group.wrap {
-  grid-column: 1 / -1;
-}
-
-.harmony-engine-panel .harmony-inspector-grid .harmony-segment-group.compact {
-  align-content: end;
-}
-
-.harmony-engine-panel .harmony-step-slot-actions {
-  display: grid;
-  grid-column: span 8;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px 10px;
-  min-width: 0;
-  min-height: 58px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(232, 220, 196, 0.1);
-  background: rgba(0,0,0,0.14);
-}
-
-.harmony-engine-panel .harmony-step-slot-actions > span {
-  grid-column: 1 / -1;
-  color: rgba(232, 220, 196, 0.5);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.harmony-engine-panel .harmony-step-slot-actions strong {
-  min-width: 0;
-  overflow: hidden;
-  color: rgba(255,255,255,0.9);
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-semi);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.harmony-engine-panel .harmony-step-slot-actions div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.harmony-engine-panel .harmony-inspector-grid label span {
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(232, 220, 196, 0.5);
-}
-
-.harmony-engine-panel .harmony-inspector-grid input,
-.harmony-engine-panel .harmony-inspector-grid select {
-  min-width: 0;
-  min-height: 30px;
-  padding: 5px 7px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(232, 220, 196, 0.12);
-  background: rgba(255,255,255,0.045);
-  color: rgba(255,255,255,0.9);
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-bold);
-}
-
-.harmony-engine-panel .harmony-inspector-actions {
-  display: flex;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  gap: 8px;
-}
-
-.harmony-engine-panel .harmony-range-control.inspector-range {
-  grid-column: span 4;
-  display: flex;
-  min-height: 34px;
-  padding: 6px 10px;
-}
-
-
 @media (max-width: 760px) {
   .harmony-engine-panel .harmony-engine-header,
   .harmony-engine-panel .harmony-popup-header {
@@ -1054,31 +537,14 @@
     flex-direction: column;
   }
 
-  .harmony-engine-panel .harmony-engine-actions {
-    width: 100%;
-  }
-
-  .harmony-engine-panel .harmony-engine-action,
   .harmony-engine-panel .harmony-subtle-button,
-  .harmony-engine-panel .harmony-primary-button {
+.harmony-engine-panel .harmony-primary-button {
     flex: 1 1 auto;
   }
 
   .harmony-engine-panel .harmony-summary-grid,
-  .harmony-engine-panel .harmony-manual-workspace,
-  .harmony-engine-panel .harmony-inspector-grid {
+.harmony-engine-panel .harmony-manual-workspace {
     grid-template-columns: 1fr;
-  }
-
-  .harmony-engine-panel .harmony-inspector-grid label,
-  .harmony-engine-panel .harmony-inspector-grid .harmony-segment-group,
-  .harmony-engine-panel .harmony-range-control.inspector-range,
-  .harmony-engine-panel .harmony-step-slot-actions {
-    grid-column: 1 / -1;
-  }
-
-  .harmony-engine-panel .harmony-lab-status-pills {
-    justify-content: flex-start;
   }
 
   .harmony-engine-panel .harmony-manual-preview {
@@ -1088,15 +554,6 @@
 
   .harmony-engine-panel .harmony-audition-tools {
     justify-content: flex-start;
-  }
-
-  .harmony-engine-panel .harmony-slot-bank {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .harmony-engine-panel .harmony-sequence-strip {
-    grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
-    gap: 8px;
   }
 
   .harmony-engine-panel .harmony-tension-strip {
@@ -1111,22 +568,6 @@
 @media (max-width: 420px) {
   .harmony-engine-panel {
     padding: 8px 9px;
-  }
-
-  .harmony-engine-panel .harmony-slot-bank {
-    grid-template-columns: 1fr;
-  }
-
-  .harmony-engine-panel .harmony-step-slot-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .harmony-engine-panel .harmony-step-slot-actions div {
-    justify-content: flex-start;
-  }
-
-  .harmony-engine-panel .harmony-sequence-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .harmony-engine-panel .harmony-tension-label {
@@ -1152,8 +593,7 @@
 }
 
 .harmony-detail-suggestions > summary,
-.harmony-suggestion-dock-header,
-.harmony-suggestion-action-dock {
+.harmony-suggestion-dock-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1190,25 +630,6 @@
 
 .harmony-detail-suggestions-body {
   padding-top: 7px;
-}
-
-.harmony-suggestion-action-dock {
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px solid var(--k-border, rgba(247, 250, 252, .12));
-}
-
-.harmony-suggestion-action-dock strong {
-  margin-right: auto;
-}
-
-.harmony-suggestion-action-dock button {
-  padding: 4px 7px;
-  border: 1px solid var(--k-border-strong, rgba(247, 250, 252, .24));
-  border-radius: var(--k-radius-control, 6px);
-  color: var(--k-text-soft, rgba(247, 250, 252, .7));
-  background: var(--k-control, rgba(255, 255, 255, .055));
-  font-size: 11px;
 }
 
 .harmony-suggestion-grid-empty {
@@ -1399,24 +820,6 @@
 
 .harmony-engine-panel .harmony-palette-select--wide select {
   min-width: 110px;
-}
-
-.harmony-engine-panel .harmony-capture-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.harmony-engine-panel .harmony-capture-group select {
-  min-width: 68px;
-  min-height: 28px;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(232, 220, 196, 0.12);
-  background: rgba(255,255,255,0.045);
-  color: rgba(255,255,255,0.9);
-  font-size: var(--k-fs-1);
-  font-weight: var(--k-fw-semi);
 }
 
 /* ═══════════════ Visual hierarchy: larger primary controls ═══════════════ */

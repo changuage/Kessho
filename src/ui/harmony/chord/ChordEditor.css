@@ -1,0 +1,236 @@
+.chord-editor {
+  display: grid;
+  gap: var(--k-sp-4);
+  min-width: 0;
+  color: var(--k-text);
+  font-size: var(--k-fs-4);
+}
+
+.chord-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-sp-4);
+}
+
+.chord-editor-name {
+  flex: 1 1 8ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--k-fs-6);
+  font-weight: var(--k-fw-bold);
+}
+
+.chord-segment {
+  display: inline-flex;
+  gap: var(--k-sp-1);
+}
+
+.chord-segment button,
+.chord-editor-row button,
+.chord-stepper button,
+.chord-editor-octaves button,
+.chord-editor-action {
+  min-width: var(--k-hit-min);
+  min-height: var(--k-hit-min);
+  padding: 0 var(--k-sp-5);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-control);
+  background: var(--k-control);
+  color: var(--k-text-soft);
+  font: inherit;
+  font-size: var(--k-fs-4);
+  font-weight: var(--k-fw-medium);
+  cursor: pointer;
+}
+
+.chord-segment button:hover:not(:disabled),
+.chord-editor-row button:hover:not(:disabled),
+.chord-stepper button:hover:not(:disabled),
+.chord-editor-octaves button:hover:not(:disabled),
+.chord-editor-action:hover:not(:disabled) {
+  background: var(--k-control-hover);
+  color: var(--k-text);
+}
+
+.chord-segment button[aria-pressed="true"],
+.chord-editor-row button[aria-pressed="true"] {
+  border-color: var(--k-on-border);
+  background: var(--k-on-bg);
+  color: var(--k-on-text);
+  font-weight: var(--k-fw-bold);
+}
+
+.chord-segment button:focus-visible,
+.chord-editor-row button:focus-visible,
+.chord-stepper button:focus-visible,
+.chord-editor-octaves button:focus-visible,
+.chord-editor-action:focus-visible,
+.chord-editor-more > summary:focus-visible,
+.chord-editor-keys .harmony-live-key:focus-visible {
+  outline: 2px solid var(--k-ring-color);
+  outline-offset: 1px;
+}
+
+.chord-segment button:disabled,
+.chord-editor-row button:disabled,
+.chord-stepper button:disabled,
+.chord-editor-octaves button:disabled,
+.chord-editor-action:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.chord-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-sp-1);
+}
+
+.chord-editor-row button {
+  min-width: 36px;
+  padding: 0 var(--k-sp-4);
+}
+
+.chord-editor-more > summary {
+  width: fit-content;
+  min-height: var(--k-hit-min);
+  display: flex;
+  align-items: center;
+  gap: var(--k-sp-2);
+  list-style: none;
+  color: var(--k-text-soft);
+  cursor: pointer;
+}
+
+.chord-editor-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chord-editor-more > summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+}
+
+.chord-editor-more[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.chord-editor-more[open] > summary {
+  color: var(--k-text);
+  font-weight: var(--k-fw-bold);
+}
+
+.chord-editor-more > .chord-editor-row {
+  margin-bottom: var(--k-sp-4);
+}
+
+.chord-editor-voicing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-sp-4) var(--k-sp-6);
+}
+
+.chord-stepper,
+.chord-editor-spread {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-sp-2);
+  color: var(--k-text-soft);
+}
+
+.chord-stepper button {
+  min-width: var(--k-hit-min);
+  padding: 0;
+}
+
+.chord-stepper output {
+  min-width: 2ch;
+  text-align: center;
+  color: var(--k-text);
+}
+
+.chord-editor-spread input {
+  width: 110px;
+  accent-color: var(--k-sage);
+}
+
+.chord-editor-keyboard {
+  display: grid;
+  gap: var(--k-sp-3);
+}
+
+.chord-editor-keys.harmony-live-keyboard-keys {
+  --live-keyboard-height: clamp(106px, 15vw, 144px);
+  position: relative;
+  height: var(--live-keyboard-height);
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg-deep);
+  user-select: none;
+}
+
+.chord-editor-octaves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-sp-2);
+  color: var(--k-text-muted);
+}
+
+.chord-editor-octaves output {
+  min-width: 4ch;
+  text-align: center;
+  color: var(--k-text-soft);
+}
+
+.chord-editor-outside {
+  margin-left: var(--k-sp-3);
+}
+
+.chord-editor-octaves .chord-editor-action {
+  margin-left: auto;
+}
+
+@media (max-width: 680px) {
+  .chord-editor-keys.harmony-live-keyboard-keys {
+    --live-keyboard-height: 106px;
+  }
+
+  .chord-segment button,
+  .chord-editor-row button,
+  .chord-stepper button,
+  .chord-editor-octaves button,
+  .chord-editor-action {
+    min-height: var(--k-hit-touch);
+  }
+}
+
+/* A held note reads as the sage pressed state on both key colours. */
+.chord-editor-keys.harmony-live-keyboard-keys > .harmony-live-key-slot > .harmony-live-key.retained {
+  background: color-mix(in srgb, var(--k-sage) 62%, var(--k-cream));
+  box-shadow: inset 0 -4px 0 rgba(16, 15, 14, 0.28);
+  color: #171615;
+}
+
+.chord-editor-keys.harmony-live-keyboard-keys > .harmony-live-key-slot.harmony-live-black-keys > .harmony-live-key.retained {
+  background: var(--k-sage);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.42);
+  color: #171615;
+}
+
+.chord-editor-keys .harmony-live-key > strong {
+  font-size: var(--k-fs-3);
+}
+
+.chord-editor-keys .harmony-live-key > small {
+  font-size: var(--k-fs-1);
+}

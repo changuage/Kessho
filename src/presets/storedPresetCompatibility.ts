@@ -13,7 +13,6 @@ const RETIRED_INERT_STATE_KEYS = new Set<string>([
   'granularPreset',
   'granularDryWet',
   'granularVisualDetail',
-  'synthArpConfigs',
   // Capture clips were a transient recording aid and were briefly persisted
   // by an abandoned path. Drop the field before strict current-schema decode;
   // variation banks are the only authored sequencer content in this contract.

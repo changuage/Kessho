@@ -70,7 +70,7 @@ function loadFile(absPath, relPath) {
   const raw = JSON.parse(fs.readFileSync(absPath, 'utf8'));
   const base = path.basename(relPath);
 
-  // Single saved preset: { id?, name?, state: {...}, synthPlayConfigs?, ... }
+  // Single saved preset: { id?, name?, state: {...}, ... }
   if (isObj(raw) && isObj(raw.state)) {
     return [{
       kind: 'full',
@@ -172,22 +172,6 @@ function audit(p) {
   const palettes = findKeys(s, (k, v) => k === 'harmonyPalette' && Array.isArray(v) && v.length > 0);
   if (palettes.length) reasons.push('palette chords set');
 
-  // synthPlayConfigs: the raw array is always stored, so count it as authored only
-  // when a config is enabled or has an active step.
-  const playArrays = [p.wrapper.synthPlayConfigs, s.synthPlayConfigs].filter((v) => Array.isArray(v) && v.length > 0);
-  let playTotal = 0;
-  let playActive = 0;
-  for (const arr of playArrays) {
-    for (const cfg of arr) {
-      playTotal += 1;
-      const steps = isObj(cfg.chord) && Array.isArray(cfg.chord.steps) ? cfg.chord.steps : [];
-      const activeStep = steps.some((st) => isObj(st) && st.active === true);
-      if (cfg.enabled === true || activeStep) playActive += 1;
-    }
-  }
-  if (playActive > 0) reasons.push(`${playActive} active synth play config(s)`);
-  row.playConfigs = playTotal ? `${playActive} active of ${playTotal}` : '-';
-
   row.authoredChords = reasons.length > 0;
   row.authoredDetail = reasons.length ? [...new Set(reasons)].join('; ') : 'none';
 
@@ -274,8 +258,8 @@ const now = new Date();
 const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
 const header = [
-  '| Preset | Corpus | Random chords | Random notes | Scatter active | Authored chords | Journey | Key drift | Sequencer slots | Play configs |',
-  '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| Preset | Corpus | Random chords | Random notes | Scatter active | Authored chords | Journey | Key drift | Sequencer slots |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
 ];
 const tableRows = fullRows.map((r) => [
   r.preset.name,
@@ -287,7 +271,6 @@ const tableRows = fullRows.map((r) => [
   r.journey ? `yes, ${r.journeyDetail}` : 'no',
   r.keyDriftDetail,
   r.sequencerSlots,
-  r.playConfigs,
 ].map(cell));
 const tableLines = [...header, ...tableRows.map((cols) => `| ${cols.join(' | ')} |`)];
 
@@ -342,7 +325,7 @@ const report = [
   '',
   '## Per-preset table',
   '',
-  'Full-state presets only (String Waves and the archive saves). Play configs counts a synth play config only when it is enabled or has an active step; the raw array is stored even when every config is idle.',
+  'Full-state presets only (String Waves and the archive saves).',
   '',
   ...tableLines,
   '',

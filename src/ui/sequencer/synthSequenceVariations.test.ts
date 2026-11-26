@@ -7,6 +7,7 @@ import {
   isSameSynthSequenceVariationBank,
   notesCellNotes,
   normalizeSynthSequenceVariationBank,
+  notesLaneCellIndex,
   rotateSynthSequenceVariation,
   selectSynthSequenceVariationInBank,
   settleSynthVariationCommit,
@@ -96,7 +97,7 @@ test('rotating with Advance = Hits moves hit-ordinal cells with their hits', () 
   ]).variations.A!;
   const hits = {
     ...variation,
-    notesLane: { length: 2, direction: 'forward' as const, advance: 'hits' as const },
+    notesLane: { length: 2, direction: 'forward' as const, advance: 'hits' as const, articulation: 'chord' as const },
     cells: [variation.cells[0]!, variation.cells[2]!, ...Array.from({ length: 30 }, () => createRestNotesCell())],
   };
   // Rotating by 3 sends the hit at step 2 to step 1 and the hit at step 0 to step 3, so they swap order.
@@ -184,7 +185,7 @@ test('prints one Fixed chord per occupied step with absolute notes, gates, veloc
   assert.equal(bank.schemaVersion, 2);
   const variation = bank.variations.A!;
   assert.equal(variation.steps, 4);
-  assert.deepEqual(variation.notesLane, { length: 4, direction: 'forward', advance: 'steps' });
+  assert.deepEqual(variation.notesLane, { length: 4, direction: 'forward', advance: 'steps', articulation: 'chord' });
   assert.equal(variation.cells.length, 32);
   assert.deepEqual(variation.lane.overrides.triggerToggles?.[0], [
     { step: 0, value: true },
@@ -193,7 +194,7 @@ test('prints one Fixed chord per occupied step with absolute notes, gates, veloc
   const first = variation.cells[0]!;
   assert.equal(first.kind, 'chord');
   assert.equal(first.chord?.behavior, 'fixed');
-  assert.equal(first.articulation, 'chord');
+  assert.equal(first.articulation, 'inherit');
   assert.equal(first.gateBeats, 0.5);
   assert.equal(first.chord?.notes.length, 1);
   assert.equal(first.chord?.notes[0]?.midi, 61);
@@ -212,7 +213,6 @@ test('prints one Fixed chord per occupied step with absolute notes, gates, veloc
   assert.equal(variation.lane.state.swing, 0);
   assert.equal(variation.lane.state.linked, false);
   assert.equal(variation.lane.state.evolveConfig, undefined);
-  assert.equal(variation.lane.state.playConfig, undefined);
   assert.equal(variation.lane.overrides.ratchet?.[0], null);
   // The base lane's pitch settings are left alone: nothing about the printed notes depends on them.
   assert.deepEqual(variation.lane.state.pitchSettings, baseLane().state.pitchSettings);
@@ -495,4 +495,24 @@ test('normalization rejects malformed Notes lanes and cells', () => {
   const manyNotes = structuredClone(bank);
   manyNotes.variations.A!.cells[0]!.chord!.notes = Array.from({ length: 40 }, (_, index) => ({ midi: 40 + (index % 40) }));
   assert.equal(normalizeSynthSequenceVariationBank(manyNotes)!.variations.A!.cells[0]!.chord!.notes.length, 32);
+});
+
+test('v2 cells and lanes that lack articulation load as inherit and the chord default', () => {
+  const bank = printedBank([{ onsetBeats: 0, durationBeats: 0.5, pitch: 60, velocity: 1 }]);
+  const raw = JSON.parse(JSON.stringify(bank));
+  delete raw.variations.A.notesLane.articulation;
+  for (const cell of raw.variations.A.cells) delete cell.articulation;
+  const loaded = normalizeSynthSequenceVariationBank(raw)!.variations.A!;
+  assert.equal(loaded.notesLane.articulation, 'chord');
+  assert.ok(loaded.cells.every((cell) => cell.articulation === 'inherit'));
+  raw.variations.A.notesLane.articulation = 'strum';
+  assert.throws(() => normalizeSynthSequenceVariationBank(raw));
+});
+
+test('notesLaneCellIndex walks forward, reverse and pingpong over the lane length', () => {
+  const lane = (direction: 'forward' | 'reverse' | 'pingpong') => ({ length: 4, direction, advance: 'steps' as const, articulation: 'chord' as const });
+  const walk = (direction: 'forward' | 'reverse' | 'pingpong') => Array.from({ length: 8 }, (_, at) => notesLaneCellIndex(lane(direction), at));
+  assert.deepEqual(walk('forward'), [0, 1, 2, 3, 0, 1, 2, 3]);
+  assert.deepEqual(walk('reverse'), [3, 2, 1, 0, 3, 2, 1, 0]);
+  assert.deepEqual(walk('pingpong'), [0, 1, 2, 3, 2, 1, 0, 1]);
 });

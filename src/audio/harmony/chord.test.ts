@@ -4,7 +4,9 @@ import {
   chordIntentFields,
   chordName,
   chordNoteFields,
+  chordDegreeLabels,
   normalizeChord,
+  previewChordNotes,
   recognizeChord,
   type Chord,
 } from './chord';
@@ -76,4 +78,16 @@ test('recognizeChord finds the nearest in-scale degree and quality', () => {
   assert.deepEqual(recognizeChord([55, 60, 62], 0, 1), { degree: 4, quality: 'sus4', extensions: [] });
   assert.equal(recognizeChord([60, 61, 62], 0, 1), null);
   assert.equal(recognizeChord([], 0, 1), null);
+});
+
+test('previewChordNotes voices a Follow chord in the key and round-trips through recognizeChord', () => {
+  // C major (scale 1): the V chord is G B D.
+  const fifth = follow({ degree: 4 });
+  assert.deepEqual(previewChordNotes(fifth, 0, 1), [55, 59, 62]);
+  assert.deepEqual(recognizeChord(previewChordNotes(fifth, 0, 1), 0, 1), { degree: 4, quality: 'diatonic', extensions: [] });
+  const inverted = follow({ degree: 0, voicing: { inversion: 1, spread: 0, register: 1, bass: 'inversion' } });
+  assert.deepEqual(previewChordNotes(inverted, 0, 1), [64, 67, 72]);
+  const fixed = normalizeChord({ behavior: 'fixed', notes: [{ midi: 60 }, { midi: 64 }] })!;
+  assert.deepEqual(previewChordNotes(fixed, 0, 1), [60, 64]);
+  assert.deepEqual(chordDegreeLabels(1), ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']);
 });

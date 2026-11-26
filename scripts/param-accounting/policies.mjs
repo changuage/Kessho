@@ -511,13 +511,6 @@ export const productDeferredClassifications = [
     patterns: [/^harmonyPalette$/],
   },
   {
-    id: 'sequencer-portable-content-policy',
-    owner: 'Product host sequencer content bridge',
-    reason:
-      'Structured synth play configurations are portable preset content projected into concrete Product sequencer sub-lane and pitch-binding events, not a scalar snapshot parameter.',
-    patterns: [/^synthPlayConfigs$/],
-  },
-  {
     id: 'soundscape-layer-policy',
     owner: 'C++ Product Core soundscape source and asset layer policy',
     allowWiredReferences: true,
@@ -644,9 +637,6 @@ export const productDeferredClassifications = [
 export const EXPECTED_DEFERRED_KEYS_BY_CLASSIFICATION = {
   'harmony-palette-policy': [
     'harmonyPalette',
-  ],
-  'sequencer-portable-content-policy': [
-    'synthPlayConfigs',
   ],
   'soundscape-layer-policy': [
     'birds2DelayASend',
@@ -828,10 +818,6 @@ export const EXPECTED_PARAM_REGISTRY_OMISSIONS = [
   {
     key: 'spectralFreezeCaptureSerial',
     reason: 'Runtime capture edge serial; presets must never replay a historical capture trigger.',
-  },
-  {
-    key: 'synthPlayConfigs',
-    reason: 'Portable sequencer content projected by the host into concrete Product sub-lane and pitch-binding events.',
   },
   {
     key: 'granularVisualDetail',

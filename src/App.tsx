@@ -112,7 +112,6 @@ import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig, SequencerViewMode } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
-import { normalizeProductPlayConfigs, sanitizeProductPlayConfigs, type ProductPlayConfig } from './audio/productPlaySequencer';
 import {
   getRoutingSourceDef,
   getRoutingSourceToggleKeys,
@@ -147,7 +146,6 @@ import {
 } from './ui/runtimeModulationEligibility';
 import { useProductRuntimePlaybackSurface } from './ui/useProductRuntimePlaybackSurface';
 import { useProductRuntimeGlobalSurface } from './ui/useProductRuntimeGlobalSurface';
-import { useSynthPlayConfigRuntime } from './ui/useSynthPlayConfigRuntime';
 import { useProductRuntimePlatformSurface } from './ui/useProductRuntimePlatformSurface';
 import { usePresetBootstrapRuntimeSurface } from './ui/usePresetBootstrapRuntimeSurface';
 import { usePresetRestoreRuntimeSurface } from './ui/usePresetRestoreRuntimeSurface';
@@ -790,12 +788,10 @@ const App: React.FC = () => {
   const synthPitchSettingsRef = useRef<PitchSettings[] | undefined>(undefined);
   const synthPitchBindingModesRef = useRef<PitchBindingMode[] | undefined>(undefined);
   const synthKeyboardUiStateRef = useRef<SynthKeyboardUiState | undefined>(undefined);
-  const synthPlayConfigsRef = useRef<ProductPlayConfig[] | undefined>(undefined);
   const synthEvolveConfigsRef = useRef<EvolveConfig[] | undefined>(undefined);
 
   const [drumPresetVersion, setDrumPresetVersion] = useState(0);
   const [synthPresetVersion, setSynthPresetVersion] = useState(0);
-  const canonicalSynthPlayConfigs = useMemo(() => normalizeProductPlayConfigs(state.synthPlayConfigs ?? synthPlayConfigsRef.current, 4), [state.synthPlayConfigs, synthPresetVersion]);
   const drumLaneEnableTouchedRef = useRef(false);
   const previousDrumLaneIntentPresetVersionRef = useRef(drumPresetVersion);
   useEffect(() => {
@@ -835,7 +831,6 @@ const App: React.FC = () => {
     synthLinkedRef,
     synthPitchBindingModesRef,
     synthPitchSettingsRef,
-    synthPlayConfigsRef,
     synthStepOverridesRef,
     synthSubLaneStatesRef,
     synthSwingsRef,
@@ -865,7 +860,6 @@ const App: React.FC = () => {
         synthLinked: synthLinkedRef.current,
         drumSubLaneStates: sanitizeSequencerSubLaneStates(drumSubLaneStatesRef.current),
         synthSubLaneStates: sanitizeSequencerSubLaneStates(synthSubLaneStatesRef.current),
-        synthPlayConfigs: sanitizeProductPlayConfigs(canonicalSynthPlayConfigs),
         ...normalizeStatePresetPitchMetadata({
           drumPitchSettings: drumPitchSettingsRef.current,
           synthPitchSettings: synthPitchSettingsRef.current,
@@ -883,7 +877,7 @@ const App: React.FC = () => {
             }
           : undefined,
       }),
-    [activePresetPool, canonicalSynthPlayConfigs, dualConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, stateRef, visualizerPresetName],
+    [activePresetPool, dualConfigs, dualSliderRanges, getDrumScatterPresetState, routingMuteGroups, sliderModes, stateRef, visualizerPresetName],
   );
 
   const restoreRoutingMuteGroupsFromPreset = useCallback((value: SavedPreset['routingMuteGroups']) => {
@@ -1880,8 +1874,7 @@ const App: React.FC = () => {
       synthLinkedRef,
       synthPitchBindingModesRef,
       synthPitchSettingsRef,
-      synthPlayConfigsRef,
-      synthStepOverridesRef,
+        synthStepOverridesRef,
       synthSubLaneStatesRef,
       synthSwingsRef,
     },
@@ -1900,7 +1893,6 @@ const App: React.FC = () => {
       setProductSynthStepPositionCallback,
     },
   });
-  const { handleSynthPlayConfigsChange } = useSynthPlayConfigRuntime({ canonicalSynthPlayConfigs, onPlayConfigsChange: productPageRuntimeSurface.synthPageSequencerBridge.onPlayConfigsChange, harmonyWorkspaceController });
 
   const midiLiveNoteStart = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStart;
   const midiLiveNoteStop = productPageRuntimeSurface.synthPageRuntimeProps.onLiveNoteStop;
@@ -2837,8 +2829,6 @@ const App: React.FC = () => {
                 onKeyboardUiStateChange={(keyboardState) => {
                   synthKeyboardUiStateRef.current = keyboardState;
                 }}
-                initialPlayConfigs={canonicalSynthPlayConfigs}
-                onPlayConfigsChange={handleSynthPlayConfigsChange}
                 onRawStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onRawStepOverridesChange}
                 onStepOverridesChange={productPageRuntimeSurface.synthPageSequencerBridge.onStepOverridesChange}
                 initialClockDivs={synthClockDivsRef.current}

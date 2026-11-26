@@ -3,14 +3,14 @@ import { SCALES, scaleDegreeToSemitone } from '../../audio/drumSeqTypes';
 import { chordIntentFields, noteListFields } from '../../audio/harmony/chord';
 import type { CoreProductChordIntent, CoreProductChordNote } from '../../audio/coreProductSnapshotTypes';
 import { normalizeSequencerPitchBindingMode } from '../../audio/sequencerPitchBinding';
-import type { ProductArpConfig } from '../../audio/productArpeggiator';
+import { defaultProductArpConfig, type ProductArpConfig } from '../../audio/productArpeggiator';
 import type {
   NotesCell,
   SynthSequenceVariation,
   SynthSequenceVariationBank,
   SynthSequenceVariationId,
 } from '../../ui/sequencer/synthSequenceVariations';
-import { normalizeSynthSequenceVariationBank, variationTriggerMask } from '../../ui/sequencer/synthSequenceVariations';
+import { normalizeSynthSequenceVariationBank, resolveNotesCellArticulation, variationTriggerMask } from '../../ui/sequencer/synthSequenceVariations';
 import type { SerializedStepOverrides, SerializedSubLaneState } from '../../ui/state';
 
 export const SYNTH_SEQUENCE_VARIATION_COUNT = 4;
@@ -370,21 +370,23 @@ function writeCells(view: DataView, baseOffset: number, variation: SynthSequence
     if (!cell) throw new RangeError(`${label} is missing`);
     const gateBeats = requireRange(cell.gateBeats, 0, 64, `${label}.gateBeats`);
     const { kind, notes, intent } = cellNoteFields(cell, label);
-    const arp = cell.articulation === 'arp';
+    const arp = resolveNotesCellArticulation(cell, variation.notesLane) === 'arp';
+    // A lane default of Arp reaches cells that carry no payload of their own.
+    const arpPayload = cell.arp ?? (arp ? { config: defaultProductArpConfig() } : undefined);
     view.setUint32(offset + CELL_KIND_OFFSET, kind, true);
     view.setUint32(offset + CELL_ARTICULATION_OFFSET, arp ? 1 : 0, true);
     view.setUint32(offset + CELL_NOTE_COUNT_OFFSET, notes.length, true);
     view.setFloat32(offset + CELL_GATE_BEATS_OFFSET, gateBeats, true);
-    const arpSpanBeats = cell.arp?.spanBeats;
+    const arpSpanBeats = arpPayload?.spanBeats;
     const arpSpanSteps = arpSpanBeats === undefined
       ? 0
       : requireRange(arpSpanBeats / Math.max(1e-6, 4 / clockDiv), 0, SYNTH_SEQUENCE_VARIATION_MAX_STEPS, `${label}.arp.spanBeats`);
     view.setFloat32(offset + CELL_ARP_SPAN_STEPS_OFFSET, arpSpanSteps, true);
-    const arpFlow = cell.arp?.config?.flow;
+    const arpFlow = arpPayload?.config?.flow;
     view.setUint32(offset + CELL_ARP_DIRECTION_OFFSET, arpFlow === 'down' || arpFlow === 'downUp' ? 1 : 0, true);
     if (arp) {
-      if (!cell.arp?.config) throw new RangeError(`${label}.arp.config is required for arp articulation`);
-      writeArpConfig(view, offset, cell.arp.config, `${label}.arp.config`);
+      if (!arpPayload?.config) throw new RangeError(`${label}.arp.config is required for arp articulation`);
+      writeArpConfig(view, offset, arpPayload.config, `${label}.arp.config`);
     } else {
       // The runtime ignores ARP fields for chord cells. Clear them so the
       // bytes remain deterministic if a caller reuses a backing buffer.

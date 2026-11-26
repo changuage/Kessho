@@ -9,7 +9,6 @@
  */
 
 import { SCALE_FAMILIES } from '../audio/scales';
-import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, LaneDirection, PitchBindingMode, PitchMode, ScaleName, TrigCondition } from '../audio/drumSeqTypes';
 import {
   defaultManualHarmonyControlState,
@@ -343,7 +342,6 @@ export interface SavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
-  synthPlayConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
@@ -666,8 +664,6 @@ export interface SliderState extends NatureSlotState {
   harmonyProgressionB: HarmonyProgression | undefined;
   /** Saved Chords (max 16) used only as a copy source; never sent to native. */
   harmonyPalette: Chord[];
-  /** Canonical authored Seq 1–4 Play configuration shared by Synth and Harmony history. */
-  synthPlayConfigs: ProductPlayConfig[] | undefined;
   // Synth voice ADSR
   synthAttack: number;        // 0.001..16 seconds
   synthDecay: number;         // 0.01..8 seconds
@@ -2995,6 +2991,8 @@ export const RETIRED_CHORD_STATE_KEYS = [
   'chordProgressionEnabled', 'chordProgressionPattern', 'chordProgressionSteps', 'chordProgressionHits',
   'chordProgressionRotation', 'chordProgressionStepEnabled', 'chordProgressionPhraseMultiplier',
   'chordProgressionClockSource',
+  // The Play chord sequencer is gone; lane ARP lives in Notes-cell articulation.
+  'synthPlayConfigs', 'synthArpConfigs',
 ] as const;
 
 /**
@@ -3319,7 +3317,6 @@ export const DEFAULT_STATE: SliderState = {
   harmonyProgressionA: undefined,
   harmonyProgressionB: undefined,
   harmonyPalette: [],
-  synthPlayConfigs: undefined,
   synthAttack: 6.0,
   synthDecay: 1.0,
   synthSustain: 0.8,
@@ -6732,8 +6729,6 @@ export function migratePreset(preset: any): SavedPreset {
     synthLinked: preset.synthLinked,
     drumSubLaneStates: preset.drumSubLaneStates,
     synthSubLaneStates: preset.synthSubLaneStates,
-    synthPlayConfigs: preset.synthPlayConfigs
-      ?? ((preset as Record<string, unknown>).synthArpConfigs as ProductPlayConfig[] | undefined),
     drumPitchSettings: preset.drumPitchSettings,
     synthPitchSettings: preset.synthPitchSettings,
     synthPitchBindingModes: preset.synthPitchBindingModes,

@@ -7,7 +7,6 @@ import {
   SYNTH_EUCLIDEAN_LANE_COUNT,
 } from '../audio/sequencerLaneCounts';
 import { normalizeSequencerPitchSettingsArray } from '../audio/sequencerPitchSettings';
-import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { PitchSettings } from '../ui/sequencer/useEuclideanSequencer';
 import { getParamInfo, quantize, type SliderMode, type SliderState } from '../ui/state';
 import { getSliderCapability, type SliderCapability } from '../ui/sliderSystem/sliderCapabilities';
@@ -202,12 +201,9 @@ export function preparePresetVersionMetadataForV2Storage(
 ): PresetVersionMetadata | undefined {
   if (!metadata) return undefined;
   const next = { ...metadata };
-  // Canonicalize legacy ARP-only metadata when a loaded preset is saved again.
-  const legacyPlayConfigs = (next as Record<string, unknown>).synthArpConfigs;
-  if (next.synthPlayConfigs === undefined && legacyPlayConfigs !== undefined) {
-    next.synthPlayConfigs = cloneJson(legacyPlayConfigs) as PresetVersionMetadata['synthPlayConfigs'];
-  }
+  // Retired Play metadata is dropped when a loaded preset is saved again.
   delete (next as Record<string, unknown>).synthArpConfigs;
+  delete (next as Record<string, unknown>).synthPlayConfigs;
   delete next.refs;
   if (isL4State) delete next.presetPool;
   const behavior = sanitizePresetParameterBehaviorMetadata(next);
@@ -311,13 +307,6 @@ export function buildPresetVersionMetadata(
 
   if (source.synthSubLaneStates && source.synthSubLaneStates.length > 0) {
     metadata.synthSubLaneStates = cloneJson(source.synthSubLaneStates);
-    hasMetadata = true;
-  }
-
-  const legacyPlayConfigs = (source as Record<string, unknown>).synthArpConfigs as ProductPlayConfig[] | undefined;
-  const synthPlayConfigs = source.synthPlayConfigs ?? legacyPlayConfigs;
-  if (synthPlayConfigs && synthPlayConfigs.length > 0) {
-    metadata.synthPlayConfigs = cloneJson(synthPlayConfigs);
     hasMetadata = true;
   }
 

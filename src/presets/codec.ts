@@ -154,9 +154,6 @@ export function validateRegistry(stateKeys: string[]): {
     'sidechainPad2Target',
     'sidechainPianoTarget',
     'sidechainReverbTarget',
-    // Stored as portable sequencer metadata/content, not duplicated in scalar
-    // ParamRegistry extraction.
-    'synthPlayConfigs',
     // Capture serial is an edge trigger, not authored preset state.
     'spectralFreezeCaptureSerial',
   ]);

@@ -1,4 +1,3 @@
-import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
 import {
   type SerializedStepOverrides,
@@ -68,7 +67,6 @@ export interface BundledSavedPreset {
   synthLinked?: boolean[];
   drumSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
   synthSubLaneStates?: Record<SubLaneKind, SubLaneState>[];
-  synthPlayConfigs?: ProductPlayConfig[];
   drumPitchSettings?: PitchSettings[];
   synthPitchSettings?: PitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];

@@ -23,7 +23,6 @@ const VIEW_STORAGE_KEY = 'kessho.harmony.workspace.view';
 const HARMONY_KEYS = [
   'rootNote', 'scaleMode', 'manualScale', 'tension', 'cofDriftEnabled', 'cofDriftRate', 'cofDriftDirection', 'cofDriftRange', 'cofCurrentStep',
   'harmonyProgression', 'harmonyProgressionA', 'harmonyProgressionB', 'harmonyPalette',
-  'synthPlayConfigs',
   'manualHarmonyControl',
 ] as const;
 

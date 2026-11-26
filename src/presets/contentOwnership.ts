@@ -105,7 +105,6 @@ const METADATA_OWNERS: Readonly<Record<string, PresetPersistenceOwner>> = Object
   synthLinked: 'portable-content',
   drumSubLaneStates: 'portable-content',
   synthSubLaneStates: 'portable-content',
-  synthPlayConfigs: 'portable-content',
   drumPitchSettings: 'portable-content',
   synthPitchSettings: 'portable-content',
   synthPitchBindingModes: 'portable-content',

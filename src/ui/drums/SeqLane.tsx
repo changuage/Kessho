@@ -192,6 +192,9 @@ interface SeqLaneProps {
   triggerHoldSteps?: readonly number[];
   triggerTieSteps?: readonly boolean[];
   triggerStepLabels?: readonly (string | null | undefined)[];
+  /** Trigger lane: the Notes cell each hit plays (null where nothing sounds), shown under the hit. */
+  notesCellLabels?: readonly (number | null)[];
+  onSelectNotesCell?: (cell: number) => void;
   onChangeValue?: (step: number, value: number) => void;
   /** Set per-step probability (trigger lane) */
   onSetProbability?: (step: number, value: number) => void;
@@ -270,6 +273,8 @@ const SeqLane: React.FC<SeqLaneProps> = ({
   triggerHoldSteps,
   triggerTieSteps,
   triggerStepLabels,
+  notesCellLabels,
+  onSelectNotesCell,
   onChangeValue,
   onSetProbability,
   onResetProbability,
@@ -690,6 +695,17 @@ const SeqLane: React.FC<SeqLaneProps> = ({
                   >
                     {trigCond[0]}:{trigCond[1]}
                   </button>
+                  {notesCellLabels ? (
+                    <button
+                      type="button"
+                      className="seq-step-notes-cell"
+                      disabled={notesCellLabels[step] == null || !onSelectNotesCell}
+                      aria-label={notesCellLabels[step] == null ? undefined : `Notes cell ${notesCellLabels[step]! + 1} plays at step ${step + 1}`}
+                      onClick={() => { const cell = notesCellLabels[step]; if (cell != null) onSelectNotesCell?.(cell); }}
+                    >
+                      {notesCellLabels[step] == null ? '' : notesCellLabels[step]! + 1}
+                    </button>
+                  ) : null}
                 </div>
               );
             }

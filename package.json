@@ -24,7 +24,6 @@
     "test:preset-metadata-ownership": "npm run test:preset-metadata && npm run test:preset-content-ownership && npm run test:preset-shared-component-pools",
     "test:preset-legacy-content-migration": "npm run test:preset-graph-authority && npm run test:preset-exact-load",
     "test:preset-sequencer-components": "node scripts/run-preset-sequencer-component-regression.mjs",
-    "test:synth-play-controls-ui": "node scripts/check-synth-play-controls-ui.mjs",
     "test:live-note-input": "node scripts/run-live-note-input-regression.mjs",
     "test:harmony-chord": "tsx --test src/audio/harmony/chord.test.ts",
     "test:generated-sequencer-capture": "node scripts/run-generated-sequencer-capture-regression.mjs",

@@ -129,7 +129,7 @@ test('writes chained snapshots at their own bases, the Notes lane from notesLane
     id: 'B' as const,
     steps: 2,
     spanBeats: 2,
-    notesLane: { length: 2, direction: 'reverse' as const, advance: 'hits' as const },
+    notesLane: { length: 2, direction: 'reverse' as const, advance: 'hits' as const, articulation: 'chord' as const },
     lane: {
       state: {
         ...a.lane.state,
@@ -382,4 +382,18 @@ test('a schema 1 bank encodes to the same bytes as before the cell model (Notes 
     assert.deepEqual(new Uint8Array(encodeSynthSequenceVariationBank(fixture.bank as SynthSequenceVariationBank)), expected);
     assert.deepEqual(normalizeSynthSequenceVariationBank(JSON.parse(JSON.stringify(normalized))), normalized);
   }
+});
+
+test('an inheriting cell encodes as the Notes lane default articulation', () => {
+  const bank = printedBank();
+  const variation = bank.variations.A!;
+  variation.cells[0] = { ...variation.cells[0]!, articulation: 'inherit' };
+  variation.cells[1] = { ...variation.cells[1]!, articulation: 'chord' };
+  const articulationAt = (step: number) => new DataView(encodeSynthSequenceVariationBank(bank))
+    .getUint32(cellOffset(snapshotOffset(0), step) + 4, true);
+  variation.notesLane.articulation = 'chord';
+  assert.equal(articulationAt(0), 0);
+  variation.notesLane.articulation = 'arp';
+  assert.equal(articulationAt(0), 1, 'inherit follows the lane default, with a default arp payload');
+  assert.equal(articulationAt(1), 0, 'an explicit Chord cell ignores the lane default');
 });

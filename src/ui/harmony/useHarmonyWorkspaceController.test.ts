@@ -6,7 +6,7 @@ import { normalizeChord } from '../../audio/harmony/chord';
 import type { SliderState } from '../state';
 
 test('App-owned commit survives Global unmount and is undoable after remount', () => {
-  const initial = { rootNote: 0, harmonyPalette: [], synthPlayConfigs: [] } as unknown as SliderState;
+  const initial = { rootNote: 0, harmonyPalette: [] } as unknown as SliderState;
   const before = captureHarmonyAuthoredSnapshot(initial);
   let history = createHarmonyWorkspaceHistory(before);
   const after = captureHarmonyAuthoredSnapshot({ ...initial, harmonyPalette: [normalizeChord({ behavior: 'follow', degree: 4 })!] });

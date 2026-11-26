@@ -74,7 +74,6 @@ import {
   evolvedDrumPitchOffsetToUiValue,
 } from '../ui/sequencer/drumPitchSequencer';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
-import { normalizeProductPlayConfig } from '../audio/productPlaySequencer';
 import { getPresetMetadataOwner } from './contentOwnership';
 import { drumVoiceBaseMidi } from '../audio/drumVoiceMidi';
 import { createDiamondJourney, createJourneyConnection } from '../audio/journeyTypes';
@@ -271,42 +270,26 @@ function testMigratePresetPreservesSynthPitchBindingModes(): void {
   );
 }
 
-function testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt(): void {
-  const arpConfig = normalizeProductPlayConfig({
-    enabled: true,
-    mode: 'arp',
-    arp: { enabled: true, length: 4, rate: 2, flow: 'up', pulseMask: 15 },
-  });
-  const chordConfig = normalizeProductPlayConfig({
-    enabled: true,
-    mode: 'chord',
-    chord: { style: 'strum', length: 3, flow: 'reverse', gate: 0.72, voiceCount: 4 },
-  });
-  const playConfigs = [arpConfig, chordConfig];
+function testRetiredPlayConfigMetadataIsIgnoredAndNeverSaved(): void {
+  const playConfigs = [{ enabled: true, mode: 'arp' }, { enabled: true, mode: 'chord' }];
   const migrated = migratePreset({
     name: 'Legacy Play',
     timestamp: '2026-07-24T00:00:00.000Z',
     state: { ...DEFAULT_STATE },
     synthArpConfigs: playConfigs,
-  });
-  assert.deepStrictEqual(migrated.synthPlayConfigs, playConfigs);
-  assert.equal((migrated as unknown as Record<string, unknown>).synthArpConfigs, undefined, 'migrated presets should expose only the canonical Play key');
+    synthPlayConfigs: playConfigs,
+  } as never) as unknown as Record<string, unknown>;
+  assert.equal(migrated.synthPlayConfigs, undefined);
+  assert.equal(migrated.synthArpConfigs, undefined);
 
-  const metadata = buildPresetVersionMetadata({ synthArpConfigs: playConfigs } as never);
-  assert.deepStrictEqual(metadata?.synthPlayConfigs, playConfigs);
-  assert.equal(metadata && 'synthArpConfigs' in metadata, false, 'new metadata must not author the legacy key');
-
-  const canonicalWins = buildPresetVersionMetadata({
-    synthPlayConfigs: [arpConfig],
-    synthArpConfigs: [chordConfig],
-  } as never);
-  assert.deepStrictEqual(canonicalWins?.synthPlayConfigs, [arpConfig]);
+  const metadata = buildPresetVersionMetadata({ synthArpConfigs: playConfigs, synthPlayConfigs: playConfigs } as never);
+  assert.equal(metadata, undefined, 'new metadata must not author Play configs');
   assert.deepStrictEqual(
-    preparePresetVersionMetadataForV2Storage({ synthArpConfigs: playConfigs } as never, true),
-    { synthPlayConfigs: playConfigs },
+    preparePresetVersionMetadataForV2Storage({ synthArpConfigs: playConfigs, synthPlayConfigs: playConfigs } as never, true),
+    undefined,
   );
-  assert.equal(getPresetMetadataOwner('synthPlayConfigs'), 'portable-content');
-  assert.equal(getPresetMetadataOwner('synthArpConfigs'), undefined, 'legacy Play metadata is decode-only');
+  assert.equal(getPresetMetadataOwner('synthPlayConfigs'), undefined, 'retired Play metadata has no owner');
+  assert.equal(getPresetMetadataOwner('synthArpConfigs'), undefined);
 }
 
 function testRetiredHarmonyChordFieldsAreIgnored(): void {
@@ -1704,7 +1687,7 @@ async function run(): Promise<void> {
   testSynthLanePatternRoundTripKeepsNoteRangeBounds();
   testEngineStepOverridesTrimHiddenSubLaneValues();
   testMigratePresetPreservesSynthPitchBindingModes();
-  testSynthPlayConfigMetadataMigratesLegacyKeyWithoutReauthoringIt();
+  testRetiredPlayConfigMetadataIsIgnoredAndNeverSaved();
   testRetiredHarmonyChordFieldsAreIgnored();
   testStatePresetPitchMetadataUsesAuthoritativeLaneCounts();
   testBuildPresetVersionMetadataIncludesAllSupportedFields();

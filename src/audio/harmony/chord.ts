@@ -109,7 +109,8 @@ export function chordNoteFields(chord: Chord, maxNotes = CHORD_MAX_NOTES): CoreP
   return chord.behavior === 'fixed' ? noteListFields(chord.notes, maxNotes) : [];
 }
 
-const PITCH_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'] as const;
+// Sharps, matching the keyboard's key labels.
+const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'] as const;
 const scaleOf = (scale: number) => HARMONY_SCALE_INTERVALS[Math.round(scale)] ?? DEFAULT_HARMONY_SCALE_INTERVALS;
 
@@ -146,6 +147,11 @@ function chordOffsets(degree: number, quality: ChordQuality, extensions: readonl
 }
 
 /** Display name: roman numeral plus quality for Follow, pitch names for Fixed. */
+/** Pitch-class name of a Follow chord's root in the given key (sharps). */
+export function chordRootName(chord: Chord, keyRoot: number, scale: number): string {
+  return PITCH_NAMES[pc(keyRoot + degreeOffset(chord.degree, scale))] ?? 'C';
+}
+
 export function chordName(chord: Chord, keyRoot: number, scale: number): string {
   if (chord.behavior === 'fixed') {
     return chord.notes.map((note) => `${PITCH_NAMES[pc(note.midi)]}${Math.floor(Math.round(note.midi) / 12) - 1}`).join(' ') || 'Empty';
@@ -195,4 +201,41 @@ export function recognizeChord(notes: readonly number[], keyRoot: number, scale:
     }
   }
   return (best as { result: Pick<Chord, 'degree' | 'quality' | 'extensions'> } | null)?.result ?? null;
+}
+
+/** Degree labels for a key's scale steps, as the editor's picker shows them. */
+export function chordDegreeLabels(scale: number): string[] {
+  return scaleOf(scale).map((_, index) => ROMAN[index] ?? String(index + 1));
+}
+
+/**
+ * Display-only voicing of a chord in a key: for a Follow chord the picker shows
+ * what its degree, quality and extensions spell, and Follow to Fixed pins it.
+ * It is never sent to native, which resolves Follow chords itself, so it may
+ * differ in register or spread from what plays. A Fixed chord returns its notes.
+ */
+export function previewChordNotes(chord: Chord, keyRoot: number, scale: number): number[] {
+  if (chord.behavior === 'fixed') return chord.notes.map((note) => note.midi);
+  const rootPc = pc(keyRoot + degreeOffset(chord.degree, scale));
+  const rootMidi = 48 + rootPc;
+  let tones = chordOffsets(chord.degree, chord.quality, chord.extensions, scale).map((offset) => rootMidi + offset);
+  for (let turn = 0; turn < Math.min(chord.voicing.inversion, tones.length - 1); turn += 1) {
+    tones = [...tones.slice(1), tones[0]! + 12];
+  }
+  if (chord.voicing.bass === 'root') tones.unshift(rootMidi - 12);
+  else if (typeof chord.voicing.bass === 'number') tones.unshift(48 + chord.voicing.bass - 12);
+  return [...new Set(tones.map((midi) => clamp(midi + 12 * chord.voicing.register, 0, 127)))].sort((a, b) => a - b);
+}
+
+/** A Follow chord on a scale degree. */
+export function createFollowChord(degree: number, quality: ChordQuality = 'diatonic'): Chord {
+  return {
+    behavior: 'follow', degree, quality, extensions: [],
+    voicing: { inversion: 0, spread: 0, register: 0, bass: 'inversion' }, notes: [],
+  };
+}
+
+/** A Fixed chord: exact absolute notes, no harmony intent. */
+export function createFixedChord(notes: ChordNote[]): Chord {
+  return { ...createFollowChord(0), behavior: 'fixed', notes };
 }

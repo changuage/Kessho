@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, type MutableRefObject } from 'react';
 
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
-import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig } from './sequencer/useEuclideanSequencer';
 import { sanitizeSequencerSubLaneStates } from './usePresetSequencerRestore';
 
@@ -27,7 +26,6 @@ type SynthPageSequencerBridgeOptions = {
   synthLinkedRef: MutableRefObject<boolean[] | undefined>;
   synthPitchBindingModesRef: MutableRefObject<PitchBindingMode[] | undefined>;
   synthPitchSettingsRef: MutableRefObject<PitchSettings[] | undefined>;
-  synthPlayConfigsRef: MutableRefObject<ProductPlayConfig[] | undefined>;
   synthStepOverridesRef: MutableRefObject<StepOverrides | undefined>;
   synthSubLaneStatesRef: MutableRefObject<Record<SubLaneKind, SubLaneState>[] | undefined>;
   synthSwingsRef: MutableRefObject<number[] | undefined>;
@@ -35,7 +33,6 @@ type SynthPageSequencerBridgeOptions = {
 
 function subLaneEnabledFlags(
   states: Record<SubLaneKind, SubLaneState>[] | undefined,
-  playConfigs: ProductPlayConfig[] | undefined,
 ): Record<string, boolean>[] {
   return Array.from({ length: 4 }, (_, laneIndex) => {
     const state = states?.[laneIndex];
@@ -44,24 +41,8 @@ function subLaneEnabledFlags(
       out[key] = value.enabled;
     }
     out.ratchet = out.expression === true;
-    if (playConfigs?.[laneIndex]?.enabled) {
-      out.arp = true;
-      out.play = true;
-      out.pitch = true;
-    }
     return out;
   });
-}
-
-export function effectiveProductSynthPitchBindingModes(
-  modes: readonly PitchBindingMode[],
-  playConfigs: readonly ProductPlayConfig[] | undefined,
-): PitchBindingMode[] {
-  return modes.map((mode, laneIndex) => (
-    playConfigs?.[laneIndex]?.enabled && playConfigs[laneIndex]?.mode === 'chord'
-      ? 'polyrhythmic'
-      : mode
-  ));
 }
 
 function synthEngineStepOverrides(overrides: StepOverrides): Partial<StepOverrides> {
@@ -103,7 +84,6 @@ export function useSynthPageSequencerBridge({
   synthLinkedRef,
   synthPitchBindingModesRef,
   synthPitchSettingsRef,
-  synthPlayConfigsRef,
   synthStepOverridesRef,
   synthSubLaneStatesRef,
   synthSwingsRef,
@@ -113,15 +93,8 @@ export function useSynthPageSequencerBridge({
   const onSubLaneStatesChange = useCallback((states: Record<SubLaneKind, SubLaneState>[]) => {
     const sanitized = sanitizeSequencerSubLaneStates(states) ?? states;
     synthSubLaneStatesRef.current = sanitized;
-    setProductSynthSubLaneEnabled(subLaneEnabledFlags(sanitized, synthPlayConfigsRef.current));
-  }, [setProductSynthSubLaneEnabled, synthPlayConfigsRef, synthSubLaneStatesRef]);
-
-  const onPlayConfigsChange = useCallback((configs: ProductPlayConfig[]) => {
-    synthPlayConfigsRef.current = configs;
-    setProductSynthSubLaneEnabled(subLaneEnabledFlags(synthSubLaneStatesRef.current, configs));
-    const authoredModes = synthPitchBindingModesRef.current ?? [];
-    setProductSynthPitchBindingModes(effectiveProductSynthPitchBindingModes(authoredModes, configs));
-  }, [setProductSynthPitchBindingModes, setProductSynthSubLaneEnabled, synthPitchBindingModesRef, synthPlayConfigsRef, synthSubLaneStatesRef]);
+    setProductSynthSubLaneEnabled(subLaneEnabledFlags(sanitized));
+  }, [setProductSynthSubLaneEnabled, synthSubLaneStatesRef]);
 
   const onPitchSettingsChange = useCallback((settings: PitchSettings[]) => {
     synthPitchSettingsRef.current = settings;
@@ -130,12 +103,8 @@ export function useSynthPageSequencerBridge({
 
   const onPitchBindingModesChange = useCallback((modes: PitchBindingMode[]) => {
     synthPitchBindingModesRef.current = modes;
-    // Product chord choices are indexed by audible trigger hits. Force only
-    // the runtime binding to the hit-count path; authored UI binding modes
-    // remain untouched for persistence and editing.
-    const effectiveModes = effectiveProductSynthPitchBindingModes(modes, synthPlayConfigsRef.current);
-    setProductSynthPitchBindingModes(effectiveModes);
-  }, [setProductSynthPitchBindingModes, synthPitchBindingModesRef, synthPlayConfigsRef]);
+    setProductSynthPitchBindingModes(modes);
+  }, [setProductSynthPitchBindingModes, synthPitchBindingModesRef]);
 
   const onRawStepOverridesChange = useCallback((raw: StepOverrides) => {
     synthStepOverridesRef.current = raw;
@@ -191,7 +160,6 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
-    onPlayConfigsChange,
     onSwingsChange,
     resetEvolveHome: resetProductSynthEuclidLaneHome,
   }), [
@@ -205,7 +173,6 @@ export function useSynthPageSequencerBridge({
     onRawStepOverridesChange,
     onStepOverridesChange,
     onSubLaneStatesChange,
-    onPlayConfigsChange,
     onSwingsChange,
     resetProductSynthEuclidLaneHome,
   ]);

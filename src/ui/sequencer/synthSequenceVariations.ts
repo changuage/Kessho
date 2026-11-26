@@ -1,6 +1,6 @@
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
-import { CHORD_MAX_NOTES_PER_CELL, normalizeChord, normalizeChordNote, type Chord, type ChordNote } from '../../audio/harmony/chord';
+import { CHORD_MAX_NOTES_PER_CELL, createFixedChord, normalizeChord, normalizeChordNote, type Chord, type ChordNote } from '../../audio/harmony/chord';
 import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
 import type { SerializedStepOverrides } from '../state';
 import type { SerializedSequenceLanePresetState } from './sequencePresetLane';
@@ -137,10 +137,14 @@ export interface NotesLane {
   length: number;
   direction: LaneDirection;
   advance: NotesAdvance;
+  /** What a cell that inherits its articulation plays as. */
+  articulation: NotesArticulation;
 }
 
 export type NotesCellKind = 'rest' | 'harmony' | 'chord';
 export type NotesArticulation = 'chord' | 'arp';
+/** A cell's own articulation, or `inherit` to follow the lane default. */
+export type NotesCellArticulation = 'inherit' | NotesArticulation;
 
 export interface NotesCell {
   kind: NotesCellKind;
@@ -149,16 +153,16 @@ export interface NotesCell {
   /** Chord cells: Follow resolves against the harmony frame; Fixed holds up to 32 absolute notes. */
   chord?: Chord;
   gateBeats: number;
-  articulation: NotesArticulation;
+  articulation: NotesCellArticulation;
   arp?: SynthVariationArpPayload;
 }
 
 export function createRestNotesCell(): NotesCell {
-  return { kind: 'rest', gateBeats: 0, articulation: 'chord' };
+  return { kind: 'rest', gateBeats: 0, articulation: 'inherit' };
 }
 
 export function createDefaultNotesLane(length: number): NotesLane {
-  return { length: Math.max(1, Math.min(SYNTH_NOTES_LANE_MAX_LENGTH, Math.round(length))), direction: 'forward', advance: 'steps' };
+  return { length: Math.max(1, Math.min(SYNTH_NOTES_LANE_MAX_LENGTH, Math.round(length))), direction: 'forward', advance: 'steps', articulation: 'chord' };
 }
 
 /**
@@ -181,10 +185,32 @@ export function createPlainNotesCell(lane: SynthVariationLane, gateBeats: number
         notes: [{ ...note, midi: root }],
       },
       gateBeats,
-      articulation: 'chord',
+      articulation: 'inherit',
     };
   }
-  return { kind: 'harmony', intervals: [note], gateBeats, articulation: 'chord' };
+  return { kind: 'harmony', intervals: [note], gateBeats, articulation: 'inherit' };
+}
+
+/** What a cell plays as: its own articulation, or the lane default when it inherits. */
+export function resolveNotesCellArticulation(cell: NotesCell, lane: NotesLane): NotesArticulation {
+  return cell.articulation === 'inherit' ? lane.articulation : cell.articulation;
+}
+
+/**
+ * The cell index the Notes lane reaches at a position. `position` is the
+ * trigger step under Advance = Steps and the hit ordinal under Advance = Hits;
+ * direction then walks the first `length` cells.
+ */
+export function notesLaneCellIndex(lane: NotesLane, position: number): number {
+  const length = Math.max(1, lane.length);
+  const at = Math.max(0, Math.round(position));
+  if (lane.direction === 'reverse') return length - 1 - (at % length);
+  if (lane.direction === 'pingpong' && length > 1) {
+    const period = (length - 1) * 2;
+    const folded = at % period;
+    return folded <= length - 1 ? folded : period - folded;
+  }
+  return at % length;
 }
 
 export function notesCellNotes(cell: NotesCell): ChordNote[] {
@@ -388,8 +414,6 @@ const PRINT_OFF_SUBLANE = {
 function configurePrintedLane(lane: SynthVariationLane, clockDiv: ClockDivision): void {
   const state = { ...lane.state };
   delete state.evolveConfig;
-  delete state.playConfig;
-  delete state.arpConfig;
   lane.state = {
     ...state,
     clockDiv,
@@ -411,18 +435,6 @@ function validCaptureNote(note: SynthVariationCaptureNote): boolean {
   if (note.chordGroupId !== undefined && typeof note.chordGroupId !== 'string') return false;
   if (note.sourceId !== undefined && (!Number.isInteger(note.sourceId) || note.sourceId < 0 || note.sourceId > 255)) return false;
   return true;
-}
-
-/** A Fixed chord: exact absolute notes, no harmony intent. */
-export function createFixedChord(notes: ChordNote[]): Chord {
-  return {
-    behavior: 'fixed',
-    degree: 0,
-    quality: 'diatonic',
-    extensions: [],
-    voicing: { inversion: 0, spread: 0, register: 0, bass: 'inversion' },
-    notes,
-  };
 }
 
 type PrintCandidate = SynthSequenceVariation | 'unsupported' | 'capacity' | 'collision';
@@ -471,7 +483,7 @@ function printCandidate(input: SynthVariationPrintInput, clockDiv: ClockDivision
       kind: 'chord',
       chord: createFixedChord(notes),
       gateBeats: Math.max(0, ...notes.map((note) => note.gate ?? 0)),
-      articulation: 'chord',
+      articulation: 'inherit',
     };
   }
 
@@ -584,11 +596,12 @@ function normalizeNotesCell(raw: unknown, index: number): NotesCell {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalid(`${label} must be an object`);
   const source = raw as Partial<NotesCell>;
   if (source.kind !== 'rest' && source.kind !== 'harmony' && source.kind !== 'chord') invalid(`${label} has an invalid kind`);
-  if (source.articulation !== 'chord' && source.articulation !== 'arp') invalid(`${label} has an invalid articulation`);
+  const articulation = source.articulation ?? 'inherit';
+  if (articulation !== 'inherit' && articulation !== 'chord' && articulation !== 'arp') invalid(`${label} has an invalid articulation`);
   const cell: NotesCell = {
     kind: source.kind,
     gateBeats: normalizeGateBeats(source.gateBeats, label),
-    articulation: source.articulation,
+    articulation,
   };
   if (source.kind === 'harmony') {
     const intervals = (Array.isArray(source.intervals) ? source.intervals : [])
@@ -601,7 +614,7 @@ function normalizeNotesCell(raw: unknown, index: number): NotesCell {
     cell.chord = chord;
   }
   if (source.arp !== undefined) cell.arp = normalizeArp(source.arp, label);
-  if (source.articulation === 'arp' && !cell.arp) invalid(`${label} needs an arp payload`);
+  if (articulation === 'arp' && !cell.arp) invalid(`${label} needs an arp payload`);
   return cell;
 }
 
@@ -615,7 +628,9 @@ function normalizeNotesLane(raw: unknown, id: SynthSequenceVariationId): NotesLa
     invalid(`variation ${id} notesLane.direction is invalid`);
   }
   if (source.advance !== 'steps' && source.advance !== 'hits') invalid(`variation ${id} notesLane.advance is invalid`);
-  return { length: source.length, direction: source.direction, advance: source.advance };
+  const articulation = source.articulation ?? 'chord';
+  if (articulation !== 'chord' && articulation !== 'arp') invalid(`variation ${id} notesLane.articulation is invalid`);
+  return { length: source.length, direction: source.direction, advance: source.advance, articulation };
 }
 
 function normalizeCells(raw: unknown, id: SynthSequenceVariationId): NotesCell[] {
@@ -711,7 +726,7 @@ function cellsFromLegacyStepMetadata(stepMetadata: unknown, steps: number, lane:
     const cell: NotesCell = {
       kind: !active ? 'rest' : fixed ? 'chord' : 'harmony',
       gateBeats: normalizeGateBeats(metadata?.gateBeats ?? 0, `stepMetadata ${step}`),
-      articulation: metadata?.mode === 'arp' ? 'arp' : 'chord',
+      articulation: metadata?.mode === 'arp' ? 'arp' : 'inherit',
     };
     if (cell.kind === 'harmony') cell.intervals = intervals.map((interval) => toNote(interval, interval.intervalSemitones));
     if (cell.kind === 'chord') {

@@ -12,7 +12,6 @@ import type { DualSliderConfig } from '../ui/sliderSystem/dualConfigReducer';
 import type { RoutingMuteGroupsState } from '../ui/routing/routingMuteGroups';
 import type { ClockDivision } from '../audio/drumSeqTypes';
 import type { PitchBindingMode } from '../audio/drumSeqTypes';
-import type { ProductPlayConfig } from '../audio/productPlaySequencer';
 import type { DiamondPosition } from '../audio/journeyTypes';
 import type { SerializedSeqScatterState } from '../ui/drums/scatter/scatterTypes';
 import type { SynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
@@ -115,7 +114,6 @@ export interface PresetVersionMetadata {
   drumSubLaneStates?: Record<string, SerializedSubLaneState>[];
   synthSubLaneStates?: Record<string, SerializedSubLaneState>[];
   /** Current Seq 1–4 Play configuration metadata. */
-  synthPlayConfigs?: ProductPlayConfig[];
   drumPitchSettings?: SerializedPitchSettings[];
   synthPitchSettings?: SerializedPitchSettings[];
   synthPitchBindingModes?: PitchBindingMode[];
