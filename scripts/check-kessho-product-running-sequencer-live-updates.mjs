@@ -43,11 +43,7 @@ const files = {
   hostDiagnostics: read('src/audio/product/host/CoreProductHostDiagnostics.ts'),
   hostCommitService: read('src/audio/product/host/CoreProductResolvedStateCommitService.ts'),
   generatedCaptureTelemetryHistory: read('src/audio/product/host/CoreProductGeneratedSequencerCaptureTelemetryHistory.ts'),
-  generatedCaptureCommit: read('src/ui/sequencer/commitGeneratedCaptureToEuclid.ts'),
-  generatedCaptureProductCommit: read('src/ui/sequencer/generatedCaptureProductCommit.ts'),
-  generatedCaptureHook: read('src/ui/sequencer/useGeneratedSequenceCapture.ts'),
   recordedCaptureHook: read('src/ui/sequencer/useRecordedNoteCapture.ts'),
-  generatedCapturePhrase: read('src/ui/sequencer/generatedSequencerCapturePhrase.ts'),
   host: read('src/audio/coreProductEngineHost.ts'),
   hostStateApplyCoordinator: read('src/audio/product/host/CoreProductHostStateApplyCoordinator.ts'),
   manualTriggers: read('src/ui/useProductRuntimeManualTriggers.ts'),
@@ -500,30 +496,20 @@ check(
   'sequencer home capture must use generated ProductEvent markers instead of the sequencer UI patch bridge',
 );
 check(
-  'generated-sequencer-capture-history-and-phrase-policy',
+  'generated-sequencer-capture-history-and-dead-path-removed',
   files.host.includes('generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry))') &&
     files.host.includes('generatedSequencerCaptureTelemetryHistory.clearForEvent(event, this.latestTelemetry)') &&
     files.generatedCaptureTelemetryHistory.includes('GENERATED_SEQUENCER_CAPTURE_EVENT_HISTORY_LIMIT') &&
     files.generatedCaptureTelemetryHistory.includes('KESSHO_PRODUCT_EVENT_IDS.GeneratedSequencerCapture') &&
     files.generatedCaptureTelemetryHistory.includes('(event.value ?? 0) < 0.5') &&
     files.generatedCaptureTelemetryHistory.includes('generatedSequencerCaptureEvents: this.events') &&
-    files.generatedCaptureCommit.includes('next.triggerToggles[targetLaneIndex] = new Map(triggerToggles)') &&
-    files.generatedCaptureCommit.includes('onStepCommit?.({') &&
-    !files.generatedCaptureCommit.includes('next.triggerToggles[targetLaneIndex] = new Map();') &&
-    files.generatedCaptureProductCommit.includes('buildProductGeneratedCaptureStepCommitEvents') &&
-    files.generatedCaptureProductCommit.includes('createCoreProductSynthSequencerLaneStepOverrideEvents') &&
-    files.generatedCaptureProductCommit.includes('SequencerLaneMode, 0') &&
     files.sequencerStepOverrideEvents.includes('createCoreProductSynthSequencerLaneStepOverrideEvents') &&
-    files.productSynthPageEvents.includes('commitProductGeneratedSequencerCaptureToStep') &&
-    files.productSynthPageEvents.includes('buildProductGeneratedCaptureStepCommitEvents(commit)') &&
-    files.generatedCaptureHook.includes('completedScratch') &&
-    files.generatedCaptureHook.includes('commitCycleIndex') &&
-    files.generatedCaptureHook.includes("status: 'finishing'") &&
-    files.generatedCaptureHook.includes('chooseGeneratedCaptureStopAction') &&
-    files.generatedCaptureHook.includes('eventCycleIndex < scratch.cycleIndex') &&
-    files.generatedCaptureHook.includes('eventCycleIndex > scratch.cycleIndex') &&
-    files.generatedCapturePhrase.includes('completedCycleIndex'),
-  'generated capture helpers must retain rolling phrase history and deliver the host disable flush',
+    // The generated-capture-to-Euclid path was deleted; recorded capture is the only print path.
+    !files.productSynthPageEvents.includes('commitProductGeneratedSequencerCaptureToStep') &&
+    !files.productSynthPageEvents.includes('generatedCaptureProductCommit') &&
+    !files.synthPage.includes('useGeneratedSequenceCapture') &&
+    !files.app.includes('useGeneratedSequenceCapture'),
+  'generated capture telemetry history must still deliver the host disable flush; the dead Euclid capture path must stay deleted',
 );
 check(
   'recorded-capture-transport-and-bank-receipts',
@@ -538,8 +524,11 @@ check(
     files.recordedCaptureHook.includes("active.runtimePhase !== 'ready' || !watermarkReached(active)") &&
     files.synthPage.includes('if (!await commitSynthSequenceVariationBank(laneIndex, result.bank))') &&
     files.synthPage.includes('if (!settlement.accepted) return') &&
+    // A print replaces one variation and commits only against the bank it was armed on.
+    files.synthPage.includes('targetVariation: arm.targetVariation') &&
+    files.synthPage.includes('isSameSynthSequenceVariationBank(current, arm.bank) ? result.bank : current') &&
     files.synthPage.indexOf('await commitSynthSequenceVariationBank(laneIndex, result.bank)') <
-      files.synthPage.indexOf('updateSynthVariationBank(laneIndex, () => result.bank)'),
+      files.synthPage.indexOf('updateSynthVariationBank(laneIndex, (current) => ('),
   'recording must wait for transport, drain the final runtime watermark, and publish a printed bank after an accepted receipt',
 );
 check(

@@ -51,9 +51,6 @@ export interface RecordedNoteInput {
   /** Input event identity. It is remapped to a positive u32 note id. */
   readonly id?: number;
   readonly chordGroupId?: string;
-  readonly mode?: RecordedNote['mode'];
-  readonly chord?: RecordedNote['chord'];
-  readonly arp?: RecordedNote['arp'];
 }
 
 export interface RecordedNoteOnInput {
@@ -64,9 +61,6 @@ export interface RecordedNoteOnInput {
   readonly sourceId?: number;
   readonly id?: number;
   readonly chordGroupId?: string;
-  readonly mode?: RecordedNote['mode'];
-  readonly chord?: RecordedNote['chord'];
-  readonly arp?: RecordedNote['arp'];
 }
 
 export interface RecordedNoteOffInput {
@@ -137,9 +131,6 @@ type MutableNote = {
   velocity: number;
   sourceId?: number;
   chordGroupId?: string;
-  mode?: RecordedNote['mode'];
-  chord?: RecordedNote['chord'];
-  arp?: RecordedNote['arp'];
 };
 
 type NoteUndo = {
@@ -191,10 +182,7 @@ function validNote(note: RecordedNote): boolean {
     && finite(note.pitch) && note.pitch >= 0 && note.pitch <= 127
     && finite(note.velocity) && note.velocity >= 0 && note.velocity <= 1
     && (note.sourceId === undefined || (Number.isInteger(note.sourceId) && note.sourceId >= 0 && note.sourceId <= RECORDED_NOTE_CLIP_MAX_SOURCE_ID))
-    && (note.chordGroupId === undefined || typeof note.chordGroupId === 'string')
-    && (note.mode === undefined || note.mode === 'note' || note.mode === 'chord' || note.mode === 'arp')
-    && (note.chord === undefined || (Array.isArray(note.chord.intervals) && note.chord.intervals.length > 0))
-    && (note.arp === undefined || Boolean(note.arp.config));
+    && (note.chordGroupId === undefined || typeof note.chordGroupId === 'string');
 }
 
 /**
@@ -330,9 +318,6 @@ export class RecordedNoteSession {
       velocity: normalizeVelocity(input.velocity),
       ...(input.sourceId === undefined ? {} : { sourceId: input.sourceId }),
       ...(input.chordGroupId === undefined ? {} : { chordGroupId: input.chordGroupId }),
-      ...(input.mode === undefined ? {} : { mode: input.mode }),
-      ...(input.chord === undefined ? {} : { chord: input.chord }),
-      ...(input.arp === undefined ? {} : { arp: input.arp }),
     };
     this.noteIndex.set(id, this.notes.length);
     this.notes.push(note);

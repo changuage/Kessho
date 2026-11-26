@@ -23,6 +23,8 @@ export interface Chord {
 }
 
 export const CHORD_MAX_NOTES = 8;
+/** A sequencer cell keeps dense printed attacks as offset notes. */
+export const CHORD_MAX_NOTES_PER_CELL = 32;
 const CHORD_QUALITIES: readonly ChordQuality[] = ['diatonic', 'major', 'minor', 'diminished', 'augmented', 'sus2', 'sus4'];
 /** Canonical order; the index is the native extension bit. */
 const CHORD_EXTENSIONS: readonly ChordExtension[] = ['6', '7', '9', '11', '13', 'dominant'];
@@ -31,11 +33,13 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const num = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const pc = (value: number) => ((Math.round(value) % 12) + 12) % 12;
 
-function normalizeNote(value: unknown): ChordNote | null {
+/** Validate one note. `range` bounds `midi`: 0..127 for sounding notes, or a
+ * semitone interval range (such as -48..48) for Harmony-cell intervals. */
+export function normalizeChordNote(value: unknown, range: readonly [number, number] = [0, 127]): ChordNote | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   const midi = num(record.midi);
-  if (midi === null || midi < 0 || midi > 127) return null;
+  if (midi === null || midi < range[0] || midi > range[1]) return null;
   const note: ChordNote = { midi };
   const velocity = num(record.velocity);
   if (velocity !== null) note.velocity = clamp(velocity, 0, 1);
@@ -48,8 +52,10 @@ function normalizeNote(value: unknown): ChordNote | null {
   return note;
 }
 
-/** Validate and clamp an untrusted value; returns null when it is not a chord. */
-export function normalizeChord(value: unknown): Chord | null {
+/** Validate and clamp an untrusted value; returns null when it is not a chord.
+ * `maxNotes` is 8 for authored chords; a sequencer cell holds up to 32. */
+export function normalizeChord(value: unknown, options: { maxNotes?: number } = {}): Chord | null {
+  const maxNotes = clamp(Math.round(options.maxNotes ?? CHORD_MAX_NOTES), 0, CHORD_MAX_NOTES_PER_CELL);
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   const voicing = record.voicing && typeof record.voicing === 'object' ? record.voicing as Record<string, unknown> : {};
@@ -66,7 +72,7 @@ export function normalizeChord(value: unknown): Chord | null {
       register: clamp(Math.round(num(voicing.register) ?? 0), -3, 3),
       bass,
     },
-    notes: (Array.isArray(record.notes) ? record.notes : []).map(normalizeNote).filter((n): n is ChordNote => n !== null).slice(0, CHORD_MAX_NOTES),
+    notes: (Array.isArray(record.notes) ? record.notes : []).map((note) => normalizeChordNote(note)).filter((n): n is ChordNote => n !== null).slice(0, maxNotes),
   };
 }
 
@@ -86,17 +92,21 @@ export function chordIntentFields(chord: Chord): CoreProductChordIntent {
   };
 }
 
-/** Native KesshoProductChordNote entries. Follow chords send none: native
- * resolves them and `notes` is only a display cache. */
-export function chordNoteFields(chord: Chord): CoreProductChordNote[] {
-  if (chord.behavior !== 'fixed') return [];
-  return chord.notes.slice(0, CHORD_MAX_NOTES).map((note) => ({
+/** Native KesshoProductChordNote entries for a note list. */
+export function noteListFields(notes: readonly ChordNote[], maxNotes = CHORD_MAX_NOTES): CoreProductChordNote[] {
+  return notes.slice(0, maxNotes).map((note) => ({
     midi: note.midi,
     velocity: note.velocity ?? 1,
     gateBeats: note.gate ?? 0,
     offsetBeats: note.offset ?? 0,
     destinationSourceId: note.destination ?? 0,
   }));
+}
+
+/** Native KesshoProductChordNote entries. Follow chords send none: native
+ * resolves them and `notes` is only a display cache. */
+export function chordNoteFields(chord: Chord, maxNotes = CHORD_MAX_NOTES): CoreProductChordNote[] {
+  return chord.behavior === 'fixed' ? noteListFields(chord.notes, maxNotes) : [];
 }
 
 const PITCH_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'] as const;

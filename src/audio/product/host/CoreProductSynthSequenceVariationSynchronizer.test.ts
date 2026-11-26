@@ -5,15 +5,17 @@ import {
   CoreProductSynthSequenceVariationSynchronizer,
   type CoreProductSynthSequenceVariationRuntimeBridge,
 } from './CoreProductSynthSequenceVariationSynchronizer';
-import type { SynthSequenceVariationBank } from '../../../ui/sequencer/synthSequenceVariations';
+import { createDefaultNotesLane, createPlainNotesCell, createRestNotesCell, type SynthSequenceVariationBank } from '../../../ui/sequencer/synthSequenceVariations';
 
 function bank(): SynthSequenceVariationBank {
   const lane = {
     overrides: { triggerToggles: [[{ step: 0, value: true }]] },
     state: { clockDiv: '1/4' as const, swing: 0, pitchSettings: { mode: 'notes' as const, root: 60, scale: 'Chromatic' as const }, pitchBindingMode: 'sequence' as const },
   };
-  const variation = { id: 'A' as const, steps: 4, spanBeats: 4, lane, stepMetadata: { '0': { mode: 'note' as const, gateBeats: 1 } } };
-  return { schemaVersion: 1, phraseBeats: 4, clockDiv: '1/4', chainEnabled: false, playVariation: 0, chainOrder: ['A'], variations: { A: variation } };
+  const cells = Array.from({ length: 32 }, () => createRestNotesCell());
+  cells[0] = createPlainNotesCell(lane, 1);
+  const variation = { id: 'A' as const, steps: 4, spanBeats: 4, lane, notesLane: createDefaultNotesLane(4), cells };
+  return { schemaVersion: 2 as const, phraseBeats: 4, clockDiv: '1/4', chainEnabled: false, playVariation: 0, chainOrder: ['A'], variations: { A: variation } };
 }
 
 test('bootstrap, restore, and null preset state send only changed targets', async () => {

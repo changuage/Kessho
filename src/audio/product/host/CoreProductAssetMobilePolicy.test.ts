@@ -8,6 +8,7 @@ const ownerships: AssetTransferOwnership[] = [];
 const registeredAssets: DecodedCoreProductAsset[] = [];
 const runtime = {
   audioContext: {} as AudioContext,
+  ensureStarted: async () => {},
   registerAsset: async (asset: DecodedCoreProductAsset, ownership: AssetTransferOwnership) => {
     registeredAssets.push(asset);
     ownerships.push(ownership);
@@ -137,6 +138,7 @@ const notReadyRegisteredIds = new Set<number>();
 const notReadyReleasedIds = new Set<number>();
 const notReadyRuntime = {
   ...runtime,
+  ensureStarted: async () => {},
   registerAsset: async (asset: DecodedCoreProductAsset) => {
     notReadyRegisteredIds.add(asset.assetId);
   },
@@ -166,6 +168,7 @@ const staleDecodeGate = new Promise<void>((resolve) => { releaseStaleDecode = re
 const staleRegistrations: number[] = [];
 const staleRuntime = {
   ...runtime,
+  ensureStarted: async () => {},
   registerAsset: async (asset: DecodedCoreProductAsset) => { staleRegistrations.push(asset.assetId); },
 } as unknown as CoreProductRuntime;
 const staleDecode: typeof decodeCoreProductAsset = async (_context, assetId, _url, flags) => {

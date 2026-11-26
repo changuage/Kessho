@@ -19,6 +19,8 @@ function bank() {
     phraseBeats: 4,
     baseLane: { overrides: {}, state: {} },
     notes: [{ onsetBeats: 0.25, durationBeats: 0.5, pitch: 60, velocity: 1 }],
+    targetVariation: 'A',
+    bank: null,
   });
   assert.ok(result.bank);
   return result.bank;

@@ -1,15 +1,17 @@
 import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
-import { SCALES, scaleDegreeToSemitone, type PitchMode } from '../../audio/drumSeqTypes';
+import { SCALES, scaleDegreeToSemitone } from '../../audio/drumSeqTypes';
+import { chordIntentFields, noteListFields } from '../../audio/harmony/chord';
+import type { CoreProductChordIntent, CoreProductChordNote } from '../../audio/coreProductSnapshotTypes';
 import { normalizeSequencerPitchBindingMode } from '../../audio/sequencerPitchBinding';
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import type {
+  NotesCell,
   SynthSequenceVariation,
   SynthSequenceVariationBank,
   SynthSequenceVariationId,
 } from '../../ui/sequencer/synthSequenceVariations';
-import { normalizeSynthSequenceVariationBank } from '../../ui/sequencer/synthSequenceVariations';
-import { deserializeTriggerClip, resolveTriggerClip } from '../../ui/sequencer/triggerClip';
-import type { SerializedStepOverrides, SerializedStepToggle, SerializedSubLaneState } from '../../ui/state';
+import { normalizeSynthSequenceVariationBank, variationTriggerMask } from '../../ui/sequencer/synthSequenceVariations';
+import type { SerializedStepOverrides, SerializedSubLaneState } from '../../ui/state';
 
 export const SYNTH_SEQUENCE_VARIATION_COUNT = 4;
 export const SYNTH_SEQUENCE_VARIATION_MAX_STEPS = 32;
@@ -78,10 +80,12 @@ const CELL_NOTE_BYTES = 20;
 const CELL_NOTE_MIDI_OFFSET = 0;
 const CELL_NOTE_VELOCITY_OFFSET = 4;
 const CELL_NOTE_GATE_BEATS_OFFSET = 8;
-// Offset and destination (+12, +16) stay zero until per-note playback exists.
+const CELL_NOTE_OFFSET_BEATS_OFFSET = 12;
+const CELL_NOTE_DESTINATION_OFFSET = 16;
 const CELL_KIND_REST = 0;
 const CELL_KIND_HARMONY = 1;
 const CELL_KIND_FIXED = 2;
+const CELL_KIND_FOLLOW = 3;
 const BANK_VARIATIONS_OFFSET = 40;
 
 type NumberArray = readonly number[] | null | undefined;
@@ -99,23 +103,11 @@ function laneArray<T>(overrides: SerializedStepOverrides, field: keyof Serialize
 }
 
 function triggerMask(overrides: SerializedStepOverrides, steps: number): number {
-  const serializedClip = overrides.triggerClips?.[0] ?? null;
-  const clip = deserializeTriggerClip(serializedClip);
-  if (clip) {
-    return resolveTriggerClip(clip)
-      .slice(0, steps)
-      .reduce((mask, enabled, step) => enabled ? mask | (1 << step) : mask, 0) >>> 0;
+  try {
+    return variationTriggerMask(overrides, steps);
+  } catch (error) {
+    throw new RangeError(error instanceof Error ? error.message : 'Invalid trigger lane');
   }
-  let mask = 0;
-  const toggles = Array.isArray(overrides.triggerToggles?.[0]) ? overrides.triggerToggles[0] : [];
-  for (const toggle of toggles as SerializedStepToggle[]) {
-    if (toggle && Number.isInteger(toggle.step) && toggle.step >= 0 && toggle.step < steps) {
-      if (typeof toggle.value !== 'boolean') throw new RangeError(`Invalid trigger toggle at step ${toggle.step}`);
-      if (toggle.value) mask |= 1 << toggle.step;
-      else mask &= ~(1 << toggle.step);
-    }
-  }
-  return mask >>> 0;
 }
 
 function direction(value: unknown): number {
@@ -254,15 +246,22 @@ function writeSubLaneConfig(view: DataView, baseOffset: number, variation: Synth
     view.setUint32(baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET + field * 4, direction(state?.direction), true);
   });
   view.setUint32(baseOffset + SNAPSHOT_SUBLANE_ENABLED_MASK_OFFSET, enabledMask >>> 0, true);
-  view.setUint32(baseOffset + SNAPSHOT_SUBLANE_FOLLOW_TRIGGER_HITS_MASK_OFFSET, followTriggerHitsMask >>> 0, true);
   // Field zero is the trigger lane and has no independent sub-lane state.
   view.setUint32(baseOffset + SNAPSHOT_SUBLANE_STEPS_OFFSET, steps, true);
   view.setUint32(baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET, 0, true);
-  // The Notes lane walks one cell per step, forward (Advance = Steps).
+  // The Notes lane carries its own length, direction and Advance.
+  const notesLane = variation.notesLane;
+  if (!Number.isInteger(notesLane.length) || notesLane.length < 1 || notesLane.length > SYNTH_SEQUENCE_VARIATION_MAX_STEPS) {
+    throw new RangeError(`variation ${variation.id} notes lane length must be an integer in [1, ${SYNTH_SEQUENCE_VARIATION_MAX_STEPS}]`);
+  }
   view.setUint32(
-    baseOffset + SNAPSHOT_SUBLANE_STEPS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, steps, true);
+    baseOffset + SNAPSHOT_SUBLANE_STEPS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, notesLane.length, true);
   view.setUint32(
-    baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, 0, true);
+    baseOffset + SNAPSHOT_SUBLANE_DIRECTIONS_OFFSET + SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE * 4, direction(notesLane.direction), true);
+  if (notesLane.advance === 'hits') {
+    followTriggerHitsMask |= 1 << SYNTH_SEQUENCE_VARIATION_NOTES_SUBLANE;
+  }
+  view.setUint32(baseOffset + SNAPSHOT_SUBLANE_FOLLOW_TRIGGER_HITS_MASK_OFFSET, followTriggerHitsMask >>> 0, true);
 }
 
 const ARP_FLOWS = ['up', 'down', 'upDown', 'downUp', 'randomLiveTone', 'diceHold'] as const;
@@ -309,56 +308,83 @@ function writeArpConfig(view: DataView, offset: number, config: ProductArpConfig
   }
 }
 
-function writeStepMetadata(
-  view: DataView,
-  baseOffset: number,
-  variation: SynthSequenceVariation,
-  steps: number,
-  clockDiv: number,
-  pitchMode: PitchMode,
-  pitchRoot: number,
-): void {
-  const mask = triggerMask(variation.lane.overrides, steps);
+function writeNoteFields(view: DataView, offset: number, notes: readonly CoreProductChordNote[], label: string): void {
+  if (notes.length > SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP) {
+    throw new RangeError(`${label} exceeds ${SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP} notes`);
+  }
+  for (let note = 0; note < SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP; note += 1) {
+    const noteOffset = offset + CELL_NOTES_OFFSET + note * CELL_NOTE_BYTES;
+    const field = notes[note];
+    if (field) {
+      requireRange(field.velocity, 0, 1, `${label}.notes[${note}].velocity`);
+      requireRange(field.gateBeats, 0, 64, `${label}.notes[${note}].gate`);
+      requireRange(field.offsetBeats, 0, 64, `${label}.notes[${note}].offset`);
+    }
+    view.setFloat32(noteOffset + CELL_NOTE_MIDI_OFFSET, field?.midi ?? 0, true);
+    view.setFloat32(noteOffset + CELL_NOTE_VELOCITY_OFFSET, field?.velocity ?? 0, true);
+    view.setFloat32(noteOffset + CELL_NOTE_GATE_BEATS_OFFSET, field?.gateBeats ?? 0, true);
+    view.setFloat32(noteOffset + CELL_NOTE_OFFSET_BEATS_OFFSET, field?.offsetBeats ?? 0, true);
+    view.setUint32(noteOffset + CELL_NOTE_DESTINATION_OFFSET, (field?.destinationSourceId ?? 0) >>> 0, true);
+  }
+}
+
+/** KesshoProductChordIntent: u32 behavior, i32 degree, u32 quality, u32 extensions, i32 inversion,
+ * f32 spread, i32 register, u32 bass mode, u32 bass pitch class. All zero is a Follow tonic triad. */
+function writeIntentFields(view: DataView, offset: number, intent: CoreProductChordIntent | null): void {
+  const base = offset + CELL_INTENT_OFFSET;
+  for (let byte = 0; byte < CELL_INTENT_BYTES; byte += 4) view.setUint32(base + byte, 0, true);
+  if (!intent) return;
+  view.setUint32(base, intent.behavior >>> 0, true);
+  view.setInt32(base + 4, intent.degree, true);
+  view.setUint32(base + 8, intent.quality >>> 0, true);
+  view.setUint32(base + 12, intent.extensions >>> 0, true);
+  view.setInt32(base + 16, intent.inversion, true);
+  view.setFloat32(base + 20, intent.spread, true);
+  view.setInt32(base + 24, intent.registerOctave, true);
+  view.setUint32(base + 28, intent.bassMode >>> 0, true);
+  view.setUint32(base + 32, intent.bassPitchClass >>> 0, true);
+}
+
+function cellNoteFields(cell: NotesCell, label: string): { kind: number; notes: CoreProductChordNote[]; intent: CoreProductChordIntent | null } {
+  if (cell.kind === 'harmony') {
+    const intervals = cell.intervals ?? [];
+    for (const [index, note] of intervals.entries()) requireRange(note.midi, -48, 48, `${label}.intervals[${index}].interval`);
+    return { kind: CELL_KIND_HARMONY, notes: noteListFields(intervals, SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP), intent: null };
+  }
+  if (cell.kind === 'chord' && cell.chord) {
+    const chord = cell.chord;
+    if (chord.behavior === 'fixed') {
+      return { kind: CELL_KIND_FIXED, notes: noteListFields(chord.notes, SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP), intent: null };
+    }
+    // Follow cells send intent only; native resolves them and `notes` is a display cache.
+    return { kind: CELL_KIND_FOLLOW, notes: [], intent: chordIntentFields(chord) };
+  }
+  return { kind: CELL_KIND_REST, notes: [], intent: null };
+}
+
+function writeCells(view: DataView, baseOffset: number, variation: SynthSequenceVariation, clockDiv: number): void {
   for (let step = 0; step < SYNTH_SEQUENCE_VARIATION_MAX_STEPS; step += 1) {
     const offset = baseOffset + SNAPSHOT_CELLS_OFFSET + step * SYNTH_SEQUENCE_VARIATION_CELL_BYTES;
-    const metadata = variation.stepMetadata[String(step)];
-    const active = (mask & (1 << step)) !== 0;
-    const gateBeats = metadata?.gateBeats === undefined
-      ? 0
-      : requireRange(metadata.gateBeats, 0, 64, `stepMetadata[${step}].gateBeats`);
-    const intervals = (metadata?.mode === 'chord' || metadata?.mode === 'arp') && metadata.chord?.intervals?.length
-      ? metadata.chord.intervals
-      : [{ intervalSemitones: 0, velocity: 1 }];
-    if (intervals.length > SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP) {
-      throw new RangeError(`stepMetadata[${step}] exceeds ${SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP} notes`);
-    }
-    for (const [noteIndex, interval] of intervals.entries()) {
-      requireRange(interval.intervalSemitones, -48, 48, `stepMetadata[${step}].chord.intervals[${noteIndex}].intervalSemitones`);
-      requireRange(interval.velocity, 0, 1, `stepMetadata[${step}].chord.intervals[${noteIndex}].velocity`);
-      if (interval.gateBeats !== undefined) {
-        requireRange(interval.gateBeats, 0, 64, `stepMetadata[${step}].chord.intervals[${noteIndex}].gateBeats`);
-      }
-    }
-    const followHarmony = metadata?.followHarmony ?? metadata?.chord?.followHarmony ?? false;
-    // Printed Notes-mode steps are absolute at the authored root; everything
-    // else rides the part's harmony pitch.
-    const fixed = pitchMode === 'notes' && !followHarmony;
-    const notes = active ? intervals : [];
-    view.setUint32(offset + CELL_KIND_OFFSET, !active ? CELL_KIND_REST : fixed ? CELL_KIND_FIXED : CELL_KIND_HARMONY, true);
-    view.setUint32(offset + CELL_ARTICULATION_OFFSET, metadata?.mode === 'arp' ? 1 : 0, true);
+    const cell = variation.cells[step];
+    const label = `cells[${step}]`;
+    if (!cell) throw new RangeError(`${label} is missing`);
+    const gateBeats = requireRange(cell.gateBeats, 0, 64, `${label}.gateBeats`);
+    const { kind, notes, intent } = cellNoteFields(cell, label);
+    const arp = cell.articulation === 'arp';
+    view.setUint32(offset + CELL_KIND_OFFSET, kind, true);
+    view.setUint32(offset + CELL_ARTICULATION_OFFSET, arp ? 1 : 0, true);
     view.setUint32(offset + CELL_NOTE_COUNT_OFFSET, notes.length, true);
     view.setFloat32(offset + CELL_GATE_BEATS_OFFSET, gateBeats, true);
-    const arpSpanBeats = metadata?.arp?.spanBeats;
+    const arpSpanBeats = cell.arp?.spanBeats;
     const arpSpanSteps = arpSpanBeats === undefined
       ? 0
-      : requireRange(arpSpanBeats / Math.max(1e-6, 4 / clockDiv), 0, SYNTH_SEQUENCE_VARIATION_MAX_STEPS, `stepMetadata[${step}].arp.spanBeats`);
+      : requireRange(arpSpanBeats / Math.max(1e-6, 4 / clockDiv), 0, SYNTH_SEQUENCE_VARIATION_MAX_STEPS, `${label}.arp.spanBeats`);
     view.setFloat32(offset + CELL_ARP_SPAN_STEPS_OFFSET, arpSpanSteps, true);
-    const arpFlow = metadata?.arp?.config?.flow;
+    const arpFlow = cell.arp?.config?.flow;
     view.setUint32(offset + CELL_ARP_DIRECTION_OFFSET, arpFlow === 'down' || arpFlow === 'downUp' ? 1 : 0, true);
-    if (metadata?.mode === 'arp') {
-      const arpConfig = metadata.arp?.config;
-      if (!arpConfig) throw new RangeError(`stepMetadata[${step}].arp.config is required for arp mode`);
-      writeArpConfig(view, offset, arpConfig, `stepMetadata[${step}].arp.config`);
+    if (arp) {
+      if (!cell.arp?.config) throw new RangeError(`${label}.arp.config is required for arp articulation`);
+      writeArpConfig(view, offset, cell.arp.config, `${label}.arp.config`);
     } else {
       // The runtime ignores ARP fields for chord cells. Clear them so the
       // bytes remain deterministic if a caller reuses a backing buffer.
@@ -373,19 +399,8 @@ function writeStepMetadata(
         view.setInt32(offset + CELL_ARP_CONTOUR_OFFSET + pulse * 4, 0, true);
       }
     }
-    // Chord intent is Follow-only and unused until the TS Chord model lands.
-    for (let byte = 0; byte < CELL_INTENT_BYTES; byte += 4) view.setUint32(offset + CELL_INTENT_OFFSET + byte, 0, true);
-    for (let note = 0; note < SYNTH_SEQUENCE_VARIATION_MAX_NOTES_PER_STEP; note += 1) {
-      const noteOffset = offset + CELL_NOTES_OFFSET + note * CELL_NOTE_BYTES;
-      const interval = notes[note];
-      // Fixed cells are validated 0..127 natively; clamp like the old playback did.
-      const midi = interval ? (fixed ? Math.min(127, Math.max(0, pitchRoot + interval.intervalSemitones)) : interval.intervalSemitones) : 0;
-      view.setFloat32(noteOffset + CELL_NOTE_MIDI_OFFSET, midi, true);
-      view.setFloat32(noteOffset + CELL_NOTE_VELOCITY_OFFSET, interval ? interval.velocity : 0, true);
-      view.setFloat32(noteOffset + CELL_NOTE_GATE_BEATS_OFFSET, interval?.gateBeats ?? 0, true);
-      view.setUint32(noteOffset + 12, 0, true);
-      view.setUint32(noteOffset + 16, 0, true);
-    }
+    writeIntentFields(view, offset, intent);
+    writeNoteFields(view, offset, notes, label);
   }
 }
 
@@ -439,10 +454,8 @@ function writeVariation(view: DataView, offset: number, variation: SynthSequence
   // The serialized lane keeps the existing UI representation: semitone values
   // are root-relative semitones, notes values are scale degrees, and noteRange
   // values are root-relative range offsets. The wire payload stores the
-  // resolved semitone offset; the root only bases printed Notes-mode cells.
+  // resolved semitone offset.
   const pitch = laneArray<number>(overrides, 'pitch');
-  const rootPitch = finiteNumber(variation.lane.state.pitchSettings?.root, 60);
-  requireRange(rootPitch, 0, 127, `variation ${variation.id} pitch root`);
   const pitchMode = variation.lane.state.pitchSettings?.mode ?? 'semitones';
   const scaleName = variation.lane.state.pitchSettings?.scale ?? 'Major';
   const scale = SCALES[scaleName] ?? SCALES.Major;
@@ -457,7 +470,7 @@ function writeVariation(view: DataView, offset: number, variation: SynthSequence
   writeFloatArray(view, offset + SNAPSHOT_MORPH_OFFSET, morph, 0);
   writeFloatArray(view, offset + SNAPSHOT_DISTANCE_OFFSET, distance, 0);
   writeFloatArray(view, offset + SNAPSHOT_NUDGE_OFFSET, nudge, 0);
-  writeStepMetadata(view, offset, variation, steps, clockDiv, pitchMode, rootPitch);
+  writeCells(view, offset, variation, clockDiv);
 }
 
 export function encodeSynthSequenceVariationBank(bank: SynthSequenceVariationBank | null): ArrayBuffer {

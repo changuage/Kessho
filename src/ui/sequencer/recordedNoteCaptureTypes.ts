@@ -1,7 +1,6 @@
 import type {
   RecordedNoteMode,
   RecordedNoteSource,
-  RecordedNote,
 } from './recordedNoteSession';
 
 export type RecordedNoteCaptureBatchPhase = 'recording' | 'finishing' | 'ready' | 'error';
@@ -18,9 +17,6 @@ export interface RecordedNoteCaptureEvent {
   readonly velocity: number;
   readonly sourceId?: number;
   readonly chordGroupId?: string;
-  readonly mode?: RecordedNote['mode'];
-  readonly chord?: RecordedNote['chord'];
-  readonly arp?: RecordedNote['arp'];
 }
 
 /**

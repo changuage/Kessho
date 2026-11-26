@@ -1,9 +1,3 @@
-import type {
-  SynthLocalChordPayload,
-  SynthSequenceVariationMode,
-  SynthVariationArpPayload,
-} from './synthSequenceVariations';
-
 /** Portable, lossless recorded-note phrase shared by the editor and Product Core. */
 
 export const RECORDED_NOTE_CLIP_SCHEMA_VERSION = 1 as const;
@@ -31,10 +25,6 @@ export interface RecordedNoteClipNote {
   sourceId?: number;
   /** Capture-only attack grouping; the fitter must not infer chords without it. */
   chordGroupId?: string;
-  /** Optional source grammar carried through the scratch clip before printing. */
-  mode?: SynthSequenceVariationMode;
-  chord?: SynthLocalChordPayload;
-  arp?: SynthVariationArpPayload;
 }
 
 export interface RecordedNoteClip {
@@ -62,11 +52,8 @@ export interface RecordedNoteClipCaptureEvent {
   midiNote: number;
   velocity: number;
   gateSeconds?: number | null;
-  /** Optional metadata from the capture stream used by the auto printer. */
+  /** Capture attack grouping carried to the printer. */
   chordGroupId?: string;
-  mode?: SynthSequenceVariationMode;
-  chord?: SynthLocalChordPayload;
-  arp?: SynthVariationArpPayload;
 }
 
 export interface RecordedNoteClipFromCaptureOptions {
@@ -111,31 +98,8 @@ function sourceIdValue(value: unknown): number {
   return number;
 }
 
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function validVariationMetadata(note: Pick<RecordedNoteClipNote, 'chordGroupId' | 'mode' | 'chord' | 'arp'>): boolean {
-  if (note.chordGroupId !== undefined && typeof note.chordGroupId !== 'string') return false;
-  if (note.mode !== undefined && note.mode !== 'note' && note.mode !== 'chord' && note.mode !== 'arp') return false;
-  if (note.chord !== undefined) {
-    if (!note.chord || !Array.isArray(note.chord.intervals) || note.chord.intervals.length === 0) return false;
-    if (note.chord.followHarmony !== undefined && typeof note.chord.followHarmony !== 'boolean') return false;
-    if (!note.chord.intervals.every((interval) => (
-      Number.isFinite(interval.intervalSemitones)
-      && interval.intervalSemitones >= -48
-      && interval.intervalSemitones <= 48
-      && Number.isFinite(interval.velocity)
-      && interval.velocity >= 0
-      && interval.velocity <= 1
-      && (interval.gateBeats === undefined || (Number.isFinite(interval.gateBeats) && interval.gateBeats >= 0))
-    ))) return false;
-  }
-  if (note.arp !== undefined) {
-    if (!note.arp || typeof note.arp !== 'object' || !note.arp.config) return false;
-    if (note.arp.spanBeats !== undefined && (!Number.isFinite(note.arp.spanBeats) || note.arp.spanBeats <= 0)) return false;
-  }
-  return true;
+function validChordGroupId(note: Pick<RecordedNoteClipNote, 'chordGroupId'>): boolean {
+  return note.chordGroupId === undefined || typeof note.chordGroupId === 'string';
 }
 
 function cloneAndValidateNote(raw: unknown): RecordedNoteClipNote {
@@ -149,11 +113,8 @@ function cloneAndValidateNote(raw: unknown): RecordedNoteClipNote {
     velocity: finite(note.velocity, 'note velocity'),
   };
   if (note.sourceId !== undefined) normalized.sourceId = sourceIdValue(note.sourceId);
-  if (!validVariationMetadata(note)) throw new RangeError('Invalid recorded clip capture metadata');
+  if (!validChordGroupId(note)) throw new RangeError('Invalid recorded clip capture metadata');
   if (note.chordGroupId !== undefined) normalized.chordGroupId = note.chordGroupId;
-  if (note.mode !== undefined) normalized.mode = note.mode;
-  if (note.chord !== undefined) normalized.chord = cloneJson(note.chord);
-  if (note.arp !== undefined) normalized.arp = cloneJson(note.arp);
   return normalized;
 }
 
@@ -284,9 +245,6 @@ export function recordedNoteClipFromCaptureEvents(options: RecordedNoteClipFromC
       velocity,
       ...(sourceId === undefined ? {} : { sourceId }),
       ...(event.chordGroupId === undefined ? {} : { chordGroupId: event.chordGroupId }),
-      ...(event.mode === undefined ? {} : { mode: event.mode }),
-      ...(event.chord === undefined ? {} : { chord: cloneJson(event.chord) }),
-      ...(event.arp === undefined ? {} : { arp: cloneJson(event.arp) }),
     };
   });
   return createRecordedNoteClip({ id: options.id, revision: options.revision, durationBeats, grid: { steps: gridSteps }, notes });

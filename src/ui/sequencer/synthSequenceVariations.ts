@@ -1,16 +1,16 @@
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
-import { SCALES, semitoneToScaleDegree, type ClockDivision } from '../../audio/drumSeqTypes';
+import type { ClockDivision } from '../../audio/drumSeqTypes';
+import { CHORD_MAX_NOTES_PER_CELL, normalizeChord, normalizeChordNote, type Chord, type ChordNote } from '../../audio/harmony/chord';
 import { sequencerClockDivisionToNumericValue } from '../../audio/sequencerClockDivisions';
 import type { SerializedStepOverrides } from '../state';
 import type { SerializedSequenceLanePresetState } from './sequencePresetLane';
-import { computeGridRelativeNudge } from './nudgeTiming';
 import { createBitmapTriggerClip, deserializeTriggerClip, resolveTriggerClip, rotateTriggerClip, serializeTriggerClip } from './triggerClip';
 
-export const SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION = 1 as const;
+/** Schema 2 stores Notes-lane cells; schema 1 stored per-step metadata and still loads. */
+export const SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION = 2 as const;
 export const SYNTH_SEQUENCE_VARIATION_IDS = ['A', 'B', 'C', 'D'] as const;
 export type SynthSequenceVariationId = typeof SYNTH_SEQUENCE_VARIATION_IDS[number];
 export type SynthSequenceVariationIndex = 0 | 1 | 2 | 3;
-export type SynthSequenceVariationMode = 'note' | 'chord' | 'arp';
 
 const ROTATABLE_VARIATION_OVERRIDE_KEYS = [
   'probability', 'ratchet', 'trigCondition', 'expression', 'pitch', 'morph', 'distance', 'nudge', 'slice', 'reverse',
@@ -46,10 +46,9 @@ export function rotateSynthSequenceVariation(
   if (steps <= 1 || safeDelta === 0) return variation;
   const serializedClip = variation.lane.overrides.triggerClips?.[0];
   const clip = deserializeTriggerClip(serializedClip);
-  const pattern = clip ? resolveTriggerClip(clip).slice(0, steps) : Object.keys(variation.stepMetadata).map(Number).reduce((bits, step) => {
-    if (step >= 0 && step < steps) bits[step] = true;
-    return bits;
-  }, Array.from({ length: steps }, () => false));
+  const pattern = clip
+    ? resolveTriggerClip(clip).slice(0, steps)
+    : variation.cells.slice(0, steps).map((cell) => cell.kind !== 'rest');
   const overrides: SerializedStepOverrides = { ...variation.lane.overrides };
   const sourceRecord = variation.lane.overrides as unknown as Record<string, unknown>;
   const overrideRecord = overrides as unknown as Record<string, unknown>;
@@ -76,15 +75,21 @@ export function rotateSynthSequenceVariation(
     overrides.triggerClips = [serializeTriggerClip(nextClip)];
     overrides.triggerToggles = [[]];
   }
-  const stepMetadata = Object.fromEntries(Object.entries(variation.stepMetadata).map(([step, metadata]) => [
-    String(positiveModulo(Number(step) + safeDelta, steps)),
-    metadata,
-  ]));
   return {
     ...variation,
     lane: { ...variation.lane, overrides },
-    stepMetadata,
+    cells: rotateNotesCells(variation, pattern, safeDelta),
   };
+}
+
+/** Cells follow their owner: the step under Advance = Steps, the hit under Advance = Hits. */
+function rotateNotesCells(variation: SynthSequenceVariation, pattern: readonly boolean[], delta: number): NotesCell[] {
+  const { length, advance } = variation.notesLane;
+  const owned = variation.cells.slice(0, length);
+  const rotated = advance === 'hits'
+    ? rotateHitArray(owned, pattern, delta)
+    : length === pattern.length ? rotateArray(owned, delta) : null;
+  return rotated ? [...rotated, ...variation.cells.slice(length)] : variation.cells;
 }
 
 /** The bank is persisted; its selection is deliberately UI-owned and transient. */
@@ -116,54 +121,95 @@ export type SynthVariationLaneInput = Omit<SynthVariationLane, 'overrides'> & {
   overrides?: SerializedStepOverrides;
 };
 
-export interface SynthLocalChordInterval {
-  intervalSemitones: number;
-  velocity: number;
-  gateBeats?: number;
-}
-
-export interface SynthLocalChordPayload {
-  /** Intervals are rooted at the step's pitch; this local list is playback authority. */
-  intervals: SynthLocalChordInterval[];
-  followHarmony?: boolean;
-}
-
 export interface SynthVariationArpPayload {
   config: ProductArpConfig;
   spanBeats?: number;
 }
 
-export interface SynthVariationStepMetadata {
-  mode: SynthSequenceVariationMode;
+export type LaneDirection = 'forward' | 'reverse' | 'pingpong';
+export type NotesAdvance = 'steps' | 'hits';
+export const SYNTH_NOTES_LANE_MAX_LENGTH = 32;
+export const SYNTH_NOTES_CELL_COUNT = 32;
+
+/** The Notes lane is its own sublane: a cell table with its own length, direction and Advance. */
+export interface NotesLane {
+  /** 1..32 */
+  length: number;
+  direction: LaneDirection;
+  advance: NotesAdvance;
+}
+
+export type NotesCellKind = 'rest' | 'harmony' | 'chord';
+export type NotesArticulation = 'chord' | 'arp';
+
+export interface NotesCell {
+  kind: NotesCellKind;
+  /** Harmony cells: `midi` is a semitone interval from the part's harmony pitch, -48..48. */
+  intervals?: ChordNote[];
+  /** Chord cells: Follow resolves against the harmony frame; Fixed holds up to 32 absolute notes. */
+  chord?: Chord;
   gateBeats: number;
-  followHarmony?: boolean;
-  chord?: SynthLocalChordPayload;
+  articulation: NotesArticulation;
   arp?: SynthVariationArpPayload;
 }
 
-export function synthVariationStepLengthMax(metadata: SynthVariationStepMetadata): number {
-  const longestVoice = Math.max(metadata.gateBeats, ...(metadata.chord?.intervals.map((interval) => interval.gateBeats ?? metadata.gateBeats) ?? []));
-  return metadata.gateBeats > 0 && longestVoice > metadata.gateBeats
-    ? 64 * metadata.gateBeats / longestVoice
-    : 64;
+export function createRestNotesCell(): NotesCell {
+  return { kind: 'rest', gateBeats: 0, articulation: 'chord' };
 }
 
-/** Keep captured chord voices proportional when editing the shared note length. */
-export function withSynthVariationStepLength(metadata: SynthVariationStepMetadata, length: number): SynthVariationStepMetadata {
-  const gateBeats = Number.isFinite(length) ? Math.max(0, Math.min(synthVariationStepLengthMax(metadata), length)) : metadata.gateBeats;
-  return {
-    ...metadata,
-    gateBeats,
-    ...(metadata.chord ? { chord: {
-      ...metadata.chord,
-      intervals: metadata.chord.intervals.map((interval) => ({
-        ...interval,
-        gateBeats: metadata.gateBeats > 0
-          ? (interval.gateBeats ?? metadata.gateBeats) * gateBeats / metadata.gateBeats
-          : gateBeats,
-      })),
-    } } : {}),
-  };
+export function createDefaultNotesLane(length: number): NotesLane {
+  return { length: Math.max(1, Math.min(SYNTH_NOTES_LANE_MAX_LENGTH, Math.round(length))), direction: 'forward', advance: 'steps' };
+}
+
+/**
+ * One plain note at a step. A Notes-mode lane prints absolute notes at its
+ * root (a Fixed chord); every other lane rides the part's harmony pitch.
+ */
+export function createPlainNotesCell(lane: SynthVariationLane, gateBeats: number): NotesCell {
+  const settings = lane.state.pitchSettings;
+  const note: ChordNote = { midi: 0, velocity: 1 };
+  if (settings?.mode === 'notes') {
+    const root = Math.max(0, Math.min(127, Math.round(settings.root ?? 60)));
+    return {
+      kind: 'chord',
+      chord: {
+        behavior: 'fixed',
+        degree: 0,
+        quality: 'diatonic',
+        extensions: [],
+        voicing: { inversion: 0, spread: 0, register: 0, bass: 'inversion' },
+        notes: [{ ...note, midi: root }],
+      },
+      gateBeats,
+      articulation: 'chord',
+    };
+  }
+  return { kind: 'harmony', intervals: [note], gateBeats, articulation: 'chord' };
+}
+
+export function notesCellNotes(cell: NotesCell): ChordNote[] {
+  return cell.kind === 'harmony' ? cell.intervals ?? [] : cell.kind === 'chord' ? cell.chord?.notes ?? [] : [];
+}
+
+export function withNotesCellNotes(cell: NotesCell, notes: ChordNote[]): NotesCell {
+  if (cell.kind === 'harmony') return { ...cell, intervals: notes };
+  if (cell.kind === 'chord' && cell.chord) return { ...cell, chord: { ...cell.chord, notes } };
+  return cell;
+}
+
+export function notesCellGateMax(cell: NotesCell): number {
+  const longestVoice = Math.max(cell.gateBeats, ...notesCellNotes(cell).map((note) => note.gate ?? cell.gateBeats));
+  return cell.gateBeats > 0 && longestVoice > cell.gateBeats ? 64 * cell.gateBeats / longestVoice : 64;
+}
+
+/** Keep per-note gates proportional when editing the shared cell length. */
+export function withNotesCellGate(cell: NotesCell, length: number): NotesCell {
+  const gateBeats = Number.isFinite(length) ? Math.max(0, Math.min(notesCellGateMax(cell), length)) : cell.gateBeats;
+  const notes = notesCellNotes(cell).map((note) => ({
+    ...note,
+    gate: cell.gateBeats > 0 ? (note.gate ?? cell.gateBeats) * gateBeats / cell.gateBeats : gateBeats,
+  }));
+  return { ...withNotesCellNotes(cell, notes), gateBeats };
 }
 
 export interface SynthSequenceVariation {
@@ -171,8 +217,9 @@ export interface SynthSequenceVariation {
   steps: number;
   spanBeats: number;
   lane: SynthVariationLane;
-  /** Keys are local trigger step indices. Pitch/velocity/nudge remain in lane overrides. */
-  stepMetadata: Record<string, SynthVariationStepMetadata>;
+  notesLane: NotesLane;
+  /** Always 32 cells; the Notes lane walks the first `notesLane.length`. */
+  cells: NotesCell[];
 }
 
 export interface SynthSequenceVariationBank {
@@ -197,20 +244,21 @@ export interface SynthVariationCaptureNote {
   velocity: number;
   sourceId?: number;
   chordGroupId?: string;
-  mode?: SynthSequenceVariationMode;
-  chord?: SynthLocalChordPayload;
-  arp?: SynthVariationArpPayload;
   /** A held input is included in a print snapshot until its noteoff arrives. */
   held?: boolean;
 }
 
 export interface SynthVariationPrintInput {
   phraseBeats: number;
-  /** Existing lane state is copied for every printed variation. */
+  /** Lane state copied into the printed variation (Morph, Distance, Slice and Reverse are kept). */
   baseLane: SynthVariationLaneInput;
   notes: readonly SynthVariationCaptureNote[];
   /** Optional preferred resolution. Candidates are still restricted to supported clocks. */
   clockDiv?: ClockDivision;
+  /** The one variation this print replaces. */
+  targetVariation: SynthSequenceVariationId;
+  /** The lane's current bank; every other variation is left untouched. */
+  bank: SynthSequenceVariationBank | null;
 }
 
 export type SynthVariationPrintFailure =
@@ -236,19 +284,6 @@ export class SynthSequenceVariationValidationError extends Error {
   }
 }
 
-interface CaptureGroup {
-  onsetBeats: number;
-  notes: SynthVariationCaptureNote[];
-  order: number;
-}
-
-interface PrintedGroup extends CaptureGroup {
-  globalStep: number;
-  nudge: number;
-  variationIndex: number;
-  localStep: number;
-}
-
 const SUPPORTED_CLOCK_DIVISIONS: readonly ClockDivision[] = [
   '1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32', '1/32T', '1/64',
 ];
@@ -257,7 +292,6 @@ const NOTE_EPSILON = 1e-5;
 const MIN_VARIATION_STEPS = 2;
 const MAX_VARIATION_STEPS = 32;
 const MAX_VARIATIONS = 4;
-const MAX_PRINT_STEPS = MAX_VARIATION_STEPS * MAX_VARIATIONS;
 export const SYNTH_SEQUENCE_CAPTURE_SCRATCH_MAX_NOTES = 1024;
 
 /** Apply an async print receipt only while its lane capture identity is current. */
@@ -339,66 +373,19 @@ function copyLaneField(
   record[field as string] = lanes;
 }
 
-function configurePrintedLane(
-  lane: SynthVariationLane,
-  variationSteps: number,
-  hitCount: number,
-  clockDiv: ClockDivision,
-  firstPitch: number | undefined,
-): void {
-  const hitSteps = Math.max(1, hitCount);
-  const subLaneStates = {
-    pitch: {
-      enabled: hitCount > 0,
-      steps: Math.max(1, variationSteps),
-      direction: 'forward' as const,
-      scaleQuantize: false,
-      valueMode: 'sequence' as const,
-    },
-    expression: {
-      enabled: hitCount > 0,
-      steps: hitSteps,
-      direction: 'forward' as const,
-      valueMode: 'sequence' as const,
-      followTriggerHits: true,
-    },
-    nudge: {
-      enabled: hitCount > 0,
-      steps: hitSteps,
-      direction: 'forward' as const,
-      valueMode: 'sequence' as const,
-      followTriggerHits: true,
-    },
-    morph: {
-      enabled: false,
-      steps: 1,
-      direction: 'forward' as const,
-      valueMode: 'sequence' as const,
-    },
-    distance: {
-      enabled: false,
-      steps: 1,
-      direction: 'forward' as const,
-      valueMode: 'sequence' as const,
-    },
-    slice: {
-      enabled: false,
-      steps: 1,
-      direction: 'forward' as const,
-    },
-    reverse: {
-      enabled: false,
-      steps: 1,
-      direction: 'forward' as const,
-    },
-  };
-  /*
-   * A printed pitch is fixed to the phrase root. The serialized `notes` lane
-   * keeps the existing scale-degree representation; the encoder resolves it
-   * against this stored root, so later Harmony changes cannot retune it.
-   * Sequence binding makes sparse trigger cells use the owning step instead
-   * of compacting them by hit ordinal. Expression and nudge remain hit-bound.
-   */
+const PRINT_OFF_SUBLANE = {
+  enabled: false,
+  steps: 1,
+  direction: 'forward' as const,
+  valueMode: 'sequence' as const,
+};
+
+/**
+ * A printed variation keeps the base lane's Morph, Distance, Slice and Reverse
+ * state. Pitch, Expression and Nudge are switched off because the printed
+ * notes carry pitch, velocity and timing themselves.
+ */
+function configurePrintedLane(lane: SynthVariationLane, clockDiv: ClockDivision): void {
   const state = { ...lane.state };
   delete state.evolveConfig;
   delete state.playConfig;
@@ -408,400 +395,356 @@ function configurePrintedLane(
     clockDiv,
     swing: 0,
     linked: false,
-    pitchBindingMode: 'sequence',
-    subLaneStates,
-    pitchSettings: {
-      mode: 'notes',
-      root: Math.max(0, Math.min(127, Math.round(firstPitch ?? 60))),
-      scale: 'Chromatic',
+    subLaneStates: {
+      ...state.subLaneStates,
+      pitch: { ...PRINT_OFF_SUBLANE, scaleQuantize: false },
+      expression: { ...PRINT_OFF_SUBLANE },
+      nudge: { ...PRINT_OFF_SUBLANE },
     },
   };
 }
 
-function partitionSteps(totalSteps: number): number[] | null {
-  if (totalSteps < MIN_VARIATION_STEPS || totalSteps > MAX_PRINT_STEPS) return null;
-  const variationCount = Math.ceil(totalSteps / MAX_VARIATION_STEPS);
-  if (variationCount < 1 || variationCount > MAX_VARIATIONS || totalSteps < variationCount * MIN_VARIATION_STEPS) return null;
-  const result: number[] = [];
-  let remaining = totalSteps;
-  for (let index = 0; index < variationCount; index += 1) {
-    const remainingVariations = variationCount - index - 1;
-    const steps = Math.min(MAX_VARIATION_STEPS, remaining - remainingVariations * MIN_VARIATION_STEPS);
-    if (steps < MIN_VARIATION_STEPS) return null;
-    result.push(steps);
-    remaining -= steps;
-  }
-  return remaining === 0 ? result : null;
-}
-
-function validChordPayload(payload: SynthLocalChordPayload | undefined): boolean {
-  if (!payload) return true;
-  if (!Array.isArray(payload.intervals) || payload.intervals.length === 0) return false;
-  if (payload.followHarmony !== undefined && typeof payload.followHarmony !== 'boolean') return false;
-  return payload.intervals.every((interval) => (
-    finite(interval.intervalSemitones)
-    && interval.intervalSemitones >= -48
-    && interval.intervalSemitones <= 48
-    && finite(interval.velocity)
-    && interval.velocity >= 0
-    && interval.velocity <= 1
-    && (interval.gateBeats === undefined
-      || (finite(interval.gateBeats) && interval.gateBeats >= 0))
-  ));
-}
-
-function validCaptureNote(note: SynthVariationCaptureNote, phraseBeats: number): boolean {
+function validCaptureNote(note: SynthVariationCaptureNote): boolean {
   if (!finite(note.onsetBeats) || !finite(note.durationBeats) || note.durationBeats < 0) return false;
   if (!finite(note.pitch) || note.pitch < 0 || note.pitch > 127) return false;
   if (!finite(note.velocity) || note.velocity < 0 || note.velocity > 1) return false;
   if (note.chordGroupId !== undefined && typeof note.chordGroupId !== 'string') return false;
   if (note.sourceId !== undefined && (!Number.isInteger(note.sourceId) || note.sourceId < 0 || note.sourceId > 255)) return false;
-  if (note.mode !== undefined && note.mode !== 'note' && note.mode !== 'chord' && note.mode !== 'arp') return false;
-  if (!validChordPayload(note.chord)) return false;
-  if (note.arp !== undefined && (!note.arp || typeof note.arp !== 'object' || !note.arp.config)) return false;
-  if (note.arp?.spanBeats !== undefined && (!finite(note.arp.spanBeats) || note.arp.spanBeats <= 0 || note.arp.spanBeats > phraseBeats)) return false;
   return true;
 }
 
-function groupCaptureNotes(notes: readonly SynthVariationCaptureNote[], phraseBeats: number): CaptureGroup[] | null {
-  const groups: CaptureGroup[] = [];
-  notes.forEach((note, order) => {
-    if (!validCaptureNote(note, phraseBeats)) return;
-    const normalizedOnset = positiveModulo(note.onsetBeats, phraseBeats);
-    const normalized: SynthVariationCaptureNote = {
-      ...note,
-      onsetBeats: normalizedOnset,
-    };
-    // A capture group ID is the source's explicit musical attack identity.
-    // Its member onsets may differ slightly because keyboard delivery is not
-    // sample simultaneous; the first member remains the group anchor.
-    const existing = note.chordGroupId
-      ? groups.find((group) => group.notes[0]?.chordGroupId === note.chordGroupId)
-      : undefined;
-    if (existing) existing.notes.push(normalized);
-    else groups.push({ onsetBeats: normalizedOnset, notes: [normalized], order });
-  });
-  if (groups.length !== notes.length && !notes.some((note) => note.chordGroupId)) {
-    return null;
-  }
-  for (const note of notes) if (!validCaptureNote(note, phraseBeats)) return null;
-  for (const group of groups) {
-    const rootPitch = group.notes[0]?.pitch ?? 0;
-    if (group.notes.some((note) => note.pitch - rootPitch < -48 || note.pitch - rootPitch > 48)) return null;
-  }
-  groups.sort((left, right) => left.onsetBeats - right.onsetBeats || left.order - right.order);
-  return groups;
-}
-
-function variationIndexForStep(step: number, variationSteps: readonly number[]): { variationIndex: number; localStep: number } {
-  let offset = 0;
-  for (let index = 0; index < variationSteps.length; index += 1) {
-    const count = variationSteps[index] ?? 0;
-    if (step < offset + count) return { variationIndex: index, localStep: step - offset };
-    offset += count;
-  }
-  const last = Math.max(0, variationSteps.length - 1);
-  return { variationIndex: last, localStep: Math.max(0, (variationSteps[last] ?? 1) - 1) };
-}
-
-function makeStepMetadata(group: CaptureGroup): SynthVariationStepMetadata {
-  const root = group.notes[0]!;
-  const requestedMode = root.mode ?? (group.notes.length > 1 ? 'chord' : 'note');
-  const mode: SynthSequenceVariationMode = requestedMode === 'chord' || group.notes.length > 1
-    ? 'chord'
-    : requestedMode;
-  // A hold may cross the phrase boundary; retain that gate explicitly so the
-  // runtime can release it at noteoff instead of retriggering on the next pass.
-  const gateBeats = Math.max(0, root.durationBeats);
-  const result: SynthVariationStepMetadata = {
-    mode,
-    gateBeats,
-    ...(root.chord?.followHarmony !== undefined ? { followHarmony: root.chord.followHarmony } : {}),
+/** A Fixed chord: exact absolute notes, no harmony intent. */
+export function createFixedChord(notes: ChordNote[]): Chord {
+  return {
+    behavior: 'fixed',
+    degree: 0,
+    quality: 'diatonic',
+    extensions: [],
+    voicing: { inversion: 0, spread: 0, register: 0, bass: 'inversion' },
+    notes,
   };
-  if (mode === 'chord') {
-    const chord = root.chord ?? {
-      intervals: group.notes.map((note) => ({
-        intervalSemitones: note.pitch - root.pitch,
-        velocity: note.velocity,
-        gateBeats: Math.max(0, note.durationBeats),
-      })),
-    };
-    result.chord = {
-      intervals: chord.intervals.map((interval) => ({
-        intervalSemitones: interval.intervalSemitones,
-        velocity: interval.velocity,
-        ...(finite(interval.gateBeats) ? { gateBeats: interval.gateBeats } : {}),
-      })),
-      ...(chord.followHarmony !== undefined ? { followHarmony: chord.followHarmony } : {}),
-    };
-  }
-  if (mode === 'arp' || root.arp) result.arp = root.arp ? cloneJson(root.arp) : undefined;
-  return result;
 }
 
-interface GridAnchorCandidate {
-  step: number;
-  nudge: number;
-  cost: number;
-}
+type PrintCandidate = SynthSequenceVariation | 'unsupported' | 'capacity' | 'collision';
 
-function gridAnchorCandidates(targetStepFloat: number, totalSteps: number, stepBeats: number): GridAnchorCandidate[] {
-  const floor = Math.floor(targetStepFloat);
-  const anchors = new Set([floor, floor + 1]);
-  return [...anchors]
-    .map((anchor) => {
-      const step = positiveModulo(anchor, totalSteps);
-      const delta = computeGridRelativeNudge(targetStepFloat * stepBeats, anchor * stepBeats, stepBeats);
-      return { step, nudge: delta, cost: Math.abs(delta) };
-    })
-    .filter((candidate) => candidate.cost <= 1 + NUDGE_TOLERANCE)
-    .sort((left, right) => left.cost - right.cost || left.step - right.step);
-}
-
-function assignGridAnchors(
-  groups: readonly CaptureGroup[],
-  stepBeats: number,
-  totalSteps: number,
-): GridAnchorCandidate[] | null {
-  const candidates = groups.map((group) => gridAnchorCandidates(group.onsetBeats / stepBeats, totalSteps, stepBeats));
-  if (candidates.some((items) => items.length === 0)) return null;
-  const assigned: Array<GridAnchorCandidate | undefined> = Array.from({ length: groups.length }, () => undefined);
-  const ownerByStep = new Map<number, number>();
-  const augment = (groupIndex: number, visitedSteps: Set<number>): boolean => {
-    const place = (candidate: GridAnchorCandidate, displacedGroup?: number): boolean => {
-      if (displacedGroup !== undefined && !augment(displacedGroup, visitedSteps)) return false;
-      const previous = assigned[groupIndex];
-      if (previous && ownerByStep.get(previous.step) === groupIndex) ownerByStep.delete(previous.step);
-      ownerByStep.set(candidate.step, groupIndex);
-      assigned[groupIndex] = candidate;
-      return true;
-    };
-    for (const candidate of candidates[groupIndex]!) {
-      if (visitedSteps.has(candidate.step)) continue;
-      const displacedGroup = ownerByStep.get(candidate.step);
-      if (displacedGroup === undefined) {
-        visitedSteps.add(candidate.step);
-        if (place(candidate)) return true;
-      }
-    }
-    for (const candidate of candidates[groupIndex]!) {
-      if (visitedSteps.has(candidate.step)) continue;
-      visitedSteps.add(candidate.step);
-      const displacedGroup = ownerByStep.get(candidate.step);
-      if (displacedGroup !== undefined && place(candidate, displacedGroup)) return true;
-    }
-    return false;
-  };
-  for (let index = 0; index < groups.length; index += 1) {
-    if (!augment(index, new Set())) return null;
-  }
-  return assigned as GridAnchorCandidate[];
-}
-
-function printCandidate(
-  input: SynthVariationPrintInput,
-  groups: readonly CaptureGroup[],
-  clockDiv: ClockDivision,
-): SynthSequenceVariationBank | null {
+/** Every attack becomes a Fixed-chord note at its offset from the owning step. */
+function printCandidate(input: SynthVariationPrintInput, clockDiv: ClockDivision): PrintCandidate {
   const numericClock = sequencerClockDivisionToNumericValue(clockDiv, 0);
   const stepBeats = 4 / numericClock;
   const exactSteps = input.phraseBeats / stepBeats;
-  const totalSteps = Math.round(exactSteps);
-  if (!Number.isFinite(exactSteps) || Math.abs(exactSteps - totalSteps) > NUDGE_TOLERANCE) return null;
-  const variationSteps = partitionSteps(totalSteps);
-  if (!variationSteps) return null;
+  const steps = Math.round(exactSteps);
+  if (!Number.isFinite(exactSteps) || Math.abs(exactSteps - steps) > NUDGE_TOLERANCE) return 'unsupported';
+  if (steps > MAX_VARIATION_STEPS) return 'capacity';
+  if (steps < MIN_VARIATION_STEPS) return 'unsupported';
 
-  const assignments = assignGridAnchors(groups, stepBeats, totalSteps);
-  if (!assignments) return null;
-  const printedGroups: PrintedGroup[] = groups.map((group, index) => {
-    const assignment = assignments[index]!;
-    const location = variationIndexForStep(assignment.step, variationSteps);
-    return { ...group, globalStep: assignment.step, nudge: assignment.nudge, ...location };
-  });
-  printedGroups.sort((left, right) => left.globalStep - right.globalStep || left.order - right.order);
-
-  const variations: Partial<Record<SynthSequenceVariationId, SynthSequenceVariation>> = {};
-  let stepOffset = 0;
-  variationSteps.forEach((steps, variationIndex) => {
-    const id = SYNTH_SEQUENCE_VARIATION_IDS[variationIndex]!;
-    const lane = cloneLane(input.baseLane);
-    const overrides = lane.overrides ?? {};
-    lane.overrides = overrides;
-    const bits = Array.from({ length: steps }, () => false);
-    const toggles: { step: number; value: boolean }[] = [];
-    const groupsInVariation = printedGroups.filter((group) => group.variationIndex === variationIndex);
-    configurePrintedLane(lane, steps, groupsInVariation.length, clockDiv, groupsInVariation[0]?.notes[0]?.pitch);
-    groupsInVariation.forEach((group) => {
-      bits[group.localStep] = true;
-      toggles.push({ step: group.localStep, value: true });
-    });
-    const serializedClip = serializeTriggerClip(createBitmapTriggerClip({
-      steps,
-      bits,
-      origin: 'recorded',
-      label: 'Synth variation',
-    }));
-    copyLaneField(overrides, 'triggerClips', serializedClip);
-    copyLaneField(overrides, 'triggerToggles', toggles);
-    for (const field of [
-      'ratchet', 'morph', 'distance', 'slice', 'reverse',
-      'expressionDirection', 'morphDirection', 'distanceDirection', 'nudgeDirection',
-      'pitchDirection', 'sliceDirection', 'reverseDirection',
-      'expressionRanges', 'morphRanges', 'distanceRanges',
-    ] as const) copyLaneField(overrides, field, null);
-
-    const pitchByStep = new Map(groupsInVariation.map((group) => (
-      [group.localStep, group.notes[0]?.pitch ?? 60] as const
-    )));
-    const pitchSettings = lane.state.pitchSettings ?? { mode: 'notes' as const, root: 60, scale: 'Chromatic' as const };
-    const pitchValues = groupsInVariation.length
-      ? Array.from({ length: steps }, (_, step) => {
-        const midi = pitchByStep.get(step) ?? groupsInVariation[0]?.notes[0]?.pitch ?? pitchSettings.root;
-        const offset = midi - pitchSettings.root;
-        if (pitchSettings.mode === 'notes') return semitoneToScaleDegree(offset, SCALES[pitchSettings.scale] ?? SCALES.Chromatic);
-        return offset;
-      })
-      : [];
-    const velocityValues = groupsInVariation.map((group) => group.notes[0]?.velocity ?? 1);
-    const nudgeValues = groupsInVariation.map((group) => group.nudge);
-    copyLaneField(overrides, 'probability', Array.from({ length: steps }, () => 1));
-    copyLaneField(overrides, 'trigCondition', Array.from({ length: steps }, () => [1, 1] as [number, number]));
-    copyLaneField(overrides, 'pitch', groupsInVariation.length ? pitchValues : []);
-    copyLaneField(overrides, 'expression', groupsInVariation.length ? velocityValues : []);
-    copyLaneField(overrides, 'nudge', groupsInVariation.length ? nudgeValues : []);
-
-    const stepMetadata: Record<string, SynthVariationStepMetadata> = {};
-    groupsInVariation.forEach((group) => {
-      stepMetadata[String(group.localStep)] = makeStepMetadata(group);
-    });
-    variations[id] = {
-      id,
-      steps,
-      spanBeats: steps * stepBeats,
-      lane,
-      stepMetadata,
+  const byStep = new Map<number, ChordNote[]>();
+  for (const note of input.notes) {
+    const phase = positiveModulo(note.onsetBeats, input.phraseBeats);
+    const step = Math.min(steps - 1, Math.floor(phase / stepBeats + NUDGE_TOLERANCE));
+    const offset = Math.max(0, phase - step * stepBeats);
+    const printed: ChordNote = {
+      midi: note.pitch,
+      velocity: note.velocity,
+      // A hold may cross the phrase boundary; keep its gate so the runtime releases at noteoff.
+      gate: Math.min(64, note.durationBeats),
+      ...(offset > NUDGE_TOLERANCE ? { offset } : {}),
+      ...(note.sourceId === undefined ? {} : { destination: note.sourceId }),
     };
-    stepOffset += steps;
-  });
+    const cell = byStep.get(step) ?? [];
+    cell.push(printed);
+    byStep.set(step, cell);
+  }
+  for (const notes of byStep.values()) {
+    if (notes.length > CHORD_MAX_NOTES_PER_CELL) return 'collision';
+    // One pitch cannot sound twice inside one cell; a finer grid separates the attacks.
+    if (new Set(notes.map((note) => note.midi)).size !== notes.length) return 'collision';
+  }
 
-  if (stepOffset !== totalSteps) return null;
-  const chainOrder = variationSteps.map((_, index) => SYNTH_SEQUENCE_VARIATION_IDS[index]!);
+  const bits = Array.from({ length: steps }, () => false);
+  const toggles: { step: number; value: boolean }[] = [];
+  const cells: NotesCell[] = Array.from({ length: SYNTH_NOTES_CELL_COUNT }, createRestNotesCell);
+  for (const [step, notes] of [...byStep.entries()].sort((left, right) => left[0] - right[0])) {
+    notes.sort((left, right) => (left.offset ?? 0) - (right.offset ?? 0) || left.midi - right.midi);
+    bits[step] = true;
+    toggles.push({ step, value: true });
+    cells[step] = {
+      kind: 'chord',
+      chord: createFixedChord(notes),
+      gateBeats: Math.max(0, ...notes.map((note) => note.gate ?? 0)),
+      articulation: 'chord',
+    };
+  }
+
+  const lane = cloneLane(input.baseLane);
+  const overrides = lane.overrides ?? {};
+  lane.overrides = overrides;
+  configurePrintedLane(lane, clockDiv);
+  copyLaneField(overrides, 'triggerClips', serializeTriggerClip(createBitmapTriggerClip({
+    steps,
+    bits,
+    origin: 'recorded',
+    label: 'Synth variation',
+  })));
+  copyLaneField(overrides, 'triggerToggles', toggles);
+  for (const field of [
+    'ratchet', 'pitch', 'expression', 'nudge',
+    'expressionDirection', 'nudgeDirection', 'pitchDirection', 'expressionRanges',
+  ] as const) copyLaneField(overrides, field, null);
+  copyLaneField(overrides, 'probability', Array.from({ length: steps }, () => 1));
+  copyLaneField(overrides, 'trigCondition', Array.from({ length: steps }, () => [1, 1] as [number, number]));
+
   return {
-    schemaVersion: SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION,
-    phraseBeats: input.phraseBeats,
-    clockDiv,
-    chainEnabled: chainOrder.length > 1,
-    playVariation: 0,
-    chainOrder,
-    variations,
+    id: input.targetVariation,
+    steps,
+    spanBeats: steps * stepBeats,
+    lane,
+    notesLane: createDefaultNotesLane(steps),
+    cells,
   };
 }
 
-/** Pick the coarsest supported grid that can represent every ordered attack. */
+/** Replace one variation, leaving the others byte-for-byte as they were. */
+function mergePrintedVariation(
+  input: SynthVariationPrintInput,
+  printed: SynthSequenceVariation,
+  clockDiv: ClockDivision,
+): SynthSequenceVariationBank {
+  const current = input.bank;
+  const target = input.targetVariation;
+  const targetIndex = SYNTH_SEQUENCE_VARIATION_IDS.indexOf(target) as SynthSequenceVariationIndex;
+  const variations = { ...(current?.variations ?? {}), [target]: printed };
+  const bank: SynthSequenceVariationBank = {
+    schemaVersion: SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION,
+    phraseBeats: input.phraseBeats,
+    clockDiv: current?.clockDiv ?? clockDiv,
+    chainEnabled: false,
+    playVariation: targetIndex,
+    chainOrder: current && current.chainOrder.length > 0 ? current.chainOrder : [target],
+    variations,
+  };
+  if (current?.chainEnabled) {
+    // A playing chain keeps playing and keeps filling the phrase, so its length follows its spans.
+    const phraseBeats = current.chainOrder.reduce((sum, id) => sum + (variations[id]?.spanBeats ?? 0), 0);
+    return { ...bank, chainEnabled: true, phraseBeats, playVariation: current.playVariation };
+  }
+  return bank;
+}
+
+/**
+ * Print a take into `targetVariation` and merge it into the current bank.
+ * Picks the coarsest supported grid of at most 32 steps that holds every attack.
+ */
 export function autoPrintSynthSequenceVariation(input: SynthVariationPrintInput): SynthVariationPrintResult {
   if (!finite(input.phraseBeats) || input.phraseBeats <= 0) {
     return { accepted: false, bank: null, failure: 'invalid-phrase', message: 'phraseBeats must be positive' };
   }
-  if (input.notes.some((note) => !finite(note.onsetBeats) || !finite(note.durationBeats) || !finite(note.pitch) || !finite(note.velocity))) {
-    return { accepted: false, bank: null, failure: 'invalid-note', message: 'capture notes must be finite' };
+  if (!isVariationId(input.targetVariation)) {
+    return { accepted: false, bank: null, failure: 'invalid-note', message: 'targetVariation must be A-D' };
   }
-  const groups = groupCaptureNotes(input.notes, input.phraseBeats);
-  if (!groups) return { accepted: false, bank: null, failure: 'invalid-note' };
-  const candidates = [...SUPPORTED_CLOCK_DIVISIONS];
+  if (input.notes.some((note) => !validCaptureNote(note))) {
+    return { accepted: false, bank: null, failure: 'invalid-note', message: 'capture notes are invalid' };
+  }
   let sawCapacity = false;
   let sawCollision = false;
-  for (const clockDiv of candidates) {
-    const totalSteps = input.phraseBeats * sequencerClockDivisionToNumericValue(clockDiv, 0) / 4;
-    if (totalSteps > MAX_PRINT_STEPS) {
-      sawCapacity = true;
-      continue;
-    }
-    const candidate = printCandidate(input, groups, clockDiv);
-    if (candidate) return { accepted: true, bank: candidate };
-    const rounded = Math.round(totalSteps);
-    if (Number.isFinite(totalSteps) && rounded === totalSteps && groups.length <= Math.max(0, rounded)) sawCollision = true;
+  for (const clockDiv of SUPPORTED_CLOCK_DIVISIONS) {
+    const candidate = printCandidate(input, clockDiv);
+    if (candidate === 'capacity') sawCapacity = true;
+    else if (candidate === 'collision') sawCollision = true;
+    else if (candidate !== 'unsupported') return { accepted: true, bank: mergePrintedVariation(input, candidate, clockDiv) };
   }
   return {
     accepted: false,
     bank: null,
     failure: sawCollision ? 'collision' : sawCapacity ? 'capacity' : 'unsupported-resolution',
-    message: sawCollision ? 'two independent attacks share a grid step' : 'capture cannot fit supported variation grids',
+    message: sawCollision
+      ? 'the same pitch is attacked twice inside one grid step'
+      : 'capture cannot fit a supported 32-step variation grid',
   };
 }
 
-function normalizeStepMetadata(value: unknown, steps: number): Record<string, SynthVariationStepMetadata> {
-  if (value === undefined) return {};
-  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('stepMetadata must be an object');
-  const result: Record<string, SynthVariationStepMetadata> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    const index = Number(key);
-    if (!Number.isInteger(index) || index < 0 || index >= steps || !raw || typeof raw !== 'object') {
-      invalid(`stepMetadata index ${key} is outside variation steps`);
-    }
-    const source = raw as Partial<SynthVariationStepMetadata>;
-    if (source.mode !== 'note' && source.mode !== 'chord' && source.mode !== 'arp') invalid(`stepMetadata ${key} has an invalid mode`);
-    if (!finite(source.gateBeats) || source.gateBeats < 0) {
-      invalid(`stepMetadata ${key} has an invalid gateBeats`);
-    }
-    if (source.followHarmony !== undefined && typeof source.followHarmony !== 'boolean') {
-      invalid(`stepMetadata ${key} has an invalid followHarmony flag`);
-    }
-    const mode = source.mode;
-    const gateBeats = source.gateBeats;
-    const metadata: SynthVariationStepMetadata = {
-      mode,
-      gateBeats,
-      ...(source.followHarmony === undefined ? {} : { followHarmony: source.followHarmony }),
-    };
-    if (source.chord !== undefined) {
-      if (!source.chord || typeof source.chord !== 'object' || !validChordPayload(source.chord)) {
-        invalid(`stepMetadata ${key} has an invalid chord payload`);
-      }
-      metadata.chord = {
-        intervals: source.chord.intervals.map((interval) => ({
-          intervalSemitones: interval.intervalSemitones,
-          velocity: interval.velocity,
-          ...(interval.gateBeats === undefined ? {} : { gateBeats: interval.gateBeats }),
-        })),
-        ...(source.chord.followHarmony === undefined ? {} : { followHarmony: source.chord.followHarmony }),
-      };
-    }
-    if (source.arp !== undefined) {
-      if (!source.arp || typeof source.arp !== 'object' || !source.arp.config) invalid(`stepMetadata ${key} has an invalid arp payload`);
-      if (source.arp.spanBeats !== undefined && (!finite(source.arp.spanBeats) || source.arp.spanBeats <= 0)) {
-        invalid(`stepMetadata ${key} has an invalid arp spanBeats`);
-      }
-      metadata.arp = {
-        config: cloneJson(source.arp.config),
-        ...(source.arp.spanBeats === undefined ? {} : { spanBeats: source.arp.spanBeats }),
-      };
-    }
-    result[String(index)] = metadata;
+function normalizeArp(value: unknown, label: string): SynthVariationArpPayload {
+  const source = value as Partial<SynthVariationArpPayload> | null;
+  if (!source || typeof source !== 'object' || !source.config) invalid(`${label} has an invalid arp payload`);
+  if (source.spanBeats !== undefined && (!finite(source.spanBeats) || source.spanBeats <= 0)) {
+    invalid(`${label} has an invalid arp spanBeats`);
   }
-  return result;
+  return {
+    config: cloneJson(source.config),
+    ...(source.spanBeats === undefined ? {} : { spanBeats: source.spanBeats }),
+  };
+}
+
+function normalizeGateBeats(value: unknown, label: string): number {
+  if (!finite(value) || value < 0 || value > 64) invalid(`${label} has an invalid gateBeats`);
+  return value;
+}
+
+function normalizeNotesCell(raw: unknown, index: number): NotesCell {
+  const label = `cells[${index}]`;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalid(`${label} must be an object`);
+  const source = raw as Partial<NotesCell>;
+  if (source.kind !== 'rest' && source.kind !== 'harmony' && source.kind !== 'chord') invalid(`${label} has an invalid kind`);
+  if (source.articulation !== 'chord' && source.articulation !== 'arp') invalid(`${label} has an invalid articulation`);
+  const cell: NotesCell = {
+    kind: source.kind,
+    gateBeats: normalizeGateBeats(source.gateBeats, label),
+    articulation: source.articulation,
+  };
+  if (source.kind === 'harmony') {
+    const intervals = (Array.isArray(source.intervals) ? source.intervals : [])
+      .map((note) => normalizeChordNote(note, [-48, 48]));
+    if (intervals.some((note) => note === null) || intervals.length > CHORD_MAX_NOTES_PER_CELL) invalid(`${label} has invalid intervals`);
+    cell.intervals = intervals.length > 0 ? intervals as ChordNote[] : [{ midi: 0, velocity: 1 }];
+  } else if (source.kind === 'chord') {
+    const chord = normalizeChord(source.chord, { maxNotes: CHORD_MAX_NOTES_PER_CELL });
+    if (!chord) invalid(`${label} has an invalid chord`);
+    cell.chord = chord;
+  }
+  if (source.arp !== undefined) cell.arp = normalizeArp(source.arp, label);
+  if (source.articulation === 'arp' && !cell.arp) invalid(`${label} needs an arp payload`);
+  return cell;
+}
+
+function normalizeNotesLane(raw: unknown, id: SynthSequenceVariationId): NotesLane {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) invalid(`variation ${id} is missing notesLane`);
+  const source = raw as Partial<NotesLane>;
+  if (!finite(source.length) || !Number.isInteger(source.length) || source.length < 1 || source.length > SYNTH_NOTES_LANE_MAX_LENGTH) {
+    invalid(`variation ${id} notesLane.length must be an integer in [1, ${SYNTH_NOTES_LANE_MAX_LENGTH}]`);
+  }
+  if (source.direction !== 'forward' && source.direction !== 'reverse' && source.direction !== 'pingpong') {
+    invalid(`variation ${id} notesLane.direction is invalid`);
+  }
+  if (source.advance !== 'steps' && source.advance !== 'hits') invalid(`variation ${id} notesLane.advance is invalid`);
+  return { length: source.length, direction: source.direction, advance: source.advance };
+}
+
+function normalizeCells(raw: unknown, id: SynthSequenceVariationId): NotesCell[] {
+  if (raw === undefined) return Array.from({ length: SYNTH_NOTES_CELL_COUNT }, createRestNotesCell);
+  if (!Array.isArray(raw) || raw.length > SYNTH_NOTES_CELL_COUNT) invalid(`variation ${id} cells must be an array of at most ${SYNTH_NOTES_CELL_COUNT}`);
+  return Array.from({ length: SYNTH_NOTES_CELL_COUNT }, (_, index) => (
+    index < raw.length ? normalizeNotesCell(raw[index], index) : createRestNotesCell()
+  ));
+}
+
+/** Which steps fire, from the lane's trigger clip or toggles. */
+export function variationTriggerMask(overrides: SerializedStepOverrides, steps: number): number {
+  const clip = deserializeTriggerClip(overrides.triggerClips?.[0] ?? null);
+  if (clip) {
+    return resolveTriggerClip(clip)
+      .slice(0, steps)
+      .reduce((mask, enabled, step) => enabled ? mask | (1 << step) : mask, 0) >>> 0;
+  }
+  let mask = 0;
+  const toggles = Array.isArray(overrides.triggerToggles?.[0]) ? overrides.triggerToggles[0] : [];
+  for (const toggle of toggles as { step: number; value: unknown }[]) {
+    if (toggle && Number.isInteger(toggle.step) && toggle.step >= 0 && toggle.step < steps) {
+      if (typeof toggle.value !== 'boolean') invalid(`Invalid trigger toggle at step ${toggle.step}`);
+      if (toggle.value) mask |= 1 << toggle.step;
+      else mask &= ~(1 << toggle.step);
+    }
+  }
+  return mask >>> 0;
+}
+
+interface LegacyChordInterval { intervalSemitones: number; velocity: number; gateBeats?: number }
+interface LegacyStepMetadata {
+  mode: 'note' | 'chord' | 'arp';
+  gateBeats: number;
+  followHarmony?: boolean;
+  chord?: { intervals: LegacyChordInterval[]; followHarmony?: boolean };
+  arp?: SynthVariationArpPayload;
+}
+
+function legacyMetadata(raw: unknown, key: string): LegacyStepMetadata {
+  if (!raw || typeof raw !== 'object') invalid(`stepMetadata ${key} must be an object`);
+  const source = raw as Partial<LegacyStepMetadata>;
+  if (source.mode !== 'note' && source.mode !== 'chord' && source.mode !== 'arp') invalid(`stepMetadata ${key} has an invalid mode`);
+  if (!finite(source.gateBeats) || source.gateBeats < 0) invalid(`stepMetadata ${key} has an invalid gateBeats`);
+  if (source.followHarmony !== undefined && typeof source.followHarmony !== 'boolean') invalid(`stepMetadata ${key} has an invalid followHarmony flag`);
+  const chord = source.chord;
+  if (chord !== undefined) {
+    const valid = chord && typeof chord === 'object'
+      && Array.isArray(chord.intervals) && chord.intervals.length > 0 && chord.intervals.length <= CHORD_MAX_NOTES_PER_CELL
+      && (chord.followHarmony === undefined || typeof chord.followHarmony === 'boolean')
+      && chord.intervals.every((interval) => finite(interval.intervalSemitones)
+        && interval.intervalSemitones >= -48 && interval.intervalSemitones <= 48
+        && finite(interval.velocity) && interval.velocity >= 0 && interval.velocity <= 1
+        && (interval.gateBeats === undefined || (finite(interval.gateBeats) && interval.gateBeats >= 0)));
+    if (!valid) invalid(`stepMetadata ${key} has an invalid chord payload`);
+  }
+  return source as LegacyStepMetadata;
+}
+
+/**
+ * Schema 1 stored step content by trigger step. An inactive trigger is a Rest
+ * cell; a Notes-mode step that does not follow harmony is a Fixed chord at
+ * root + interval; every other active step is a Harmony cell.
+ */
+function cellsFromLegacyStepMetadata(stepMetadata: unknown, steps: number, lane: SynthVariationLane): NotesCell[] {
+  if (stepMetadata !== undefined && (!stepMetadata || typeof stepMetadata !== 'object' || Array.isArray(stepMetadata))) {
+    invalid('stepMetadata must be an object');
+  }
+  const records = (stepMetadata ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(records)) {
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= steps) invalid(`stepMetadata index ${key} is outside variation steps`);
+  }
+  const mask = variationTriggerMask(lane.overrides ?? {}, steps);
+  const pitchSettings = lane.state.pitchSettings;
+  const notesMode = pitchSettings?.mode === 'notes';
+  const root = Math.max(0, Math.min(127, finite(pitchSettings?.root) ? pitchSettings.root : 60));
+  return Array.from({ length: SYNTH_NOTES_CELL_COUNT }, (_, step) => {
+    const raw = records[String(step)];
+    const metadata = raw === undefined ? undefined : legacyMetadata(raw, String(step));
+    const active = step < steps && (mask & (1 << step)) !== 0;
+    const withChord = metadata?.mode === 'chord' || metadata?.mode === 'arp';
+    const intervals: LegacyChordInterval[] = withChord && metadata?.chord?.intervals.length
+      ? metadata.chord.intervals
+      : [{ intervalSemitones: 0, velocity: 1 }];
+    const followHarmony = metadata?.followHarmony ?? metadata?.chord?.followHarmony ?? false;
+    const fixed = notesMode && !followHarmony;
+    const toNote = (interval: LegacyChordInterval, midi: number): ChordNote => ({
+      midi,
+      velocity: interval.velocity,
+      ...(interval.gateBeats === undefined ? {} : { gate: interval.gateBeats }),
+    });
+    const cell: NotesCell = {
+      kind: !active ? 'rest' : fixed ? 'chord' : 'harmony',
+      gateBeats: normalizeGateBeats(metadata?.gateBeats ?? 0, `stepMetadata ${step}`),
+      articulation: metadata?.mode === 'arp' ? 'arp' : 'chord',
+    };
+    if (cell.kind === 'harmony') cell.intervals = intervals.map((interval) => toNote(interval, interval.intervalSemitones));
+    if (cell.kind === 'chord') {
+      cell.chord = createFixedChord(intervals.map((interval) => toNote(interval, Math.min(127, Math.max(0, root + interval.intervalSemitones)))));
+    }
+    if (metadata?.arp !== undefined) cell.arp = normalizeArp(metadata.arp, `stepMetadata ${step}`);
+    if (metadata?.mode === 'arp' && !cell.arp) invalid(`stepMetadata ${step} needs an arp payload`);
+    return cell;
+  });
 }
 
 function normalizeVariation(
   value: unknown,
   id: SynthSequenceVariationId,
-  clockDiv: ClockDivision,
+  bankClockDiv: ClockDivision,
+  schemaVersion: number,
 ): SynthSequenceVariation {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(`variation ${id} must be an object`);
-  const source = value as Partial<SynthSequenceVariation>;
-  const steps = finite(source.steps) && Number.isInteger(source.steps) ? source.steps : 0;
-  const spanBeats = finite(source.spanBeats) ? source.spanBeats : 0;
-  const expectedSpanBeats = steps * 4 / sequencerClockDivisionToNumericValue(clockDiv, 0);
-  if (steps < MIN_VARIATION_STEPS || steps > MAX_VARIATION_STEPS || spanBeats <= 0 || Math.abs(spanBeats - expectedSpanBeats) > NUDGE_TOLERANCE) {
-    invalid(`variation ${id} has inconsistent steps/spanBeats`);
-  }
+  const source = value as Partial<SynthSequenceVariation> & { stepMetadata?: unknown };
   if (!source.lane || typeof source.lane !== 'object' || !source.lane.state) invalid(`variation ${id} is missing serialized lane data`);
   const lane = source.lane as SynthVariationLane;
   if (Array.isArray(lane.state) || typeof lane.state !== 'object') invalid(`variation ${id} has invalid lane state`);
   if (lane.overrides !== undefined && (Array.isArray(lane.overrides) || typeof lane.overrides !== 'object')) {
     invalid(`variation ${id} has invalid serialized overrides`);
   }
-  if (lane.state.clockDiv !== undefined && lane.state.clockDiv !== clockDiv) {
-    invalid(`variation ${id} lane clockDiv does not match the bank`);
+  // A variation may run its own grid; the bank clock is the default.
+  const clockDiv = lane.state.clockDiv ?? bankClockDiv;
+  if (!SUPPORTED_CLOCK_DIVISIONS.includes(clockDiv)) invalid(`variation ${id} lane clockDiv is unsupported`);
+  const steps = finite(source.steps) && Number.isInteger(source.steps) ? source.steps : 0;
+  const spanBeats = finite(source.spanBeats) ? source.spanBeats : 0;
+  const expectedSpanBeats = steps * 4 / sequencerClockDivisionToNumericValue(clockDiv, 0);
+  if (steps < MIN_VARIATION_STEPS || steps > MAX_VARIATION_STEPS || spanBeats <= 0 || Math.abs(spanBeats - expectedSpanBeats) > NUDGE_TOLERANCE) {
+    invalid(`variation ${id} has inconsistent steps/spanBeats`);
   }
   if (lane.state.pitchBindingMode !== undefined
     && lane.state.pitchBindingMode !== 'polyrhythmic'
@@ -809,20 +752,24 @@ function normalizeVariation(
     && lane.state.pitchBindingMode !== 'sequence') {
     invalid(`variation ${id} has an invalid pitchBindingMode`);
   }
+  const normalizedLane = { overrides: cloneJson(lane.overrides ?? {}), state: cloneJson(lane.state) };
+  const legacy = schemaVersion === 1;
   return {
     id,
     steps,
     spanBeats,
-    lane: { overrides: cloneJson(lane.overrides ?? {}), state: cloneJson(lane.state) },
-    stepMetadata: normalizeStepMetadata(source.stepMetadata, steps),
+    lane: normalizedLane,
+    notesLane: legacy ? createDefaultNotesLane(steps) : normalizeNotesLane(source.notesLane, id),
+    cells: legacy ? cellsFromLegacyStepMetadata(source.stepMetadata, steps, normalizedLane) : normalizeCells(source.cells, id),
   };
 }
 
 export function normalizeSynthSequenceVariationBank(value: unknown): SynthSequenceVariationBank | null {
   if (value === null || value === undefined) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('variation bank must be an object');
-  const source = value as Partial<SynthSequenceVariationBank>;
-  if (source.schemaVersion !== SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION) invalid('unsupported variation bank schemaVersion');
+  const source = value as Partial<Omit<SynthSequenceVariationBank, 'schemaVersion'>> & { schemaVersion?: number };
+  const schemaVersion = source.schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION) invalid('unsupported variation bank schemaVersion');
   if (!finite(source.phraseBeats) || source.phraseBeats <= 0) invalid('variation bank phraseBeats must be positive');
   if (!SUPPORTED_CLOCK_DIVISIONS.includes(source.clockDiv as ClockDivision)) invalid('variation bank clockDiv is unsupported');
   const clockDiv = source.clockDiv as ClockDivision;
@@ -837,17 +784,20 @@ export function normalizeSynthSequenceVariationBank(value: unknown): SynthSequen
   const variations: Partial<Record<SynthSequenceVariationId, SynthSequenceVariation>> = {};
   if (!source.variations || typeof source.variations !== 'object' || Array.isArray(source.variations)) invalid('variation bank variations is required');
   for (const key of Object.keys(source.variations)) {
-    if (!isVariationId(key) || !chainOrder.includes(key)) invalid(`variation ${key} is not in chainOrder`);
-    variations[key] = normalizeVariation(source.variations[key], key, clockDiv);
+    if (!isVariationId(key)) invalid(`variation ${key} is not a variation id`);
+    variations[key] = normalizeVariation(source.variations[key], key, clockDiv, schemaVersion);
   }
   if (chainOrder.some((id) => variations[id] === undefined)) invalid('variation bank chainOrder references a missing variation');
   if (source.chainEnabled && chainOrder.length === 0) invalid('enabled variation chain is empty');
-  const spanSum = chainOrder.reduce((sum, id) => sum + (variations[id]?.spanBeats ?? 0), 0);
-  if (chainOrder.length > 0 && Math.abs(spanSum - source.phraseBeats) > NUDGE_TOLERANCE) invalid('variation spans do not cover phraseBeats');
+  // Variations are independent; only a playing chain must fill the phrase.
+  if (source.chainEnabled) {
+    const spanSum = chainOrder.reduce((sum, id) => sum + (variations[id]?.spanBeats ?? 0), 0);
+    if (Math.abs(spanSum - source.phraseBeats) > NUDGE_TOLERANCE) invalid('variation spans do not cover phraseBeats');
+  }
   const playVariation = source.playVariation as SynthSequenceVariationIndex;
   const playVariationId = SYNTH_SEQUENCE_VARIATION_IDS[playVariation];
-  if (chainOrder.length > 0 && !playVariationId) invalid('playVariation is outside the variation bank');
-  if (playVariationId && !variations[playVariationId]) invalid('playVariation is not populated');
+  if (Object.keys(variations).length > 0 && !playVariationId) invalid('playVariation is outside the variation bank');
+  if (playVariationId && Object.keys(variations).length > 0 && !variations[playVariationId]) invalid('playVariation is not populated');
   return {
     schemaVersion: SYNTH_SEQUENCE_VARIATION_SCHEMA_VERSION,
     phraseBeats: source.phraseBeats,
@@ -857,6 +807,16 @@ export function normalizeSynthSequenceVariationBank(value: unknown): SynthSequen
     chainOrder,
     variations,
   };
+}
+
+/** True while the bank has not been edited: used to commit an async print only against the bank it was armed on. */
+export function isSameSynthSequenceVariationBank(
+  left: SynthSequenceVariationBank | null | undefined,
+  right: SynthSequenceVariationBank | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return !left && !right;
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function serializeSynthSequenceVariationBank(
@@ -1048,7 +1008,7 @@ export class SynthSequenceCaptureScratch {
 
   /** Add a generated event with a phrase-relative onset at the current watermark. */
   ingest(note: SynthVariationCaptureNote): boolean {
-    if (!this.recording || !validCaptureNote(note, this.phraseBeats)) return false;
+    if (!this.recording || !validCaptureNote(note)) return false;
     return this.appendPhaseNotes([note], this.sweptThroughBeat) === 1;
   }
 
@@ -1060,7 +1020,7 @@ export class SynthSequenceCaptureScratch {
   ingestBatch(notes: readonly SynthVariationCaptureNote[], clockBeat: number): number {
     if (!this.recording || !finite(clockBeat) || clockBeat < this.sweptThroughBeat) return 0;
     if (clockBeat > this.sweptThroughBeat) this.advance(clockBeat);
-    if (notes.some((note) => !validCaptureNote(note, this.phraseBeats))) return 0;
+    if (notes.some((note) => !validCaptureNote(note))) return 0;
     const elapsedBeat = this.sweptThroughBeat - this.originBeat;
     const oldestAcceptedBeat = elapsedBeat - this.phraseBeats;
     const batchNotes = notes.filter((note) => (

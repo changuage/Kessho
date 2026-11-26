@@ -1,0 +1,426 @@
+{
+ "notes": {
+  "bank": {
+   "schemaVersion": 1,
+   "phraseBeats": 3,
+   "clockDiv": "1/8",
+   "chainEnabled": false,
+   "playVariation": 0,
+   "chainOrder": [
+    "A"
+   ],
+   "variations": {
+    "A": {
+     "id": "A",
+     "steps": 6,
+     "spanBeats": 3,
+     "lane": {
+      "overrides": {
+       "triggerClips": [
+        null
+       ],
+       "triggerToggles": [
+        [
+         {
+          "step": 0,
+          "value": true
+         },
+         {
+          "step": 1,
+          "value": true
+         },
+         {
+          "step": 2,
+          "value": true
+         },
+         {
+          "step": 4,
+          "value": true
+         },
+         {
+          "step": 5,
+          "value": true
+         }
+        ]
+       ],
+       "pitch": [
+        [
+         0,
+         2,
+         4,
+         0,
+         5,
+         7
+        ]
+       ],
+       "expression": [
+        [
+         0.5,
+         0.75,
+         1,
+         0.25,
+         0.9
+        ]
+       ],
+       "nudge": [
+        [
+         0,
+         0.1,
+         -0.1,
+         0,
+         0.2
+        ]
+       ],
+       "probability": [
+        [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       ]
+      },
+      "state": {
+       "clockDiv": "1/8",
+       "swing": 0,
+       "linked": false,
+       "pitchSettings": {
+        "mode": "notes",
+        "root": 61,
+        "scale": "Major"
+       },
+       "pitchBindingMode": "sequence",
+       "subLaneStates": {
+        "pitch": {
+         "enabled": true,
+         "steps": 6,
+         "direction": "forward"
+        },
+        "expression": {
+         "enabled": true,
+         "steps": 5,
+         "direction": "reverse",
+         "followTriggerHits": true
+        }
+       }
+      }
+     },
+     "stepMetadata": {
+      "0": {
+       "mode": "note",
+       "gateBeats": 0.5
+      },
+      "1": {
+       "mode": "chord",
+       "gateBeats": 1,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 0.8,
+          "gateBeats": 1
+         },
+         {
+          "intervalSemitones": 4,
+          "velocity": 0.6,
+          "gateBeats": 0.75
+         },
+         {
+          "intervalSemitones": 7,
+          "velocity": 1
+         }
+        ]
+       }
+      },
+      "2": {
+       "mode": "chord",
+       "gateBeats": 0.25,
+       "followHarmony": true,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 1
+         },
+         {
+          "intervalSemitones": -12,
+          "velocity": 0.5
+         }
+        ],
+        "followHarmony": true
+       }
+      },
+      "4": {
+       "mode": "arp",
+       "gateBeats": 1.5,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 1
+         },
+         {
+          "intervalSemitones": 3,
+          "velocity": 1
+         }
+        ]
+       },
+       "arp": {
+        "config": {
+         "enabled": false,
+         "flow": "down",
+         "rate": 1,
+         "length": 8,
+         "pulseMask": 95,
+         "contour": [
+          0,
+          2,
+          -1,
+          3,
+          0,
+          1,
+          -2,
+          1,
+          0,
+          2,
+          -3,
+          1,
+          0,
+          -1,
+          2,
+          0
+         ],
+         "contourMode": "pool",
+         "boundaryMode": "fold",
+         "resetMask": 0
+        },
+        "spanBeats": 1
+       }
+      },
+      "5": {
+       "mode": "note",
+       "gateBeats": 0,
+       "followHarmony": true
+      }
+     }
+    }
+   }
+  },
+  "bytesGzipBase64": "H4sIAAAAAAAAE+3YTU7CQBQA4NcSjUu3rvAMblwphTV3cMcJOABx5RX0Lia6hzt4Ea3WtklTi2xI24TvSx6dgf5k4M280jQikir+cx4RF1X7NiJukvK9dpx1tLt0Xe86ImaNftGeNvrTP0dsZkNG0vjuRP9R5UAW8ZGV7ct5RDY/kMrHNIvI6ny4X61WPefg4Ncf2LDzf+jRj2H8u+327idey/byvs/Rp9W2WgtG8HvU1otx5AenqJ4Xk9/XMeXherHbLltr5+Pi5fmqqmO1J/OHo6vvGcv5sem1Vh3WzvfsfVw1DeB0pFXNKOvFW7EWZ3W/eBb2sOc5VvF5nuf5pOoX+3zled6sP5+NfrFv2nGe/br+X2zcM9GLpLUdF3MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYl29Kwe0HeKYBAA==",
+  "byteLength": 108152
+ },
+ "semitones": {
+  "bank": {
+   "schemaVersion": 1,
+   "phraseBeats": 3,
+   "clockDiv": "1/8",
+   "chainEnabled": false,
+   "playVariation": 0,
+   "chainOrder": [
+    "A"
+   ],
+   "variations": {
+    "A": {
+     "id": "A",
+     "steps": 6,
+     "spanBeats": 3,
+     "lane": {
+      "overrides": {
+       "triggerClips": [
+        null
+       ],
+       "triggerToggles": [
+        [
+         {
+          "step": 0,
+          "value": true
+         },
+         {
+          "step": 1,
+          "value": true
+         },
+         {
+          "step": 2,
+          "value": true
+         },
+         {
+          "step": 4,
+          "value": true
+         },
+         {
+          "step": 5,
+          "value": true
+         }
+        ]
+       ],
+       "pitch": [
+        [
+         0,
+         3,
+         7,
+         0,
+         12,
+         -5
+        ]
+       ],
+       "expression": [
+        [
+         0.5,
+         0.75,
+         1,
+         0.25,
+         0.9
+        ]
+       ],
+       "nudge": [
+        [
+         0,
+         0.1,
+         -0.1,
+         0,
+         0.2
+        ]
+       ],
+       "probability": [
+        [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1
+        ]
+       ]
+      },
+      "state": {
+       "clockDiv": "1/8",
+       "swing": 0,
+       "linked": false,
+       "pitchSettings": {
+        "mode": "semitones",
+        "root": 61,
+        "scale": "Chromatic"
+       },
+       "pitchBindingMode": "sequence",
+       "subLaneStates": {
+        "pitch": {
+         "enabled": true,
+         "steps": 6,
+         "direction": "forward"
+        },
+        "expression": {
+         "enabled": true,
+         "steps": 5,
+         "direction": "reverse",
+         "followTriggerHits": true
+        }
+       }
+      }
+     },
+     "stepMetadata": {
+      "0": {
+       "mode": "note",
+       "gateBeats": 0.5
+      },
+      "1": {
+       "mode": "chord",
+       "gateBeats": 1,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 0.8,
+          "gateBeats": 1
+         },
+         {
+          "intervalSemitones": 4,
+          "velocity": 0.6,
+          "gateBeats": 0.75
+         },
+         {
+          "intervalSemitones": 7,
+          "velocity": 1
+         }
+        ]
+       }
+      },
+      "2": {
+       "mode": "chord",
+       "gateBeats": 0.25,
+       "followHarmony": true,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 1
+         },
+         {
+          "intervalSemitones": -12,
+          "velocity": 0.5
+         }
+        ],
+        "followHarmony": true
+       }
+      },
+      "4": {
+       "mode": "arp",
+       "gateBeats": 1.5,
+       "chord": {
+        "intervals": [
+         {
+          "intervalSemitones": 0,
+          "velocity": 1
+         },
+         {
+          "intervalSemitones": 3,
+          "velocity": 1
+         }
+        ]
+       },
+       "arp": {
+        "config": {
+         "enabled": false,
+         "flow": "down",
+         "rate": 1,
+         "length": 8,
+         "pulseMask": 95,
+         "contour": [
+          0,
+          2,
+          -1,
+          3,
+          0,
+          1,
+          -2,
+          1,
+          0,
+          2,
+          -3,
+          1,
+          0,
+          -1,
+          2,
+          0
+         ],
+         "contourMode": "pool",
+         "boundaryMode": "fold",
+         "resetMask": 0
+        },
+        "spanBeats": 1
+       }
+      },
+      "5": {
+       "mode": "note",
+       "gateBeats": 0,
+       "followHarmony": true
+      }
+     }
+    }
+   }
+  },
+  "bytesGzipBase64": "H4sIAAAAAAAAE+3YQU7CQBQA0F+Ixiu4wjO4cSXUPXdwxzm4hq68iAnu4Q5eRKulbVJLlZiYdgzvJb/MAKUd+NNfZhIRWR0/OY+Ii7p9ExHXWfVcN8562n36jncVEYtWv2zPWv3ZwR7rxZiRtb47MXxU8jziNa/bdxFPmyOp/JcWEXmTD/PVajVwDo5+/JGNO//HHn0K499tt7ef8Vy1l/MhR599fUzg92hLIT84Rc28mO63aeXhbrvsXDvX+ePDZV3HGmU9T+u8+f+aeTHZb9eD1qrjuvmev6RX0wBOQ7POUNWLTXktzpt+uRZ2/806Vvl6URTFtPU570VRtOvPW6tfvnfy67M7qBfumRhE5393YswBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgLR/T06EueKYBAA==",
+  "byteLength": 108152
+ }
+}

@@ -71,7 +71,7 @@ export interface RecordedNoteCaptureApi {
     velocity: number,
     clockBeat?: number,
     sourceId?: number,
-    metadata?: Pick<RecordedNote, 'chordGroupId' | 'mode' | 'chord' | 'arp'>,
+    metadata?: Pick<RecordedNote, 'chordGroupId'>,
   ) => number | null;
   readonly recordNoteOff: (input: { inputId?: string; id?: number; clockBeat?: number }) => boolean;
   /** Feed one atomic runtime batch, including empty batches during silence. */
@@ -177,9 +177,6 @@ function scratchClip(active: ActiveCapture): RecordedNoteClip | null {
       velocity: note.velocity,
       ...(note.sourceId === undefined ? {} : { sourceId: note.sourceId }),
       ...(note.chordGroupId === undefined ? {} : { chordGroupId: note.chordGroupId }),
-      ...(note.mode === undefined ? {} : { mode: note.mode }),
-      ...(note.chord === undefined ? {} : { chord: note.chord }),
-      ...(note.arp === undefined ? {} : { arp: note.arp }),
     };
   });
   return createRecordedNoteClip({
@@ -406,9 +403,6 @@ export function useRecordedNoteCapture({
           velocity: event.velocity,
           ...(event.sourceId === undefined ? {} : { sourceId: event.sourceId }),
           ...(event.chordGroupId === undefined ? {} : { chordGroupId: event.chordGroupId }),
-          ...(event.mode === undefined ? {} : { mode: event.mode }),
-          ...(event.chord === undefined ? {} : { chord: event.chord }),
-          ...(event.arp === undefined ? {} : { arp: event.arp }),
         });
       } else {
         active.controller.recordNote({
@@ -420,9 +414,6 @@ export function useRecordedNoteCapture({
           sourceId: event.sourceId,
           id: event.eventId,
           chordGroupId: event.chordGroupId,
-          mode: event.mode,
-          chord: event.chord,
-          arp: event.arp,
         });
       }
       active.snapshotDirty = true;
@@ -605,7 +596,7 @@ export function useRecordedNoteCapture({
     setView(buildView(active));
   }, [buildView, cancelPreviewTask, sendControl]);
 
-  const recordNoteOn = useCallback((inputId: string, pitch: number, velocity: number, clockBeat?: number, sourceId?: number, metadata?: Pick<RecordedNote, 'chordGroupId' | 'mode' | 'chord' | 'arp'>) => {
+  const recordNoteOn = useCallback((inputId: string, pitch: number, velocity: number, clockBeat?: number, sourceId?: number, metadata?: Pick<RecordedNote, 'chordGroupId'>) => {
     const active = activeRef.current;
     if (!active || active.source !== 'keyboard') return null;
     const correlatedClockBeat = getCaptureClockBeat?.();
