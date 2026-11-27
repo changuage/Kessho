@@ -158,7 +158,8 @@ enum KesshoProductGeneratedEventId : uint32_t {
   KESSHO_PRODUCT_EVENT_HARMONY_LIVE_CHORD_GESTURE = 77u
 };
 
-inline constexpr uint32_t KESSHO_PRODUCT_EVENT_ID_COUNT = 74u;
+// One past the highest id; retired ids stay unused, so this is not events.length.
+inline constexpr uint32_t KESSHO_PRODUCT_EVENT_ID_COUNT = 78u;
 
 } // namespace kessho::product::generated
 #endif
