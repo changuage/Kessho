@@ -99,6 +99,7 @@ const classifiedRuntimeAllowlist = new Map([
   ['./CoreProductHostSequencerRangePayload', 'product host sequencer range payload adapter'],
   ['./CoreProductHostSynthNoteRangeEvolve', 'product host synth note-range evolve adapter'],
   ['./CoreProductHarmonyControl', 'product harmony control event and UI state adapter'],
+  ['./harmony/chord', 'canonical Product Chord value: normalisation and native field encoding'],
   ['./harmony/harmonyProjection', 'type-only canonical Product harmony live-layer projection'],
   ['./harmony/harmonyScaleIntervals', 'canonical Product harmony scale interval metadata'],
   ['./harmony/harmonyTypes', 'type-only canonical Product harmony contracts'],

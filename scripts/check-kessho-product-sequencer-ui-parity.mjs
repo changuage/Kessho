@@ -27,18 +27,10 @@ const BASE_SUB_LANE_SPARK_INDEX = Object.freeze({
   distance: 3,
   nudge: 4,
 });
-const SYNTH_SUB_LANE_SPARK_INDEX = Object.freeze({
-  play: 0,
-  pitch: 1,
-  expression: 2,
-  morph: 3,
-  distance: 4,
-  nudge: 5,
-});
-let activeParityTab = 'drums';
 
+// Synth and Drums show the same sparkline sub-lanes; Synth's Notes lane is its own panel.
 function activeSubLaneSparkIndex() {
-  return activeParityTab === 'synth' ? SYNTH_SUB_LANE_SPARK_INDEX : BASE_SUB_LANE_SPARK_INDEX;
+  return BASE_SUB_LANE_SPARK_INDEX;
 }
 
 function subLaneSparkIndex(lane) {
@@ -62,9 +54,6 @@ function visibleSubLaneOrder() {
 }
 
 const VISIBLE_SUB_LANE_LABELS = Object.freeze({
-  a: 'play',
-  arp: 'play',
-  play: 'play',
   p: 'pitch',
   pitch: 'pitch',
   e: 'expression',
@@ -2590,7 +2579,6 @@ async function proofKeyboardOnlyTransportStartStop(page, engineMode, tab) {
 }
 
 async function proofRuntime(browser, baseUrl, engineMode, tab) {
-  activeParityTab = tab;
   const context = await browser.newContext({ viewport: { width: 1280, height: 780 } });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
