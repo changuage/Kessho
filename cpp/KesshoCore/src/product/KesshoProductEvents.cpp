@@ -376,7 +376,6 @@ void retimeSequencerLanePreservingPhase(
               event.value >= -1.0f && event.value <= 127.0f &&
               event.value2 >= 0.0f && event.value2 <= 1.0f &&
               event.value3 >= -12.0f && event.value3 <= 12.0f &&
-              event.value4 >= -1.0f && event.value4 <= 7.0f &&
               (event.flags & ~KESSHO_PRODUCT_ARP_STEP_RESET) == 0u
           ? KESSHO_PRODUCT_OK
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;

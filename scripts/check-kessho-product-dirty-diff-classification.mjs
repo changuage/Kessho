@@ -589,9 +589,9 @@ await runCheckWithReport({
         normalizeBody.includes("normalized.flags = this.requireUint(event, 'flags', 0, 0xff);") &&
         normalizeBody.includes("case PRODUCT_EVENT_IDS.SetSynthArpStep") &&
         normalizeBody.includes("normalized.value3 = this.requireFloat(event, 'value3', -12, 12);") &&
-        normalizeBody.includes("normalized.value4 = this.requireFloat(event, 'value4', -1, 7);") &&
+        !normalizeBody.includes("normalized.value4 = this.requireFloat(event, 'value4', -1, 7);") &&
         normalizeBody.includes("normalized.flags = this.requireUint(event, 'flags', 0, 1);"),
-      'Product ARP worklet events must preserve pulse/reset masks, flow flags, contour, slot, and reset state',
+      'Product ARP worklet events must preserve pulse/reset masks, flow flags, contour, and reset state, with no slot lane',
     );
     addEvidence(report, {
       id: 'static-dirty-diff-contract',

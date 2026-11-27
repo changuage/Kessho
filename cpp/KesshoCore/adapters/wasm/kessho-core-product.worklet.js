@@ -1746,7 +1746,6 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
         normalized.value = this.requireFloat(event, 'value', -1, 127);
         normalized.value2 = this.requireFloat(event, 'value2', 0, 1);
         normalized.value3 = this.requireFloat(event, 'value3', -12, 12);
-        normalized.value4 = this.requireFloat(event, 'value4', -1, 7);
         normalized.flags = this.requireUint(event, 'flags', 0, 1);
         return normalized;
       case PRODUCT_EVENT_IDS.CommitSynthArpPattern:

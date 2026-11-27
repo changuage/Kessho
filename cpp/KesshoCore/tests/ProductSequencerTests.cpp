@@ -1133,6 +1133,45 @@ void requireProductSequencerSynthArpRuntimeTests() {
     require(telemetry.synth_arp_current_steps[0] == 0u, "disabled synth arp telemetry should report step zero");
     kessho_product_destroy(engine);
   }
+
+  {
+    // M2: there are no chord slots.  A Lead lane ARP configured with a fixed
+    // pattern and an empty harmony pool plays that pattern's pitches, advances
+    // through several native steps, and a later pattern replaces it in place.
+    KesshoProductEngine* engine = kessho_product_create(sample_rate, 4096u, 0);
+    require(engine != nullptr, "lane arp fixed pattern engine create failed");
+    KesshoProductSnapshotV2 snapshot = makeSingleSynthArpSnapshot(4u, 0x01u, 60.0f);
+    snapshot.synth_euclid.lanes[0].target_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
+    require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "lane arp fixed pattern snapshot load failed");
+    require(engine->harmony.note_pool_count == 0u, "lane arp fixed pattern fixture should have no harmony pool");
+    // value4 was the retired ARP slot lane; step events no longer constrain it.
+    KesshoProductEvent retired_slot_lane{};
+    retired_slot_lane.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SYNTH_ARP_STEP;
+    retired_slot_lane.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+    retired_slot_lane.value = 60.0f;
+    retired_slot_lane.value2 = 1.0f;
+    retired_slot_lane.value4 = 9.0f;
+    require(kessho_product_enqueue_event(engine, &retired_slot_lane) == KESSHO_PRODUCT_OK, "arp step must not validate the retired slot lane field");
+    enqueueSynthArpPattern(engine, arp_notes_8, 0xffu, 8u, 1.0f);
+    std::vector<RenderedSequencerEvent> events = renderEventsInBlocks(engine, block_size, 12000u);
+    require(events.size() >= 3u, "lane arp fixed pattern should emit several arp pulses per parent trigger");
+    for (uint32_t i = 0u; i < events.size(); ++i) {
+      require(std::fabs(events[i].event.midi_note - arp_notes_8[i % arp_notes_8.size()]) < 0.001f,
+              "lane arp fixed pattern should emit the configured pitches in order");
+    }
+    KesshoProductTelemetry telemetry = kessho_product_get_telemetry(engine);
+    require(telemetry.synth_arp_current_steps[0] >= 2u, "lane arp fixed pattern telemetry should advance through native steps");
+    require(telemetry.synth_arp_current_midis[0] >= 60.0f, "lane arp fixed pattern telemetry should expose the arp pitch");
+
+    enqueueSynthArpPattern(engine, {72.0f, 74.0f, 76.0f, 77.0f, 79.0f, 81.0f, 83.0f, 84.0f}, 0xffu, 8u, 1.0f);
+    events = renderEventsInBlocks(engine, block_size, 24000u);
+    bool saw_replacement = false;
+    for (const RenderedSequencerEvent& rendered : events) {
+      saw_replacement = saw_replacement || rendered.event.midi_note >= 72.0f;
+    }
+    require(saw_replacement, "lane arp replacement pattern should become audible");
+    kessho_product_destroy(engine);
+  }
 }
 
 void requireProductSequencerRatchetNearBlockEndTest() {
