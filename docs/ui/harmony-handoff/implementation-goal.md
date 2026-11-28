@@ -56,7 +56,7 @@ These files are on the path of M3, M6, M7 and M9.
 
 Capture the "before" picture that later milestones are measured against.
 
-- [x] **Event statistics:** `npm run test:m1-arrangement-statistics`. A TS exporter turns String Waves and three variants (chords only, notes only, beat clock) into engine snapshots. The native `ProductArrangementStatisticsTests` renders eight phrases with no audio and compares events per phrase, onset histogram, velocity, pitch, voices per chord and voice-entry spread against `cpp/KesshoCore/tests/fixtures/arrangement-statistics.json`, with tolerances meant for M3. `KESSHO_M1_RECORD=1` re-records. The test was confirmed to fail on drift.
+- [x] **Event statistics:** `npm run test:m1-arrangement-statistics`. A TS exporter turns String Waves and three variants (chords only, notes only, beat clock) into engine snapshots. The native `ProductArrangementStatisticsTests` renders 256 phrases with no audio and compares events per phrase, onset histogram, velocity, pitch, voices per chord and voice-entry spread (p90) against `cpp/KesshoCore/tests/fixtures/arrangement-statistics.json`, with tolerances meant for M3. `KESSHO_M1_RECORD=1` re-records. The test was confirmed to fail on drift.
 - [x] **CPU baseline:** [m1-cpu-baseline.md](m1-cpu-baseline.md). Covers native budget scenarios and refreshed browser CPU evidence; `core:product:cpu`, `cpu-scenarios` and `module-cpu` all pass.
 - [x] **Screenshot baselines:** [m1-baselines/](m1-baselines/index.md). Global, Synth (Simple, Detail, Overview) and Drums (Overview, Detail, Scatter) at 390 and 1280 px; regenerate with `node scripts/m1/capture-ui-baselines.mjs`.
 - [x] **Preset-library audit:** [m1-preset-audit.md](m1-preset-audit.md), via `node scripts/m1/audit-presets.mjs`. Only String Waves uses Random Chords and Notes. No repo preset uses authored chords, active Scatter, Walker or Orbit. Four presets use key drift.
@@ -195,7 +195,7 @@ M0 ─► M1 ─► M2 ─► M3 ─► M4 ─► M8 ─► M9
 | M0 Host transport landed | Done on `main` | — |
 | M1 Fixtures and baselines | Done on `main` | — |
 | M2 Chord model and printer | Done on `main` ([m2-chord-model-design.md](m2-chord-model-design.md)); lane pitch binding moved to M4, Voicing drawer to M5 | — |
-| M3 Six slots, per-slot generators | In progress ([m3-slots-design.md](m3-slots-design.md)) | — |
+| M3 Six slots, per-slot generators | Done on `main` ([m3-slots-design.md](m3-slots-design.md)); the web reference engine still reads the retired arrangement keys |  — |
 | M4 Part, Overview, lane model | Not started | — |
 | M5 Global Harmony surface | Not started | — |
 | M6 Live layer (Brain) | Not started | — |
