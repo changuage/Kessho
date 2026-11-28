@@ -2,7 +2,10 @@ import type { SliderState } from '../ui/state';
 import { getPhraseDurationForClockSource } from './transport';
 import { coreProductSynthSequencerHoldSecondsFromState } from './coreProductSequencerHold';
 import { clamp, numberFromState } from './coreProductSnapshotState';
-import type { CoreProductSnapshot } from './coreProductSnapshotTypes';
+import type { CoreProductSnapshot, ProductLaneSnapshot } from './coreProductSnapshotTypes';
+import { laneDefaults } from './coreProductSnapshotDefaults';
+import { padEuclidOwnedVoiceMask } from './coreProductArrangementVoiceMapping';
+import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
 import {
   leadRandomSource,
   leadRandomSourceEnabled,
@@ -12,78 +15,103 @@ import {
   synthChordGeneratorSourceEnabled,
 } from './coreProductArrangementSchedulerUtils';
 import { getEffectiveTension } from './harmony';
-import { getUtcBucket, xmur3 } from './rng';
-import { padEuclidOwnedVoiceMask } from './coreProductArrangementVoiceMapping';
 
-function arrangementRngState(state: Record<string, unknown>): number {
-  const explicit = numberFromState(state, 'arrangementRngState', Number.NaN);
-  if (Number.isFinite(explicit)) return Math.max(1, Math.round(explicit) >>> 0);
-  const bucket = getUtcBucket(state.seedWindow === 'day' ? 'day' : 'hour');
-  return xmur3(`${bucket}|E_ROOT`)() || 1;
+// Random lane mode id shared with native kSequencerModeRandom.
+export const PRODUCT_SEQUENCER_MODE_RANDOM = 3;
+
+// Transitional part ids (until the six-slot TS state owns saved ids): each
+// migrated generator keeps one fixed identity, so its stream never depends on
+// which lane it runs in.
+export const RANDOM_CHORDS_TRANSITIONAL_PART_ID = 1;
+export const RANDOM_NOTES_TRANSITIONAL_PART_ID = 2;
+
+// Transitional lane positions: chords always run on lane 5 and notes on lane 6.
+// A generator that is off leaves its lane disabled, so toggling one is a
+// parameter diff, never a lane move.
+export const RANDOM_CHORDS_TRANSITIONAL_LANE_INDEX = 4;
+export const RANDOM_NOTES_TRANSITIONAL_LANE_INDEX = 5;
+
+type State = Record<string, unknown>;
+
+// Harmony owns the pitches; a Random Chords lane only renders and routes them.
+function randomChordsLane(state: State): ProductLaneSnapshot {
+  const chordSource = synthChordGeneratorSource(state);
+  const sourceId = simpleSequencerSourceId(chordSource === 'both' ? 'pad1' : chordSource);
+  const lane = laneDefaults(sourceId, 60);
+  lane.enabled = synthChordGeneratorSourceEnabled(state);
+  lane.sequencerMode = PRODUCT_SEQUENCER_MODE_RANDOM;
+  // Pad 1 and Pad 2 keep their own fit flags; a split chord follows Pad 1.
+  const padFit = sourceId === CORE_PRODUCT_SOURCE_IDS.pad2
+    ? state.pad2FitEnvelopeToChord !== false
+    : state.padFitEnvelopeToChord !== false;
+  lane.random = {
+    ...lane.random,
+    mode: 0,
+    partId: RANDOM_CHORDS_TRANSITIONAL_PART_ID,
+    voiceCount: clamp(Math.round(numberFromState(state, 'synthChordGeneratorVoiceCount', 6)), 1, 8),
+    waveSpread: clamp(numberFromState(state, 'waveSpread', 0.125), 0, 1),
+    octave: clamp(Math.round(numberFromState(state, 'synthOctave', 0)), -4, 4),
+    voiceMask: clamp(Math.round(numberFromState(state, 'synthVoiceMask', 63)), 0, 255) >>> 0,
+    pad2VoiceAssign: clamp(Math.round(numberFromState(state, 'pad2VoiceAssign', 0)), 0, 255) >>> 0,
+    padSplit: chordSource === 'both',
+    fitEnvelopeToChord: padFit,
+  };
+  return lane;
 }
 
+function randomNotesLane(state: State): ProductLaneSnapshot {
+  const source = leadRandomSource(state);
+  const sourceId = leadRandomSourceId(source);
+  const lane = laneDefaults(sourceId, 60);
+  lane.enabled = leadRandomSourceEnabled(state, source);
+  lane.sequencerMode = PRODUCT_SEQUENCER_MODE_RANDOM;
+  const tensionMode = state.leadTensionMode === 'locked' || state.leadTensionMode === 'bypass'
+    ? state.leadTensionMode
+    : 'follow';
+  const tension = getEffectiveTension(
+    clamp(numberFromState(state, 'tension', 0.3), 0, 1),
+    tensionMode,
+    clamp(numberFromState(state, 'leadTensionValue', 0), -0.5, 0.5),
+  );
+  lane.random = {
+    ...lane.random,
+    mode: 1,
+    partId: RANDOM_NOTES_TRANSITIONAL_PART_ID,
+    // Playback start is the shared phrase-zero boundary; a live "next phrase"
+    // enable is aligned by the native lane arm instead of a wall-clock delay.
+    phraseSeconds: getPhraseDurationForClockSource(
+      state as unknown as SliderState,
+      (state as unknown as SliderState).leadRandomClockSource ?? 'globalPhrase',
+    ),
+    density: clamp(numberFromState(state, 'lead1Density', 0.5), 0.1, 12),
+    notesOctave: clamp(Math.round(numberFromState(state, 'lead1Octave', 1)), -4, 4),
+    octaveRange: clamp(Math.round(numberFromState(state, 'lead1OctaveRange', 2)), 1, 4),
+    holdSeconds: coreProductSynthSequencerHoldSecondsFromState(state, sourceId, 0.5),
+    velocityMin: 0.5,
+    velocityMax: 0.9,
+    chordBias: tension < 0 ? 0.9 : 0.9 - tension * 0.4,
+    initialDelaySeconds: 0,
+  };
+  return lane;
+}
+
+// Today's chord generator and Random Notes become lanes 5 and 6.
+export function coreProductRandomLanesFromState(state: State | undefined): ProductLaneSnapshot[] {
+  const resolved = state ?? {};
+  return [randomChordsLane(resolved), randomNotesLane(resolved)];
+}
+
+// Harmony owns the pitches and Random lanes own their generators; this block
+// holds only the settings that are global to every lane.
 export function coreProductArrangementSnapshotFromState(
   state: Record<string, unknown> | undefined,
 ): CoreProductSnapshot['arrangement'] {
   const arrangementState = state ?? {};
-  const sliderState = arrangementState as unknown as SliderState;
-  const chordGeneratorSource = synthChordGeneratorSource(arrangementState);
-  const randomSource = leadRandomSource(arrangementState);
-  const leadTensionMode = arrangementState.leadTensionMode === 'locked' || arrangementState.leadTensionMode === 'bypass'
-    ? arrangementState.leadTensionMode
-    : 'follow';
-  const leadTension = getEffectiveTension(
-    clamp(numberFromState(arrangementState, 'tension', 0.3), 0, 1),
-    leadTensionMode,
-    clamp(numberFromState(arrangementState, 'leadTensionValue', 0), -0.5, 0.5),
-  );
-  const leadPhraseSeconds = getPhraseDurationForClockSource(
-    sliderState,
-    sliderState.leadRandomClockSource ?? 'globalPhrase',
-  );
-  // Playback start is the shared phrase-zero boundary for both Simple-mode
-  // generators. Live "next phrase" enables are aligned by the native event
-  // handler instead of carrying wall-clock phase across a stop/resume.
-  const leadInitialDelaySeconds = 0;
-
   return {
-    // Harmony owns the pitches; Arrangement owns only rendering/routing.
-    chordGeneratorEnabled: synthChordGeneratorSourceEnabled(arrangementState),
-    chordGeneratorSourceId: simpleSequencerSourceId(
-      chordGeneratorSource === 'both' ? 'pad1' : chordGeneratorSource,
-    ),
-    chordGeneratorVoiceCount: clamp(
-      Math.round(numberFromState(arrangementState, 'synthChordGeneratorVoiceCount', 6)),
-      1,
-      8,
-    ),
-    leadRandomEnabled: leadRandomSourceEnabled(arrangementState, randomSource),
-    leadRandomSourceId: leadRandomSourceId(randomSource),
-    leadPhraseSeconds,
-    leadDensity: clamp(numberFromState(arrangementState, 'lead1Density', 0.5), 0.1, 12),
-    leadOctave: clamp(Math.round(numberFromState(arrangementState, 'lead1Octave', 1)), -4, 4),
-    leadOctaveRange: clamp(Math.round(numberFromState(arrangementState, 'lead1OctaveRange', 2)), 1, 4),
-    leadHoldSeconds: coreProductSynthSequencerHoldSecondsFromState(
-      arrangementState,
-      leadRandomSourceId(randomSource),
-      0.5,
-    ),
-    leadVelocityMin: 0.5,
-    leadVelocityMax: 0.9,
-    rngState: arrangementRngState(arrangementState),
-    waveSpread: clamp(numberFromState(arrangementState, 'waveSpread', 0.125), 0, 1),
-    synthOctave: clamp(Math.round(numberFromState(arrangementState, 'synthOctave', 0)), -4, 4),
-    leadChordBias: leadTension < 0 ? 0.9 : 0.9 - leadTension * 0.4,
-    synthVoiceMask: clamp(Math.round(numberFromState(arrangementState, 'synthVoiceMask', 63)), 0, 255) >>> 0,
-    pad2VoiceAssign: clamp(Math.round(numberFromState(arrangementState, 'pad2VoiceAssign', 0)), 0, 255) >>> 0,
-    padEuclidOwnedVoiceMask: padEuclidOwnedVoiceMask(arrangementState) >>> 0,
-    chordGeneratorPadSplit: chordGeneratorSource === 'both',
     sourceHoldSeconds: Array.from(
       { length: 8 },
       (_, index) => coreProductSynthSequencerHoldSecondsFromState(arrangementState, index + 1, 0.5),
     ),
-    pad1FitEnvelopeToChord: arrangementState.padFitEnvelopeToChord !== false,
-    pad2FitEnvelopeToChord: arrangementState.pad2FitEnvelopeToChord !== false,
-    leadInitialDelaySeconds,
+    padEuclidOwnedVoiceMask: padEuclidOwnedVoiceMask(arrangementState) >>> 0,
   };
 }

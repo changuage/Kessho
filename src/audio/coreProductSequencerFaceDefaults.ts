@@ -4,6 +4,7 @@ import type {
   ProductAnchorWalkerSnapshot,
   ProductOrbitNoteSnapshot,
   ProductOrbitSequencerSnapshot,
+  ProductRandomSlotSnapshot,
 } from './coreProductSnapshotTypes';
 
 export function anchorWalkerLayerDefaults(index: number): ProductAnchorWalkerLayerSnapshot {
@@ -116,5 +117,28 @@ export function orbitSequencerDefaults(): ProductOrbitSequencerSnapshot {
     noteCount: 3,
     seed: 3001,
     notes: Array.from({ length: 32 }, (_, index) => orbitNoteDefaults(index)),
+  };
+}
+
+export function randomSlotDefaults(): ProductRandomSlotSnapshot {
+  return {
+    mode: 0,
+    partId: 0,
+    voiceCount: 6,
+    waveSpread: 0.125,
+    octave: 0,
+    voiceMask: 63,
+    pad2VoiceAssign: 0,
+    padSplit: false,
+    fitEnvelopeToChord: true,
+    phraseSeconds: 16,
+    density: 0.5,
+    notesOctave: 1,
+    octaveRange: 2,
+    holdSeconds: 0.5,
+    velocityMin: 0.5,
+    velocityMax: 0.9,
+    chordBias: 0.78,
+    initialDelaySeconds: 0,
   };
 }

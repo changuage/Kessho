@@ -1,5 +1,6 @@
 import type { CoreProductEvent } from './coreProductEvents';
 import { CORE_PRODUCT_SOURCE_IDS, createCoreProductSequencerLaneParamEvent } from './coreProductEvents';
+import { randomSlotDefaults } from './coreProductSequencerFaceDefaults';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 import { KESSHO_PRODUCT_PARAM_IDS } from './generated/kesshoProductParams';
 
@@ -156,6 +157,33 @@ function orbitDiffDefaults(): ProductLaneSnapshot['orbit'] {
   };
 }
 
+function appendRandomSlotDiffs(
+  events: CoreProductEvent[],
+  sequencer: SequencerKind,
+  laneIndex: number,
+  previous: ProductLaneSnapshot,
+  next: ProductLaneSnapshot,
+): void {
+  const prev = previous.random ?? randomSlotDefaults();
+  const nextRandom = next.random ?? randomSlotDefaults();
+  const diff = (paramId: number, a: SnapshotScalar, b: SnapshotScalar) =>
+    appendLaneParamDiff(events, sequencer, laneIndex, paramId, a, b);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomMode, prev.mode, nextRandom.mode);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomVoiceCount, prev.voiceCount, nextRandom.voiceCount);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread, prev.waveSpread, nextRandom.waveSpread);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctave, prev.octave, nextRandom.octave);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomPadSplit, prev.padSplit, nextRandom.padSplit);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomPhraseSeconds, prev.phraseSeconds, nextRandom.phraseSeconds);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomDensity, prev.density, nextRandom.density);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomNotesOctave, prev.notesOctave, nextRandom.notesOctave);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctaveRange, prev.octaveRange, nextRandom.octaveRange);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomHoldSeconds, prev.holdSeconds, nextRandom.holdSeconds);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomVelocityMin, prev.velocityMin, nextRandom.velocityMin);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomVelocityMax, prev.velocityMax, nextRandom.velocityMax);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomChordBias, prev.chordBias, nextRandom.chordBias);
+  diff(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomInitialDelaySeconds, prev.initialDelaySeconds, nextRandom.initialDelaySeconds);
+}
+
 export function appendSequencerModeConfigDiffs(
   events: CoreProductEvent[],
   sequencer: SequencerKind,
@@ -206,6 +234,8 @@ export function appendSequencerModeConfigDiffs(
     appendIndexedLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerLayerVelocityOffset, previousLayer.velocityOffset, nextLayer.velocityOffset, index);
     appendIndexedLaneParamDiff(events, sequencer, laneIndex, KESSHO_PRODUCT_PARAM_IDS.SequencerAnchorWalkerLayerTargetSource, previousLayer.targetSourceId, nextLayer.targetSourceId, index);
   }
+
+  appendRandomSlotDiffs(events, sequencer, laneIndex, previous, next);
 
   const prevOrbit = previous.orbit ?? orbitDiffDefaults();
   const nextOrbit = next.orbit ?? orbitDiffDefaults();

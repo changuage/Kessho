@@ -42,7 +42,7 @@ import {
   progressionPhraseSeconds,
 } from './coreProductArrangementSchedulerUtils';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
-import { coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
+import { coreProductArrangementSnapshotFromState, coreProductRandomLanesFromState } from './coreProductArrangementSnapshot';
 import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
 import {
   FX_ROUTING_NODE_IDS,
@@ -723,7 +723,10 @@ function synthLanesFromState(
   defaultEnabled: boolean,
   transport: CoreProductSnapshot['transport'],
 ): ProductLaneSnapshot[] {
-  return [1, 2, 3, 4].map((laneNumber) => synthLaneFromState(state, laneNumber, defaultEnabled, transport));
+  return [
+    ...[1, 2, 3, 4].map((laneNumber) => synthLaneFromState(state, laneNumber, defaultEnabled, transport)),
+    ...coreProductRandomLanesFromState(state),
+  ];
 }
 
 function drumLanesFromState(

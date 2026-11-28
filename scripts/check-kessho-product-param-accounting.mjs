@@ -582,8 +582,8 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     return {
       path: 'arrangement-snapshot',
       evidence: [
-        'src/audio/coreProductArrangementSnapshot.ts#pad1FitEnvelopeToChord',
-        'src/audio/coreProductArrangementSnapshot.ts#pad2FitEnvelopeToChord',
+        'src/audio/coreProductArrangementSnapshot.ts#fitEnvelopeToChord',
+        'cpp/KesshoCore/src/product/ProductSequencerFaceState.h#fit_envelope_to_chord',
         'cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp',
       ],
       reason: 'Pad fit-to-chord flags are snapshot-owned and clamp generated note gates inside Product Core arrangement scheduling.',

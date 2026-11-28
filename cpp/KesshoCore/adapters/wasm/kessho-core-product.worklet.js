@@ -809,11 +809,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return this.captureControlMode(request) !== 0;
   }
 
-  /** Arrangement producers (3, 4) use a fixed sentinel lane instead of a Euclid lane. */
+  /** Random lane modes (3, 4) report the lane they run on like any other mode. */
   captureEventLane(request) {
-    const mode = this.captureControlMode(request);
-    if (mode === 3) return 0x100;
-    if (mode === 4) return 0x101;
     return Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.sourceLaneIndex) || 0)));
   }
 

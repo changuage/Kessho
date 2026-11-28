@@ -44,4 +44,22 @@ for (const required of [
   }
 }
 
+// Native runs six synth lanes (Random is a lane mode); the authored TS lane
+// count stays at four until the six-slot TS state lands.
+const nativeState = readFileSync(join(root, 'cpp/KesshoCore/src/product/ProductState.h'), 'utf8');
+if (!/uint32_t synth_lane_count = 6;/.test(nativeState)) {
+  console.error('Native synth_lane_count must be 6 (ProductState.h)');
+  process.exit(1);
+}
+const faceState = readFileSync(join(root, 'cpp/KesshoCore/src/product/ProductSequencerFaceState.h'), 'utf8');
+if (!faceState.includes('kSequencerModeRandom = 3u')) {
+  console.error('Native kSequencerModeRandom = 3u declaration is missing (ProductSequencerFaceState.h)');
+  process.exit(1);
+}
+const randomLanes = readFileSync(join(root, 'src/audio/coreProductArrangementSnapshot.ts'), 'utf8');
+if (!randomLanes.includes('RANDOM_NOTES_TRANSITIONAL_LANE_INDEX = 5')) {
+  console.error('Transitional Random lanes must occupy native lanes 5 and 6');
+  process.exit(1);
+}
+
 console.log('Sequencer lane-count guard passed');

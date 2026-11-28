@@ -18,7 +18,11 @@ void require(bool condition, const char* message) {
 int main() {
   static_assert(sizeof(KesshoProductSourceSnapshot) == 5252, "source snapshot ABI size changed");
   static_assert(sizeof(KesshoProductSequencerLaneSnapshot) == 100, "sequencer lane snapshot ABI size changed");
-  static_assert(sizeof(KesshoProductSnapshotV2) == 167836, "product snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductRandomSlotSnapshot) == 72, "random slot snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductArrangementSnapshot) == 36, "arrangement snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSequencerLaneModeSnapshot) == 332 + 2920 + 72,
+      "sequencer lane mode snapshot ABI size changed");
+  static_assert(sizeof(KesshoProductSnapshotV2) == 170052, "product snapshot ABI size changed");
   static_assert(sizeof(KesshoProductEvent) == 40, "product event ABI size changed");
   static_assert(sizeof(KesshoSequencerEvent) == 60, "sequencer event ABI size changed");
   static_assert(sizeof(KesshoProductGranularVisualEvent) == 32, "granular visual event ABI size changed");
@@ -29,7 +33,7 @@ int main() {
 
   require(offsetof(KesshoProductSnapshotV2, schema_hash) == 4, "snapshot schema hash offset changed");
   require(offsetof(KesshoProductSnapshotV2, sources) == 14548, "snapshot sources offset changed");
-  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 167660, "snapshot sonic runtime offset changed");
+  require(offsetof(KesshoProductSnapshotV2, sonic_runtime) == 169876, "snapshot sonic runtime offset changed");
   require(offsetof(KesshoProductEvent, sample_offset) == 0, "event sample offset changed");
   require(offsetof(KesshoProductEvent, event_kind) == 4, "event kind offset changed");
   require(offsetof(KesshoSequencerEvent, midi_note) == 16, "sequencer event midi offset changed");

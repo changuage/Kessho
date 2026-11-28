@@ -2,22 +2,22 @@
 //
 // Renders real String Waves snapshots (exported by
 // scripts/m1/export-arrangement-snapshots.ts) through the native engine and
-// summarizes what the two arrangement generators emit: Random Chords (the
-// chord generator) and Random Notes (lead random). The summary is compared to
+// summarizes what the two Random lane modes emit: Random Chords and Random
+// Notes. The snapshots put them on lanes 5 and 6 (sequencer_mode 3). The
+// summary is compared to
 // cpp/KesshoCore/tests/fixtures/arrangement-statistics.json with tolerances,
 // so the later per-slot-stream refactor is judged by statistics, not by exact
 // events.
 //
 // Record: KESSHO_M1_RECORD=1  Fixture dir override: KESSHO_M1_FIXTURE_DIR.
 //
-// Discriminator: arrangement events are queued with lane_id == 0xfffe and
-// event_kind MANUAL_NOTE_ON. The chord generator and lead random write to the
-// engine with source_id taken from the snapshot's
-// arrangement.chord_generator_source_id / lead_random_source_id (String Waves:
-// pad1 vs lead1), so source_id is the discriminator. If both generators were
-// ever routed to the same source this test would need a different key (the
-// fixture cases never do that); chord pad-split mode (which fans a chord out
-// over several sources) is not used by these cases.
+// Discriminator: Random lane events are queued with lane_id == 0xfffe and
+// event_kind MANUAL_NOTE_ON. Each Random lane writes to the engine with the
+// source_id of its lane target (String Waves: pad1 for chords, lead1 for
+// notes), so source_id is the discriminator. If both lanes were ever routed to
+// the same source this test would need a different key (the fixture cases never
+// do that); chord pad-split mode (which fans a chord out over several sources)
+// is not used by these cases.
 //
 // Chord grouping: a chord trigger emits all voices from one tick with voice
 // delays inside the spread window, so chord note-ons are grouped by
@@ -47,7 +47,7 @@ constexpr double kCountAbsoluteFloor = 1.0;           // min/max counts are smal
 constexpr double kVelocityTolerance = 0.05;           // velocity min/max/mean
 constexpr double kPitchToleranceSemitones = 2.0;      // pitch min/max/mean
 constexpr double kHistogramL1Tolerance = 0.25;        // onset histogram L1 distance
-constexpr double kSpreadRelativeTolerance = 0.20;     // voice-entry spread mean/max
+constexpr double kSpreadRelativeTolerance = 0.20;     // voice-entry spread mean/p90
 constexpr uint32_t kChunkFrames = 4096u;
 constexpr uint32_t kMaxEventsPerChunk = 4096u;
 constexpr double kSampleRate = 48000.0;
@@ -136,9 +136,21 @@ RenderResult renderCase(const std::string& dir, const CaseSpec& spec) {
       ? snapshot.harmony.chord_interval_seconds
       : snapshot.harmony.phrase_length_seconds;
   result.chord_phrase_seconds = result.chord_interval_seconds;
-  result.lead_phrase_seconds = snapshot.arrangement.lead_phrase_seconds;
-  const uint32_t chord_source = snapshot.arrangement.chord_generator_source_id;
-  const uint32_t lead_source = snapshot.arrangement.lead_random_source_id;
+  // Disabled Random lanes keep a source id but never emit, so an absent mode
+  // simply produces no events.
+  uint32_t chord_source = 0u;
+  uint32_t lead_source = 0u;
+  for (uint32_t lane_index = 0; lane_index < snapshot.synth_euclid.lane_count; ++lane_index) {
+    const KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[lane_index];
+    const KesshoProductRandomSlotSnapshot& random = snapshot.synth_euclid.mode_states[lane_index].random;
+    if (lane.sequencer_mode != 3u) continue;
+    if (random.mode == 0u) {
+      chord_source = lane.target_source_id;
+    } else {
+      lead_source = lane.target_source_id;
+      result.lead_phrase_seconds = random.phrase_seconds;
+    }
+  }
   require(chord_source != lead_source, spec.name + ": chord and lead share a source id; discriminator invalid");
 
   std::vector<KesshoSequencerEvent> events(kMaxEventsPerChunk);
@@ -169,6 +181,13 @@ double mean(const std::vector<double>& v) {
 }
 double minOf(const std::vector<double>& v) { return v.empty() ? 0.0 : *std::min_element(v.begin(), v.end()); }
 double maxOf(const std::vector<double>& v) { return v.empty() ? 0.0 : *std::max_element(v.begin(), v.end()); }
+// Nearest-rank percentile; robust where a single extreme chord would swing the max.
+double percentile(std::vector<double> v, double p) {
+  if (v.empty()) return 0.0;
+  std::sort(v.begin(), v.end());
+  const size_t rank = static_cast<size_t>(std::ceil(p * static_cast<double>(v.size())));
+  return v[std::min(v.size() - 1, rank == 0 ? 0 : rank - 1)];
+}
 
 double round4(double v) {
   const double r = std::round(v * 10000.0) / 10000.0;
@@ -216,7 +235,7 @@ Metrics summarize(const GeneratorEvents& gen, double phrase_seconds, double rend
       voices.push_back(static_cast<double>(group.second.size()));
     }
     m.push_back({"voiceEntrySpreadSeconds.mean", {mean(spreads)}});
-    m.push_back({"voiceEntrySpreadSeconds.max", {maxOf(spreads)}});
+    m.push_back({"voiceEntrySpreadSeconds.p90", {percentile(spreads, 0.9)}});
     m.push_back({"voicesPerChord.mean", {mean(voices)}});
     m.push_back({"voicesPerChord.max", {maxOf(voices)}});
   }

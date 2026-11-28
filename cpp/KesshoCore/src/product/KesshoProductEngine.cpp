@@ -7,6 +7,7 @@
         journey_schedule_runtime_storage(std::make_unique<ProductJourneyScheduleRuntimeState>()),
         journey_schedule_runtime(*journey_schedule_runtime_storage),
         sequencer_variation_storage(std::make_unique<kessho::product::internal::SequencerVariationStorage>()),
+        random_slot_pending_storage(std::make_unique<kessho::product::internal::RandomSlotPendingStorage>()),
         generated_sequencer_capture_ring(
             std::unique_ptr<kessho::product::GeneratedSequencerCaptureRing<2048>>(
                 new (std::nothrow) kessho::product::GeneratedSequencerCaptureRing<2048>())) {

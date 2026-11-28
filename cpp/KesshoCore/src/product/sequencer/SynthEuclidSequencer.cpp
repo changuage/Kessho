@@ -2037,6 +2037,10 @@ void KesshoProductEngine::generateLaneEvents(
       }
       continue;
     }
+    if (lane.sequencer_mode == kSequencerModeRandom) {
+      generateRandomLaneEvents(lane_index, frames, out);
+      continue;
+    }
     const bool drum_lane = lane.target_source_id == KESSHO_PRODUCT_SOURCE_DRUM;
     const uint32_t step_count = kessho::product::internal::variationStepCount(
         lane.variation_runtime,
@@ -2703,7 +2707,6 @@ void KesshoProductEngine::generateSequencerEvents(uint32_t frames, bool include_
   generateLaneEvents(synth_lanes, synth_lane_count, frames, sequencer_events);
   generateLaneEvents(drum_lanes, drum_lane_count, frames, sequencer_events);
   scheduleScatterEvents(frames, sequencer_events, include_inactive_sources);
-  generateArrangementEvents(frames, sequencer_events);
   sequencer_events.sortByOffset();
 }
 

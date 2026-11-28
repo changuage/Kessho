@@ -82,10 +82,6 @@ KesshoProductSnapshotV2 makeSnapshot(float root_midi, uint32_t scale_id, float t
   snapshot.master.gain = 1.0f;
   snapshot.rng.seed = seed;
   snapshot.rng.state = seed;
-  snapshot.arrangement.rng_state = seed;
-  snapshot.arrangement.synth_voice_mask = 63u;
-  snapshot.arrangement.wave_spread = 0.0f;
-  snapshot.arrangement.lead_chord_bias = 0.78f;
 
   for (uint32_t i = 0; i < 7; ++i) {
     snapshot.sources[i].enabled = 1;
@@ -115,10 +111,89 @@ KesshoProductSnapshotV2 makeSnapshot(float root_midi, uint32_t scale_id, float t
   return snapshot;
 }
 
+// Random lane helpers: a Random lane carries what the arrangement singletons
+// used to hold. Lanes are enabled Random lanes (sequencer_mode 3).
+void setRandomLaneBase(KesshoProductSnapshotV2& snapshot, uint32_t lane_index, uint32_t source_id,
+    uint32_t mode, uint32_t part_id) {
+  KesshoProductSequencerLaneSnapshot& lane = snapshot.synth_euclid.lanes[lane_index];
+  lane = {};
+  lane.enabled = 1u;
+  lane.sequencer_mode = 3u;
+  lane.target_source_id = source_id;
+  lane.step_count = 16u;
+  lane.fill_count = 4u;
+  lane.clock_division = 16u;
+  lane.probability = 1.0f;
+  lane.ratchet = 1u;
+  lane.velocity = 0.8f;
+  lane.hold_seconds = 0.1f;
+  lane.tempo_multiplier = 1.0f;
+  KesshoProductRandomSlotSnapshot& random = snapshot.synth_euclid.mode_states[lane_index].random;
+  random = {};
+  random.mode = mode;
+  random.part_id = part_id;
+  random.voice_count = 6u;
+  random.voice_mask = 63u;
+  random.fit_envelope_to_chord = 1u;
+  random.phrase_seconds = 16.0f;
+  random.density = 0.5f;
+  random.notes_octave = 1;
+  random.octave_range = 2u;
+  random.hold_seconds = 0.5f;
+  random.velocity_min = 0.5f;
+  random.velocity_max = 0.9f;
+  random.chord_bias = 0.78f;
+  // Lanes skipped over stay valid, disabled Steps lanes.
+  for (uint32_t gap = snapshot.synth_euclid.lane_count; gap < lane_index; ++gap) {
+    snapshot.synth_euclid.lanes[gap] = {};
+    snapshot.synth_euclid.lanes[gap].target_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
+    snapshot.synth_euclid.lanes[gap].step_count = 16u;
+    snapshot.synth_euclid.lanes[gap].fill_count = 4u;
+  }
+  snapshot.synth_euclid.lane_count = std::max(snapshot.synth_euclid.lane_count, lane_index + 1u);
+}
+
+void setRandomChordsLane(KesshoProductSnapshotV2& snapshot, uint32_t lane_index, uint32_t source_id,
+    uint32_t voice_count, uint32_t part_id, float wave_spread = 0.0f) {
+  setRandomLaneBase(snapshot, lane_index, source_id, 0u, part_id);
+  KesshoProductRandomSlotSnapshot& random = snapshot.synth_euclid.mode_states[lane_index].random;
+  random.voice_count = voice_count;
+  random.wave_spread = wave_spread;
+}
+
+void setRandomNotesLane(KesshoProductSnapshotV2& snapshot, uint32_t lane_index, uint32_t source_id,
+    uint32_t part_id, float phrase_seconds, float density, int32_t octave, float hold_seconds) {
+  setRandomLaneBase(snapshot, lane_index, source_id, 1u, part_id);
+  KesshoProductRandomSlotSnapshot& random = snapshot.synth_euclid.mode_states[lane_index].random;
+  random.phrase_seconds = phrase_seconds;
+  random.density = density;
+  random.notes_octave = octave;
+  random.octave_range = 2u;
+  random.hold_seconds = hold_seconds;
+}
+
+// Runs every Random lane for one block, as the sequencer does.
+void generateRandomLanes(KesshoProductEngine* engine, uint32_t frames, SequencerBuffer& out) {
+  for (uint32_t lane = 0u; lane < engine->synth_lane_count; ++lane) {
+    if (engine->synth_lanes[lane].sequencer_mode == 3u) engine->generateRandomLaneEvents(lane, frames, out);
+  }
+}
+
+void setLaneParam(KesshoProductEngine* engine, uint32_t lane, uint32_t param_id, float value) {
+  KesshoProductEvent event{};
+  event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_SEQUENCER_LANE;
+  event.target_id = KESSHO_PRODUCT_SEQUENCER_SYNTH;
+  event.index = lane;
+  event.param_id = param_id;
+  event.value = value;
+  engine->applySequencerLaneParamEvent(event);
+}
+
 int32_t renderEvents(const KesshoProductSnapshotV2& snapshot, KesshoSequencerEvent* events, uint32_t max_events) {
   KesshoProductEngine* engine = kessho_product_create(48000.0, 128, 0);
   require(engine != nullptr, "engine create failed");
-  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK, "snapshot load failed");
+  const int32_t load_code = kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot));
+  require(load_code == KESSHO_PRODUCT_OK, ("snapshot load failed " + std::to_string(load_code)).c_str());
   const int32_t count = kessho_product_debug_render_events(engine, events, max_events, 18001);
   kessho_product_destroy(engine);
   return count;
@@ -284,14 +359,11 @@ __attribute__((noinline)) void requireArrangementCapture() {
   // attack id, at the exact scheduled sample.
   auto chord_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.4f, 404u));
   chord_snapshot->synth_euclid.lane_count = 0u;
-  chord_snapshot->arrangement.chord_generator_enabled = 1u;
-  chord_snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
-  chord_snapshot->arrangement.chord_generator_voice_count = 3u;
-  chord_snapshot->arrangement.wave_spread = 0.125f;
+  setRandomChordsLane(*chord_snapshot, 0u, KESSHO_PRODUCT_SOURCE_PAD1, 3u, 11u, 0.125f);
   chord_snapshot->harmony.chord_interval_seconds = 0.25f;
   int32_t count = renderArrangementWithCapture(
       *chord_snapshot, true,
-      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
+      0u,
       KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS,
       events, kMax, captured, captured_count);
   require(count == 3 && captured_count == 3u, "Random Chords capture should tap each chord voice");
@@ -313,8 +385,8 @@ __attribute__((noinline)) void requireArrangementCapture() {
     require(captured[index].target_source_id == events[index].source_id,
         "Random Chords capture target should match the scheduled event");
     require(captured[index].source_mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS &&
-            captured[index].source_lane_index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
-        "Random Chords capture mode and sentinel lane mismatch");
+            captured[index].source_lane_index == 0u,
+        "Random Chords capture mode and source lane mismatch");
     require(captured[index].attack_id != 0u && captured[index].attack_id == captured[0].attack_id,
         "Random Chords voices of one chord should share an attack id");
     require(captured[index].source_step_index == -1 && captured[index].target_step_index == -1,
@@ -324,7 +396,7 @@ __attribute__((noinline)) void requireArrangementCapture() {
   // A different mode mask captures nothing, and neither does a disabled config.
   count = renderArrangementWithCapture(
       *chord_snapshot, true,
-      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+      0u,
       KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
       events, kMax, captured, captured_count);
   require(count == 3 && captured_count == 0u, "Random Notes mask must not tap Random Chords");
@@ -335,17 +407,10 @@ __attribute__((noinline)) void requireArrangementCapture() {
   // Random Notes: one attack id per note.
   auto lead_snapshot = std::make_unique<KesshoProductSnapshotV2>(makeSnapshot(60.0f, 1u, 0.4f, 505u));
   lead_snapshot->synth_euclid.lane_count = 0u;
-  lead_snapshot->arrangement.lead_random_enabled = 1u;
-  lead_snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-  lead_snapshot->arrangement.lead_phrase_seconds = 0.25f;
-  lead_snapshot->arrangement.lead_density = 0.5f;
-  lead_snapshot->arrangement.lead_octave_range = 2u;
-  lead_snapshot->arrangement.lead_hold_seconds = 0.4f;
-  lead_snapshot->arrangement.lead_velocity_min = 0.5f;
-  lead_snapshot->arrangement.lead_velocity_max = 0.9f;
+  setRandomNotesLane(*lead_snapshot, 0u, KESSHO_PRODUCT_SOURCE_LEAD1, 12u, 0.25f, 0.5f, 1, 0.4f);
   count = renderArrangementWithCapture(
       *lead_snapshot, true,
-      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+      0u,
       KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
       events, kMax, captured, captured_count);
   // The tap fires when a note is emitted, so captured notes are exactly the
@@ -374,7 +439,7 @@ __attribute__((noinline)) void requireArrangementCapture() {
   }
   count = renderArrangementWithCapture(
       *lead_snapshot, true,
-      KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS,
+      0u,
       KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS,
       events, kMax, captured, captured_count);
   require(count > 0 && captured_count == 0u, "Random Chords mask must not tap Random Notes");
@@ -390,10 +455,10 @@ __attribute__((noinline)) void requireArrangementCapture() {
     KesshoSequencerEvent early[kMax]{};
     require(kessho_product_debug_render_events(engine, early, kMax, kArmFrames) == 0,
         "no random note should sound before the late arm");
-    require(engine->arrangement.pending_count > 0u, "the phrase should already be scheduled");
+    require(engine->synth_lanes[0].random.pending_count > 0u, "the phrase should already be scheduled");
     enableArrangementCapture(
         engine,
-        KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES,
+        0u,
         KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES);
     const int32_t late_count = kessho_product_debug_render_events(engine, events, kMax, 18001u);
     uint32_t overflow = 0u;
@@ -421,9 +486,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   auto arrangement_snapshot = std::make_unique<KesshoProductSnapshotV2>(
       makeSnapshot(60.0f, 1u, 0.4f, 404u));
   arrangement_snapshot->synth_euclid.lane_count = 0u;
-  arrangement_snapshot->arrangement.chord_generator_enabled = 1u;
-  arrangement_snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
-  arrangement_snapshot->arrangement.chord_generator_voice_count = 3u;
+  setRandomChordsLane(*arrangement_snapshot, 0u, KESSHO_PRODUCT_SOURCE_PAD1, 3u, 21u);
   KesshoSequencerEvent arrangement_events[32]{};
   const int32_t count = renderEvents(*arrangement_snapshot, arrangement_events, 32u);
   require(count == 3, "Product arrangement chord generator event count mismatch");
@@ -437,15 +500,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   auto lead_snapshot = std::make_unique<KesshoProductSnapshotV2>(
       makeSnapshot(60.0f, 1u, 0.4f, 505u));
   lead_snapshot->synth_euclid.lane_count = 0u;
-  lead_snapshot->arrangement.lead_random_enabled = 1u;
-  lead_snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-  lead_snapshot->arrangement.lead_phrase_seconds = 0.25f;
-  lead_snapshot->arrangement.lead_density = 0.5f;
-  lead_snapshot->arrangement.lead_octave = 0;
-  lead_snapshot->arrangement.lead_octave_range = 2u;
-  lead_snapshot->arrangement.lead_hold_seconds = 0.4f;
-  lead_snapshot->arrangement.lead_velocity_min = 0.5f;
-  lead_snapshot->arrangement.lead_velocity_max = 0.9f;
+  setRandomNotesLane(*lead_snapshot, 0u, KESSHO_PRODUCT_SOURCE_LEAD1, 22u, 0.25f, 0.5f, 0, 0.4f);
   KesshoSequencerEvent lead_events_a[32]{};
   KesshoSequencerEvent lead_events_b[32]{};
   const int32_t lead_count_a = renderEvents(*lead_snapshot, lead_events_a, 32u);
@@ -472,11 +527,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   rng_chord_snapshot->harmony.note_pool_midi[3] = 72.0f;
   rng_chord_snapshot->harmony.phrase_length_seconds = 16.0f;
   rng_chord_snapshot->harmony.chord_interval_seconds = 8.0f;
-  rng_chord_snapshot->arrangement.chord_generator_enabled = 1u;
-  rng_chord_snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
-  rng_chord_snapshot->arrangement.chord_generator_voice_count = 3u;
-  rng_chord_snapshot->arrangement.rng_state = 123456u;
-  rng_chord_snapshot->arrangement.wave_spread = 0.125f;
+  setRandomChordsLane(*rng_chord_snapshot, 0u, KESSHO_PRODUCT_SOURCE_PAD1, 3u, 31u, 0.125f);
   KesshoProductEngine* rng_chord_engine = kessho_product_create(48000.0, 128u, 0u);
   require(rng_chord_engine != nullptr, "arrangement RNG chord engine create failed");
   require(kessho_product_load_snapshot_v2(
@@ -485,17 +536,16 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(kessho_product_set_simple_sequencer_visual_demand(
       rng_chord_engine, KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD) == KESSHO_PRODUCT_OK,
       "arrangement chord visual demand failed");
-  KesshoProductEvent source_event{};
-  source_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  source_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_SOURCE_ID_ID;
-  source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2);
-  rng_chord_engine->applyParam(source_event);
-  require(rng_chord_engine->arrangement.chord_generator_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
-      "Chord Generator source changes must apply during playback");
-  source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_PAD1);
-  rng_chord_engine->applyParam(source_event);
+  // The lane's own target source is the chord source; it applies live.
+  setLaneParam(rng_chord_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
+      static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2));
+  require(rng_chord_engine->synth_lanes[0].target_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
+      "Random Chords source changes must apply during playback");
+  setLaneParam(rng_chord_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
+      static_cast<float>(KESSHO_PRODUCT_SOURCE_PAD1));
+  const uint32_t initial_chord_stream = rng_chord_engine->synth_lanes[0].random.stream_state;
   SequencerBuffer early_chord_events{};
-  rng_chord_engine->generateArrangementEvents(128u, early_chord_events);
+  generateRandomLanes(rng_chord_engine, 128u, early_chord_events);
   require(early_chord_events.count == 0u,
       "future arrangement chord notes should not emit before their trigger block");
   KesshoProductSimpleSequencerVisualEvent early_chord_visual_events[8]{};
@@ -509,15 +559,19 @@ __attribute__((noinline)) void requireArrangementScheduling() {
         "predictive chord telemetry must describe a future trigger");
   }
   SequencerBuffer rng_chord_events{};
-  rng_chord_engine->generateArrangementEvents(48000u, rng_chord_events);
+  generateRandomLanes(rng_chord_engine, 48000u, rng_chord_events);
   rng_chord_events.sortByOffset();
   require(rng_chord_events.count == 3u, "TypeScript parity chord event count mismatch");
-  require(rng_chord_events.events[0].sample_offset == 7681u &&
-      rng_chord_events.events[1].sample_offset == 10011u &&
-      rng_chord_events.events[2].sample_offset == 11176u,
-      "TypeScript parity chord sample offsets mismatch");
-  require(rng_chord_engine->arrangement.rng_state == 1767748072u,
-      "TypeScript parity chord RNG state mismatch");
+  // Per-lane stream: one chord consumes exactly 8 draws (one per voice slot)
+  // and each draw advances the mulberry32 state by a fixed increment.
+  require(rng_chord_engine->synth_lanes[0].random.stream_state ==
+      initial_chord_stream + 8u * 0x6d2b79f5u,
+      "chord lane stream state must advance by exactly eight draws");
+  for (uint32_t index = 0u; index < rng_chord_events.count; ++index) {
+    // wave_spread 0.125 of the 8 s chord interval = a 1 s voice-entry window.
+    require(rng_chord_events.events[index].sample_offset < 48000u,
+        "chord voice entry must stay inside the wave-spread window");
+  }
   KesshoProductSimpleSequencerVisualEvent chord_visual_events[8]{};
   uint32_t chord_visual_overflow = 0u;
   const uint32_t chord_visual_count = kessho_product_drain_simple_sequencer_visual_events(
@@ -536,10 +590,10 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   }
   rng_chord_engine->transport.sample_frame = 384000u;
   rng_chord_engine->advanceHarmonyClock();
-  require(rng_chord_engine->arrangement.chord_generator_pending,
+  require(rng_chord_engine->synth_lanes[0].random.chord_pending,
       "every Harmony tick must retrigger the Harmony-driven chord renderer");
   SequencerBuffer mid_phrase_chord_events{};
-  rng_chord_engine->generateArrangementEvents(384000u, mid_phrase_chord_events);
+  generateRandomLanes(rng_chord_engine, 384000u, mid_phrase_chord_events);
   require(mid_phrase_chord_events.count == 3u,
       "Chords / Phrase must render the configured voice count at an internal Harmony tick");
   KesshoProductSimpleSequencerVisualEvent mid_phrase_visual_events[8]{};
@@ -548,49 +602,41 @@ __attribute__((noinline)) void requireArrangementScheduling() {
       rng_chord_engine, mid_phrase_visual_events, 8u, &mid_phrase_visual_overflow) == 3u
       && mid_phrase_visual_overflow == 0u,
       "the internal Harmony-tick visual plan must match the rendered chord");
-  require(!rng_chord_engine->arrangement.chord_generator_pending,
+  require(!rng_chord_engine->synth_lanes[0].random.chord_pending,
       "the internal Harmony-tick chord request must be consumed exactly once");
   const float current_phrase_voicing_spread = rng_chord_engine->harmony.voicing_spread;
-  const float current_phrase_wave_spread = rng_chord_engine->arrangement.wave_spread;
-  KesshoProductEvent octave_event{};
-  octave_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  octave_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_SYNTH_OCTAVE_ID;
-  octave_event.value = 1.0f;
-  rng_chord_engine->applyParam(octave_event);
+  const float current_phrase_wave_spread = rng_chord_engine->synth_lanes[0].random.wave_spread;
+  setLaneParam(rng_chord_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_ID, 1.0f);
   KesshoProductEvent voicing_spread_event{};
   voicing_spread_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
   voicing_spread_event.param_id = KESSHO_PRODUCT_PARAM_HARMONY_VOICING_SPREAD_ID;
   voicing_spread_event.value = 1.0f;
   rng_chord_engine->applyParam(voicing_spread_event);
-  KesshoProductEvent wave_spread_event{};
-  wave_spread_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  wave_spread_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_WAVE_SPREAD_ID;
-  wave_spread_event.value = 1.0f;
-  rng_chord_engine->applyParam(wave_spread_event);
-  require(rng_chord_engine->arrangement.synth_octave == 0 &&
-      rng_chord_engine->arrangement.requested_synth_octave == 1,
+  setLaneParam(rng_chord_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_WAVE_SPREAD_ID, 1.0f);
+  require(rng_chord_engine->synth_lanes[0].random.octave == 0 &&
+      rng_chord_engine->synth_lanes[0].random.requested_octave == 1,
       "a running octave change should be staged without rewriting the current phrase");
   requireNear(rng_chord_engine->harmony.voicing_spread, current_phrase_voicing_spread, 0.000001f,
       "a running voicing-spread change must preserve the current phrase");
   requireNear(rng_chord_engine->harmony.requested_voicing_spread, 1.0f, 0.000001f,
       "a running voicing-spread change should stage the requested value");
-  requireNear(rng_chord_engine->arrangement.wave_spread, current_phrase_wave_spread, 0.000001f,
+  requireNear(rng_chord_engine->synth_lanes[0].random.wave_spread, current_phrase_wave_spread, 0.000001f,
       "a running wave-spread change must preserve the current phrase");
-  requireNear(rng_chord_engine->arrangement.requested_wave_spread, 1.0f, 0.000001f,
+  requireNear(rng_chord_engine->synth_lanes[0].random.requested_wave_spread, 1.0f, 0.000001f,
       "a running wave-spread change should stage the requested value");
-  require(!rng_chord_engine->arrangement.chord_generator_pending,
+  require(!rng_chord_engine->synth_lanes[0].random.chord_pending,
       "running chord-control changes must not add a second trigger after the Harmony tick");
   rng_chord_engine->transport.sample_frame = 768000u;
   rng_chord_engine->advanceHarmonyClock();
-  require(rng_chord_engine->arrangement.synth_octave == 1 &&
-      rng_chord_engine->arrangement.chord_generator_pending,
+  require(rng_chord_engine->synth_lanes[0].random.octave == 1 &&
+      rng_chord_engine->synth_lanes[0].random.chord_pending,
       "the staged octave should rebuild the core chord at the next phrase boundary");
   requireNear(rng_chord_engine->harmony.voicing_spread, 1.0f, 0.000001f,
       "the staged voicing spread should apply at the next phrase boundary");
-  requireNear(rng_chord_engine->arrangement.wave_spread, 1.0f, 0.000001f,
+  requireNear(rng_chord_engine->synth_lanes[0].random.wave_spread, 1.0f, 0.000001f,
       "the staged wave spread should apply at the next phrase boundary");
   SequencerBuffer octave_chord_events{};
-  rng_chord_engine->generateArrangementEvents(768000u, octave_chord_events);
+  generateRandomLanes(rng_chord_engine, 768000u, octave_chord_events);
   octave_chord_events.sortByOffset();
   require(octave_chord_events.count == 3u,
       "the rebuilt chord should schedule every note across the next phrase");
@@ -627,14 +673,14 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   }
   rng_chord_engine->transport.sample_frame = 1536000u;
   rng_chord_engine->advanceHarmonyClock();
-  require(rng_chord_engine->arrangement.chord_generator_pending,
+  require(rng_chord_engine->synth_lanes[0].random.chord_pending,
       "every completed phrase must publish one chord-generator plan even when harmony repeats");
 
   rng_chord_engine->transport.sample_frame = 2000000u;
   rng_chord_engine->resetHarmonyClock();
   rng_chord_engine->resetArrangementRuntime();
   SequencerBuffer restarted_chord_events{};
-  rng_chord_engine->generateArrangementEvents(128u, restarted_chord_events);
+  generateRandomLanes(rng_chord_engine, 128u, restarted_chord_events);
   KesshoProductSimpleSequencerVisualEvent restarted_visual_events[8]{};
   uint32_t restarted_visual_overflow = 0u;
   const uint32_t restarted_visual_count = kessho_product_drain_simple_sequencer_visual_events(
@@ -655,17 +701,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   rng_lead_snapshot->harmony.note_pool_midi[1] = 64.0f;
   rng_lead_snapshot->harmony.note_pool_midi[2] = 67.0f;
   rng_lead_snapshot->harmony.note_pool_midi[3] = 72.0f;
-  rng_lead_snapshot->arrangement.lead_random_enabled = 1u;
-  rng_lead_snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-  rng_lead_snapshot->arrangement.lead_phrase_seconds = 0.25f;
-  rng_lead_snapshot->arrangement.lead_density = 0.5f;
-  rng_lead_snapshot->arrangement.lead_octave = 0;
-  rng_lead_snapshot->arrangement.lead_octave_range = 2u;
-  rng_lead_snapshot->arrangement.lead_hold_seconds = 0.4f;
-  rng_lead_snapshot->arrangement.lead_velocity_min = 0.5f;
-  rng_lead_snapshot->arrangement.lead_velocity_max = 0.9f;
-  rng_lead_snapshot->arrangement.lead_chord_bias = 0.78f;
-  rng_lead_snapshot->arrangement.rng_state = 123456u;
+  setRandomNotesLane(*rng_lead_snapshot, 0u, KESSHO_PRODUCT_SOURCE_LEAD1, 32u, 0.25f, 0.5f, 0, 0.4f);
   KesshoProductEngine* rng_lead_engine = kessho_product_create(48000.0, 128u, 0u);
   require(rng_lead_engine != nullptr, "arrangement RNG lead engine create failed");
   require(kessho_product_load_snapshot_v2(
@@ -674,8 +710,9 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(kessho_product_set_simple_sequencer_visual_demand(
       rng_lead_engine, KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_RANDOM_TIMING) == KESSHO_PRODUCT_OK,
       "arrangement random-timing visual demand failed");
+  const uint32_t initial_lead_stream = rng_lead_engine->synth_lanes[0].random.stream_state;
   SequencerBuffer early_lead_events{};
-  rng_lead_engine->generateArrangementEvents(128u, early_lead_events);
+  generateRandomLanes(rng_lead_engine, 128u, early_lead_events);
   require(early_lead_events.count == 0u,
       "future random-timing notes should not emit before their trigger block");
   KesshoProductSimpleSequencerVisualEvent lead_visual_events[8]{};
@@ -685,20 +722,20 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(lead_visual_count == 2u && lead_visual_overflow == 0u,
       "the complete random-timing plan must be visible before any future note triggers");
   SequencerBuffer rng_lead_events{};
-  rng_lead_engine->generateArrangementEvents(12000u, rng_lead_events);
+  generateRandomLanes(rng_lead_engine, 12000u, rng_lead_events);
   rng_lead_events.sortByOffset();
   require(rng_lead_events.count == 2u, "TypeScript parity lead event count mismatch");
-  require(rng_lead_events.events[0].sample_offset == 2794u &&
-      rng_lead_events.events[0].midi_note == 79.0f &&
-      rng_lead_events.events[1].sample_offset == 9567u &&
-      rng_lead_events.events[1].midi_note == 69.0f,
-      "TypeScript parity lead note stream mismatch");
-  requireNear(rng_lead_events.events[0].velocity, 0.6253640386f, 0.000001f,
-      "TypeScript parity lead velocity A mismatch");
-  requireNear(rng_lead_events.events[1].velocity, 0.5834287915f, 0.000001f,
-      "TypeScript parity lead velocity B mismatch");
-  require(rng_lead_engine->arrangement.rng_state == 3599313885u,
-      "TypeScript parity lead RNG state mismatch");
+  for (uint32_t index = 0u; index < rng_lead_events.count; ++index) {
+    // One 0.25 s phrase at 48 kHz, octave 0 with range 2: MIDI 64..88.
+    require(rng_lead_events.events[index].sample_offset < 12000u &&
+        rng_lead_events.events[index].midi_note >= 64.0f &&
+        rng_lead_events.events[index].midi_note <= 88.0f &&
+        rng_lead_events.events[index].velocity >= 0.5f &&
+        rng_lead_events.events[index].velocity <= 0.9f,
+        "random lead note must stay in its configured timing, pitch and velocity ranges");
+  }
+  require(rng_lead_engine->synth_lanes[0].random.stream_state != initial_lead_stream,
+      "lead lane stream must advance when it generates notes");
   KesshoProductSimpleSequencerVisualEvent triggered_lead_visual_events[8]{};
   uint32_t triggered_lead_visual_overflow = 0u;
   require(kessho_product_drain_simple_sequencer_visual_events(
@@ -715,19 +752,12 @@ __attribute__((noinline)) void requireArrangementScheduling() {
     require(lead_visual_events[index].absolute_sample == rng_lead_events.events[index].sample_offset,
         "arrangement random-timing visual sample must match the scheduled event");
   }
-  KesshoProductEvent lead_density_event{};
-  lead_density_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  lead_density_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_DENSITY_ID;
-  lead_density_event.value = 8.0f;
-  rng_lead_engine->applyParam(lead_density_event);
-  KesshoProductEvent lead_source_event{};
-  lead_source_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_SET_PARAM;
-  lead_source_event.param_id = KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_SOURCE_ID_ID;
-  lead_source_event.value = static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2);
-  rng_lead_engine->applyParam(lead_source_event);
-  requireNear(rng_lead_engine->arrangement.lead_density, 8.0f, 0.000001f,
+  setLaneParam(rng_lead_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_DENSITY_ID, 8.0f);
+  setLaneParam(rng_lead_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
+      static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2));
+  requireNear(rng_lead_engine->synth_lanes[0].random.density, 8.0f, 0.000001f,
       "Random Timing density changes must apply during playback");
-  require(rng_lead_engine->arrangement.lead_random_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
+  require(rng_lead_engine->synth_lanes[0].target_source_id == KESSHO_PRODUCT_SOURCE_SAMPLE2,
       "Random Timing source changes must apply during playback");
 
   KesshoProductEvent stop_event{};
@@ -737,7 +767,7 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   KesshoProductEvent start_event{};
   start_event.event_kind = KESSHO_PRODUCT_EVENT_KIND_START;
   rng_lead_engine->applyControlEvent(start_event);
-  require(rng_lead_engine->arrangement.next_lead_phrase_frame == 500000u,
+  require(rng_lead_engine->synth_lanes[0].random.next_phrase_frame == 500000u,
       "Random Timing must restart at phrase zero when playback resumes");
   require(rng_lead_engine->arrangement.chord_phrase_start_frame == 500000u,
       "Chord Generator and Random Timing must share the resumed phrase-zero anchor");
@@ -745,22 +775,127 @@ __attribute__((noinline)) void requireArrangementScheduling() {
 
 }
 
+// ---- Acceptance 4: per-slot Random streams -------------------------------
+
+struct LaneNote {
+  uint64_t sample;
+  float midi;
+  float velocity;
+  float hold;
+  bool operator==(const LaneNote& other) const {
+    return sample == other.sample && midi == other.midi && velocity == other.velocity && hold == other.hold;
+  }
+};
+
+// Renders `seconds` of a snapshot and returns the Random-lane notes that went
+// to `source_id`, in emission order, at absolute sample positions.
+std::vector<LaneNote> renderLaneNotes(const KesshoProductSnapshotV2& snapshot, uint32_t source_id, double seconds) {
+  KesshoProductEngine* engine = kessho_product_create(48000.0, 4096u, 0u);
+  require(engine != nullptr, "random stream engine create failed");
+  require(kessho_product_load_snapshot_v2(engine, &snapshot, sizeof(snapshot)) == KESSHO_PRODUCT_OK,
+      "random stream snapshot load failed");
+  std::vector<LaneNote> notes;
+  static KesshoSequencerEvent events[4096];
+  const uint64_t total = static_cast<uint64_t>(seconds * 48000.0);
+  for (uint64_t start = 0u; start < total; start += 4096u) {
+    const uint32_t frames = static_cast<uint32_t>(std::min<uint64_t>(4096u, total - start));
+    const int32_t count = kessho_product_debug_render_events(engine, events, 4096u, frames);
+    require(count >= 0 && count < 4096, "random stream render failed");
+    for (int32_t index = 0; index < count; ++index) {
+      const KesshoSequencerEvent& e = events[index];
+      if (e.lane_id != 0xfffeu || e.source_id != source_id) continue;
+      notes.push_back({start + e.sample_offset, e.midi_note, e.velocity, e.hold_seconds});
+    }
+  }
+  kessho_product_destroy(engine);
+  return notes;
+}
+
+KesshoProductSnapshotV2 makeRandomStreamSnapshot(uint32_t seed) {
+  KesshoProductSnapshotV2 snapshot = makeSnapshot(60.0f, 1u, 0.4f, seed);
+  snapshot.synth_euclid.lane_count = 0u;
+  snapshot.harmony.note_pool_count = 4u;
+  const float pool[4] = {60.0f, 64.0f, 67.0f, 72.0f};
+  for (uint32_t index = 0u; index < 4u; ++index) snapshot.harmony.note_pool_midi[index] = pool[index];
+  snapshot.harmony.phrase_length_seconds = 4.0f;
+  snapshot.harmony.chord_interval_seconds = 4.0f;
+  return snapshot;
+}
+
+__attribute__((noinline)) void requireRandomLaneStreams() {
+  constexpr double kSeconds = 24.0;
+  // Chords on Pad 1 and Pad 2 with different part ids, plus Notes on Lead 1.
+  const auto build = [](uint32_t chords_lane, uint32_t second_lane, uint32_t part_a, uint32_t part_b) {
+    auto snapshot = std::make_unique<KesshoProductSnapshotV2>(makeRandomStreamSnapshot(2026u));
+    setRandomChordsLane(*snapshot, chords_lane, KESSHO_PRODUCT_SOURCE_PAD1, 4u, part_a, 0.5f);
+    setRandomChordsLane(*snapshot, second_lane, KESSHO_PRODUCT_SOURCE_SAMPLE1, 4u, part_b, 0.5f);
+    return snapshot;
+  };
+  const auto base = build(0u, 1u, 100u, 200u);
+  const std::vector<LaneNote> lane_a = renderLaneNotes(*base, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds);
+  const std::vector<LaneNote> lane_b = renderLaneNotes(*base, KESSHO_PRODUCT_SOURCE_SAMPLE1, kSeconds);
+  require(lane_a.size() >= 24u && lane_b.size() >= 24u, "both Random Chords lanes should play");
+
+  // Independence: different part ids give different voice-entry timing even
+  // though both lanes chase the same harmony.
+  const auto entry_offsets = [](const std::vector<LaneNote>& notes) {
+    std::vector<uint64_t> offsets;
+    for (const LaneNote& note : notes) offsets.push_back(note.sample % (4u * 48000u));
+    return offsets;
+  };
+  require(entry_offsets(lane_a) != entry_offsets(lane_b),
+      "Random Chords lanes with different part ids must not share a random stream");
+
+  // The stream belongs to the part id: two lanes with the same part id play
+  // identical timing, so the stream cannot depend on lane position.
+  const auto same_part = build(0u, 1u, 100u, 100u);
+  require(entry_offsets(renderLaneNotes(*same_part, KESSHO_PRODUCT_SOURCE_SAMPLE1, kSeconds)) == entry_offsets(lane_a),
+      "the same part id must reproduce the same stream on a different lane");
+
+  // Position independence: another lane changing type, or the lane moving to
+  // another index with the same part id, leaves its events untouched.
+  auto other_notes = std::make_unique<KesshoProductSnapshotV2>(*base);
+  setRandomNotesLane(*other_notes, 1u, KESSHO_PRODUCT_SOURCE_LEAD1, 300u, 1.0f, 2.0f, 0, 0.4f);
+  require(renderLaneNotes(*other_notes, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a,
+      "a lane's events must not change when another lane changes type");
+  auto other_steps = std::make_unique<KesshoProductSnapshotV2>(*base);
+  other_steps->synth_euclid.lanes[1] = {};
+  other_steps->synth_euclid.lanes[1].enabled = 1u;
+  other_steps->synth_euclid.lanes[1].target_source_id = KESSHO_PRODUCT_SOURCE_LEAD2;
+  other_steps->synth_euclid.lanes[1].step_count = 16u;
+  other_steps->synth_euclid.lanes[1].fill_count = 4u;
+  other_steps->synth_euclid.lanes[1].clock_division = 16u;
+  other_steps->synth_euclid.lanes[1].probability = 1.0f;
+  other_steps->synth_euclid.lanes[1].ratchet = 1u;
+  other_steps->synth_euclid.lanes[1].tempo_multiplier = 1.0f;
+  require(renderLaneNotes(*other_steps, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a,
+      "a lane's events must not change when another lane becomes a Steps lane");
+  const auto moved = build(3u, 5u, 100u, 200u);
+  require(renderLaneNotes(*moved, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a,
+      "a lane's events must not change when it moves to another index with the same part id");
+  require(renderLaneNotes(*moved, KESSHO_PRODUCT_SOURCE_SAMPLE1, kSeconds) == lane_b,
+      "the second lane must also be unchanged by moving both lanes");
+
+  // Determinism: same seed, part id and transport reproduce the events; a new
+  // seed or part id does not.
+  require(renderLaneNotes(*base, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a,
+      "same seed, part id and transport must reproduce the events");
+  auto other_seed = std::make_unique<KesshoProductSnapshotV2>(*base);
+  other_seed->rng.seed = 4242u;
+  require(!(renderLaneNotes(*other_seed, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a),
+      "a different seed must change the stream");
+  const auto other_part = build(0u, 1u, 101u, 200u);
+  require(!(renderLaneNotes(*other_part, KESSHO_PRODUCT_SOURCE_PAD1, kSeconds) == lane_a),
+      "a different part id must change the stream");
+}
+
 __attribute__((noinline)) void requireLongArrangementSimulation() {
   auto snapshot = std::make_unique<KesshoProductSnapshotV2>(
       makeSnapshot(60.0f, 1u, 0.4f, 606u));
   snapshot->synth_euclid.lane_count = 0u;
   snapshot->harmony.chord_interval_seconds = 8.0f;
-  snapshot->arrangement.chord_generator_enabled = 1u;
-  snapshot->arrangement.chord_generator_source_id = KESSHO_PRODUCT_SOURCE_PAD1;
-  snapshot->arrangement.chord_generator_voice_count = 4u;
-  snapshot->arrangement.lead_random_enabled = 1u;
-  snapshot->arrangement.lead_random_source_id = KESSHO_PRODUCT_SOURCE_LEAD1;
-  snapshot->arrangement.lead_phrase_seconds = 2.0f;
-  snapshot->arrangement.lead_density = 0.5f;
-  snapshot->arrangement.lead_octave_range = 2u;
-  snapshot->arrangement.lead_hold_seconds = 0.4f;
-  snapshot->arrangement.lead_velocity_min = 0.5f;
-  snapshot->arrangement.lead_velocity_max = 0.9f;
+  setRandomChordsLane(*snapshot, 0u, KESSHO_PRODUCT_SOURCE_PAD1, 4u, 41u);
+  setRandomNotesLane(*snapshot, 1u, KESSHO_PRODUCT_SOURCE_LEAD1, 42u, 2.0f, 0.5f, 1, 0.4f);
   KesshoProductEngine* engine_a = kessho_product_create(48000.0, 4096u, 0u);
   KesshoProductEngine* engine_b = kessho_product_create(48000.0, 4096u, 0u);
   require(engine_a != nullptr && engine_b != nullptr, "long arrangement engines create failed");
@@ -779,8 +914,8 @@ __attribute__((noinline)) void requireLongArrangementSimulation() {
     engine_b->advanceHarmonyClock();
     SequencerBuffer events_a{};
     SequencerBuffer events_b{};
-    engine_a->generateArrangementEvents(frames, events_a);
-    engine_b->generateArrangementEvents(frames, events_b);
+    generateRandomLanes(engine_a, frames, events_a);
+    generateRandomLanes(engine_b, frames, events_b);
     require(events_a.count == events_b.count, "60-minute arrangement deterministic count mismatch");
     generated_event_count += events_a.count;
     for (uint32_t index = 0u; index < events_a.count; ++index) {
@@ -794,7 +929,8 @@ __attribute__((noinline)) void requireLongArrangementSimulation() {
     }
   }
   require(generated_event_count > 1000u, "60-minute arrangement simulation generated too few events");
-  require(engine_a->arrangement.pending_count == engine_b->arrangement.pending_count,
+  require(engine_a->synth_lanes[0].random.pending_count == engine_b->synth_lanes[0].random.pending_count &&
+      engine_a->synth_lanes[1].random.pending_count == engine_b->synth_lanes[1].random.pending_count,
       "60-minute arrangement pending queue mismatch");
   require(engine_a->telemetry.asset_missing_count == 0u && engine_b->telemetry.asset_missing_count == 0u,
       "60-minute arrangement simulation increased missing-asset telemetry");
@@ -1751,6 +1887,7 @@ int main() {
 
   requireArrangementScheduling();
   requireArrangementCapture();
+  requireRandomLaneStreams();
   requireLongArrangementSimulation();
   requireTypeScriptHarmonySequenceParity();
   requireSemanticRecipeTableParity();

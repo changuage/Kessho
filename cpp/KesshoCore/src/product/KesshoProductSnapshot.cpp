@@ -682,41 +682,16 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   harmony.morph_scale_handover_at = clampFloat(snapshot.harmony.morph_scale_handover_at, 0.0f, 1.0f);
   rebuildHarmonyAuthorityCache();
   harmony.progression_enabled = harmony.canonical_progression_enabled;
-  arrangement.chord_generator_enabled = snapshot.arrangement.chord_generator_enabled != 0u;
-  arrangement.chord_generator_source_id = clampU32(snapshot.arrangement.chord_generator_source_id, 1u, kSourceCount);
-  arrangement.chord_generator_voice_count = clampU32(snapshot.arrangement.chord_generator_voice_count, 1u, 8u);
-  arrangement.lead_random_enabled = snapshot.arrangement.lead_random_enabled != 0u;
-  arrangement.lead_random_source_id = clampU32(snapshot.arrangement.lead_random_source_id, 1u, kSourceCount);
-  arrangement.lead_phrase_seconds = clampFloat(snapshot.arrangement.lead_phrase_seconds, 0.001f, 4096.0f);
-  arrangement.lead_density = clampFloat(snapshot.arrangement.lead_density, 0.1f, 12.0f);
-  arrangement.lead_octave = std::max(-4, std::min(4, snapshot.arrangement.lead_octave));
-  arrangement.lead_octave_range = clampU32(snapshot.arrangement.lead_octave_range, 1u, 4u);
-  arrangement.lead_hold_seconds = clampFloat(snapshot.arrangement.lead_hold_seconds, 0.02f, 24.0f);
-  arrangement.lead_velocity_min = clampFloat(snapshot.arrangement.lead_velocity_min, 0.001f, 1.0f);
-  arrangement.lead_velocity_max = clampFloat(snapshot.arrangement.lead_velocity_max, arrangement.lead_velocity_min, 1.0f);
-  arrangement.rng_seed = snapshot.arrangement.rng_state == 0u ? 1u : snapshot.arrangement.rng_state;
-  arrangement.wave_spread = clampFloat(snapshot.arrangement.wave_spread, 0.0f, 1.0f);
-  arrangement.requested_wave_spread = arrangement.wave_spread;
-  arrangement.synth_octave = std::max(-4, std::min(4, snapshot.arrangement.synth_octave));
-  arrangement.requested_synth_octave = arrangement.synth_octave;
-  arrangement.lead_chord_bias = clampFloat(snapshot.arrangement.lead_chord_bias, 0.0f, 1.0f);
-  arrangement.synth_voice_mask = snapshot.arrangement.synth_voice_mask & 0xffu;
-  arrangement.pad2_voice_assign = snapshot.arrangement.pad2_voice_assign & 0xffu;
   arrangement.pad_euclid_owned_voice_mask = snapshot.arrangement.pad_euclid_owned_voice_mask & 0xffu;
-  arrangement.chord_generator_pad_split = snapshot.arrangement.chord_generator_pad_split != 0u;
   for (uint32_t source_index = 0u; source_index < 8u; ++source_index) {
     arrangement.source_hold_seconds[source_index] = clampFloat(
         snapshot.arrangement.source_hold_seconds[source_index], 0.02f, 24.0f);
   }
-  arrangement.pad1_fit_envelope_to_chord = snapshot.arrangement.pad1_fit_envelope_to_chord != 0u;
-  arrangement.pad2_fit_envelope_to_chord = snapshot.arrangement.pad2_fit_envelope_to_chord != 0u;
-  arrangement.lead_initial_delay_seconds = clampFloat(snapshot.arrangement.lead_initial_delay_seconds, 0.0f, 4096.0f);
   master_gain = clampFloat(snapshot.master.gain, 0.0f, 1.5f);
   setMasterLimiterCeilingDb(snapshot.master.limiter_ceiling_db);
   rng_seed = snapshot.rng.seed == 0u ? 1u : snapshot.rng.seed;
   rng_state = snapshot.rng.state == 0u ? rng_seed : snapshot.rng.state;
   resetHarmonyClock();
-  resetArrangementRuntime();
   sequencer_evolve_rng_stream_seed = 0u;
   sequencer_evolve_rng_stream_state = 0u;
   sequencer_evolve_rng_stream_initialized = false;
@@ -1269,6 +1244,8 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   drum_lane_count = std::min<uint32_t>(snapshot.drum_euclid.lane_count, kMaxLaneCount);
   loadLaneSnapshots(snapshot.synth_euclid, synth_lanes, KESSHO_PRODUCT_SOURCE_PAD1, preserve_running_sequencer_runtime);
   loadLaneSnapshots(snapshot.drum_euclid, drum_lanes, KESSHO_PRODUCT_SOURCE_DRUM, preserve_running_sequencer_runtime);
+  // Random lanes seed from the engine seed and part_id, so reset after decode.
+  resetArrangementRuntime();
   for (uint32_t target_id = 0u; target_id < kProductSourceMorphAutomationCount; ++target_id) {
     const auto& automation = snapshot.sonic_runtime.source_morph[target_id];
     configureSourceMorphAutomation(
@@ -1296,7 +1273,10 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
   for (uint32_t i = 0; i < count; ++i) {
     const KesshoProductSequencerLaneSnapshot& lane = snapshot.lanes[i];
     const KesshoProductAnchorWalkerSnapshot& walker_snapshot = snapshot.mode_states[i].anchor_walker;
-    const uint32_t next_mode = clampU32(lane.sequencer_mode, kSequencerModeEuclid, kSequencerModeOrbit);
+    const uint32_t max_mode = lanes == synth_lanes && i < kMaxRandomSlotLanes
+        ? kSequencerModeRandom
+        : kSequencerModeOrbit;
+    const uint32_t next_mode = clampU32(lane.sequencer_mode, kSequencerModeEuclid, max_mode);
     const bool walker_timing_matches =
         next_mode != kSequencerModeAnchorWalker ||
         (lanes[i].anchor_walker.trigger_mode == clampU32(walker_snapshot.trigger_mode, 0u, 2u) &&
@@ -1393,6 +1373,28 @@ int32_t KesshoProductEngine::loadSnapshot(const KesshoProductSnapshotV2& incomin
             : kessho::product::generated::KESSHO_PRODUCT_DEFAULT_SEQUENCER_INITIAL_START_DELAY_SECONDS;
     lanes[i].manual_step_mask_low = lane.manual_step_mask_low;
     lanes[i].manual_step_mask_high = lane.manual_step_mask_high;
+    const KesshoProductRandomSlotSnapshot& random_snapshot = snapshot.mode_states[i].random;
+    RandomSlotState& random = lanes[i].random;
+    random.mode = clampU32(random_snapshot.mode, kRandomSlotModeChords, kRandomSlotModeNotes);
+    random.part_id = random_snapshot.part_id;
+    random.voice_count = clampU32(random_snapshot.voice_count, 1u, 8u);
+    random.wave_spread = clampFloat(random_snapshot.wave_spread, 0.0f, 1.0f);
+    random.requested_wave_spread = random.wave_spread;
+    random.octave = std::max(-4, std::min(4, random_snapshot.octave));
+    random.requested_octave = random.octave;
+    random.voice_mask = random_snapshot.voice_mask & 0xffu;
+    random.pad2_voice_assign = random_snapshot.pad2_voice_assign & 0xffu;
+    random.pad_split = random_snapshot.pad_split != 0u;
+    random.fit_envelope_to_chord = random_snapshot.fit_envelope_to_chord != 0u;
+    random.phrase_seconds = clampFloat(random_snapshot.phrase_seconds, 0.001f, 4096.0f);
+    random.density = clampFloat(random_snapshot.density, 0.1f, 12.0f);
+    random.notes_octave = std::max(-4, std::min(4, random_snapshot.notes_octave));
+    random.octave_range = clampU32(random_snapshot.octave_range, 1u, 4u);
+    random.hold_seconds = clampFloat(random_snapshot.hold_seconds, 0.02f, 24.0f);
+    random.velocity_min = clampFloat(random_snapshot.velocity_min, 0.001f, 1.0f);
+    random.velocity_max = clampFloat(random_snapshot.velocity_max, random.velocity_min, 1.0f);
+    random.chord_bias = clampFloat(random_snapshot.chord_bias, 0.0f, 1.0f);
+    random.initial_delay_seconds = clampFloat(random_snapshot.initial_delay_seconds, 0.0f, 4096.0f);
     AnchorWalkerState& walker = lanes[i].anchor_walker;
     walker.enabled = walker_snapshot.enabled != 0u;
     walker.mode = clampU32(walker_snapshot.mode, 0u, 2u);

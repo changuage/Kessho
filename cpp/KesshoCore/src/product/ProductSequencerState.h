@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ProductConstants.h"
-#include "ProductArrangementState.h"
 #include "ProductSequencerFaceState.h"
 #include "ProductSequencerPitchConstants.h"
 #include "ProductSequencerEvolveState.h"
@@ -109,6 +108,7 @@ struct LaneState {
   uint32_t pending_ratchet_drop_count = 0;
   AnchorWalkerState anchor_walker{};
   OrbitSequencerState orbit{};
+  RandomSlotState random{};
   // Audio-owned variation bank.  Editor step overrides continue to live in
   // the fields above and are not allowed to replace an active bank.
   SequencerVariationRuntime variation_runtime{};

@@ -69,136 +69,6 @@
       "max": 1
     },
     {
-      "name": "ArrangementSynthOctave",
-      "path": "arrangement.synthOctave",
-      "type": "int",
-      "id": 43,
-      "min": -4,
-      "max": 4
-    },
-    {
-      "name": "ArrangementWaveSpread",
-      "path": "arrangement.waveSpread",
-      "type": "float",
-      "id": 44,
-      "min": 0,
-      "max": 1
-    },
-    {
-      "name": "ArrangementChordGeneratorEnabled",
-      "path": "arrangement.chordGeneratorEnabled",
-      "type": "bool",
-      "id": 45
-    },
-    {
-      "name": "ArrangementChordGeneratorSourceId",
-      "path": "arrangement.chordGeneratorSourceId",
-      "type": "int",
-      "id": 46,
-      "min": 1,
-      "max": 8
-    },
-    {
-      "name": "ArrangementChordGeneratorVoiceCount",
-      "path": "arrangement.chordGeneratorVoiceCount",
-      "type": "int",
-      "id": 47,
-      "min": 1,
-      "max": 8
-    },
-    {
-      "name": "ArrangementChordGeneratorPadSplit",
-      "path": "arrangement.chordGeneratorPadSplit",
-      "type": "bool",
-      "id": 48
-    },
-    {
-      "name": "ArrangementLeadRandomEnabled",
-      "path": "arrangement.leadRandomEnabled",
-      "type": "bool",
-      "id": 49
-    },
-    {
-      "name": "ArrangementLeadRandomSourceId",
-      "path": "arrangement.leadRandomSourceId",
-      "type": "int",
-      "id": 50,
-      "min": 1,
-      "max": 8
-    },
-    {
-      "name": "ArrangementLeadPhraseSeconds",
-      "path": "arrangement.leadPhraseSeconds",
-      "type": "float",
-      "id": 51,
-      "min": 0.001,
-      "max": 4096
-    },
-    {
-      "name": "ArrangementLeadDensity",
-      "path": "arrangement.leadDensity",
-      "type": "float",
-      "id": 52,
-      "min": 0.1,
-      "max": 12
-    },
-    {
-      "name": "ArrangementLeadOctave",
-      "path": "arrangement.leadOctave",
-      "type": "int",
-      "id": 53,
-      "min": -4,
-      "max": 4
-    },
-    {
-      "name": "ArrangementLeadOctaveRange",
-      "path": "arrangement.leadOctaveRange",
-      "type": "int",
-      "id": 54,
-      "min": 1,
-      "max": 4
-    },
-    {
-      "name": "ArrangementLeadHoldSeconds",
-      "path": "arrangement.leadHoldSeconds",
-      "type": "float",
-      "id": 55,
-      "min": 0.02,
-      "max": 24
-    },
-    {
-      "name": "ArrangementLeadVelocityMin",
-      "path": "arrangement.leadVelocityMin",
-      "type": "float",
-      "id": 56,
-      "min": 0.001,
-      "max": 1
-    },
-    {
-      "name": "ArrangementLeadVelocityMax",
-      "path": "arrangement.leadVelocityMax",
-      "type": "float",
-      "id": 57,
-      "min": 0.001,
-      "max": 1
-    },
-    {
-      "name": "ArrangementLeadChordBias",
-      "path": "arrangement.leadChordBias",
-      "type": "float",
-      "id": 58,
-      "min": 0,
-      "max": 1
-    },
-    {
-      "name": "ArrangementLeadInitialDelaySeconds",
-      "path": "arrangement.leadInitialDelaySeconds",
-      "type": "float",
-      "id": 59,
-      "min": 0,
-      "max": 4096
-    },
-    {
       "name": "JourneyEnabled",
       "path": "journey.enabled",
       "type": "bool",
@@ -684,7 +554,7 @@
       "type": "uint",
       "id": 225,
       "min": 0,
-      "max": 2
+      "max": 3
     },
     {
       "name": "SequencerAnchorWalkerMode",
@@ -4979,6 +4849,116 @@
       "id": 1216,
       "min": 0,
       "max": 1
+    },
+    {
+      "name": "SequencerRandomMode",
+      "path": "sequencers.*.lanes.*.random.mode",
+      "type": "uint",
+      "id": 1217,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerRandomVoiceCount",
+      "path": "sequencers.*.lanes.*.random.voiceCount",
+      "type": "uint",
+      "id": 1218,
+      "min": 1,
+      "max": 8
+    },
+    {
+      "name": "SequencerRandomWaveSpread",
+      "path": "sequencers.*.lanes.*.random.waveSpread",
+      "type": "float",
+      "id": 1219,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerRandomOctave",
+      "path": "sequencers.*.lanes.*.random.octave",
+      "type": "int",
+      "id": 1220,
+      "min": -4,
+      "max": 4
+    },
+    {
+      "name": "SequencerRandomPadSplit",
+      "path": "sequencers.*.lanes.*.random.padSplit",
+      "type": "bool",
+      "id": 1221
+    },
+    {
+      "name": "SequencerRandomPhraseSeconds",
+      "path": "sequencers.*.lanes.*.random.phraseSeconds",
+      "type": "float",
+      "id": 1222,
+      "min": 0.001,
+      "max": 4096
+    },
+    {
+      "name": "SequencerRandomDensity",
+      "path": "sequencers.*.lanes.*.random.density",
+      "type": "float",
+      "id": 1223,
+      "min": 0.1,
+      "max": 12
+    },
+    {
+      "name": "SequencerRandomNotesOctave",
+      "path": "sequencers.*.lanes.*.random.notesOctave",
+      "type": "int",
+      "id": 1224,
+      "min": -4,
+      "max": 4
+    },
+    {
+      "name": "SequencerRandomOctaveRange",
+      "path": "sequencers.*.lanes.*.random.octaveRange",
+      "type": "uint",
+      "id": 1225,
+      "min": 1,
+      "max": 4
+    },
+    {
+      "name": "SequencerRandomHoldSeconds",
+      "path": "sequencers.*.lanes.*.random.holdSeconds",
+      "type": "float",
+      "id": 1226,
+      "min": 0.02,
+      "max": 24
+    },
+    {
+      "name": "SequencerRandomVelocityMin",
+      "path": "sequencers.*.lanes.*.random.velocityMin",
+      "type": "float",
+      "id": 1227,
+      "min": 0.001,
+      "max": 1
+    },
+    {
+      "name": "SequencerRandomVelocityMax",
+      "path": "sequencers.*.lanes.*.random.velocityMax",
+      "type": "float",
+      "id": 1228,
+      "min": 0.001,
+      "max": 1
+    },
+    {
+      "name": "SequencerRandomChordBias",
+      "path": "sequencers.*.lanes.*.random.chordBias",
+      "type": "float",
+      "id": 1229,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "SequencerRandomInitialDelaySeconds",
+      "path": "sequencers.*.lanes.*.random.initialDelaySeconds",
+      "type": "float",
+      "id": 1230,
+      "min": 0,
+      "max": 4096
     }
   ]
 }

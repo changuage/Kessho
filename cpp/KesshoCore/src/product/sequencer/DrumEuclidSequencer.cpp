@@ -71,6 +71,20 @@ void armAnchorWalkerGesture(
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_FREE_OFFSET_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_EVEN_REVERSE_MODE_ID:
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ORBIT_CONSTELLATION_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VOICE_COUNT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_WAVE_SPREAD_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PAD_SPLIT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PHRASE_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_DENSITY_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_NOTES_OCTAVE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_RANGE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_HOLD_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MAX_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_CHORD_BIAS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_INITIAL_DELAY_SECONDS_ID:
       return true;
     default:
       return param_id >= KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID &&
@@ -104,6 +118,7 @@ void armAnchorWalkerGesture(
         resetSequencerLaneRuntime(lane);
       }
       lane.enabled = enabled;
+      if (lanes == synth_lanes && lane.sequencer_mode == kSequencerModeRandom) armRandomSlot(event.index);
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_EVOLVE_RUNTIME_CONFIG_ID:
@@ -267,16 +282,43 @@ void armAnchorWalkerGesture(
       }
       break;
     case KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_MODE_ID: {
-      const uint32_t mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), kSequencerModeEuclid, kSequencerModeOrbit);
+      const uint32_t max_mode = lanes == synth_lanes && event.index < kMaxRandomSlotLanes
+          ? kSequencerModeRandom
+          : kSequencerModeOrbit;
+      const uint32_t mode = clampU32(static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))), kSequencerModeEuclid, max_mode);
       if (lane.sequencer_mode != mode) {
         lane.sequencer_mode = mode;
+        lane.random.pending_count = 0u;
         if (mode == kSequencerModeAnchorWalker) {
           lane.anchor_walker.target_source_id = lane.target_source_id;
         } else if (mode == kSequencerModeOrbit) {
           lane.orbit.target_source_id = lane.target_source_id;
         }
         resetSequencerLaneRuntime(lane);
+        if (mode == kSequencerModeRandom) armRandomSlot(event.index);
       }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_MODE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VOICE_COUNT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_WAVE_SPREAD_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PAD_SPLIT_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PHRASE_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_DENSITY_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_NOTES_OCTAVE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_RANGE_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_HOLD_SECONDS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MIN_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MAX_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_CHORD_BIAS_ID:
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_INITIAL_DELAY_SECONDS_ID: {
+      // Random settings only exist on synth lanes that can run the Random mode.
+      if (lanes != synth_lanes || event.index >= kMaxRandomSlotLanes) {
+        telemetry.last_error_code = KESSHO_PRODUCT_ERROR_INVALID_SEQUENCER_LANE;
+        return;
+      }
+      applyRandomSlotParamEvent(lane, event);
       break;
     }
     case KESSHO_PRODUCT_PARAM_SEQUENCER_ANCHOR_WALKER_MODE_ID:

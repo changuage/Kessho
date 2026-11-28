@@ -1962,7 +1962,7 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread, key),
   ],
   waveSpread: (key) => [
-    productParamTarget(KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread, key),
+    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread, key),
   ],
   detune: (key) => [
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key),

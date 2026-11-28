@@ -44,7 +44,7 @@ const TELEMETRY_AUTO_CYCLE_OFFSET = 14316;
 const TELEMETRY_JOURNEY_SCHEDULE_OFFSET = 14352;
 const SNAPSHOT_SCHEMA_HASH_OFFSET = 4;
 const EXPECTED_PRODUCT_ABI_VERSION = 8;
-const EXPECTED_PRODUCT_SCHEMA_HASH = 0x16d1119c;
+const EXPECTED_PRODUCT_SCHEMA_HASH = 0xab5161bd;
 const PRODUCT_ERROR_ASSET_IN_USE = -16;
 const SEQUENCER_UI_STATE_LANES = 16;
 const SEQUENCER_UI_STATE_STEPS = 64;
@@ -819,11 +819,8 @@ class KesshoCoreProductProcessor extends AudioWorkletProcessor {
     return this.captureControlMode(request) !== 0;
   }
 
-  /** Arrangement producers (3, 4) use a fixed sentinel lane instead of a Euclid lane. */
+  /** Random lane modes (3, 4) report the lane they run on like any other mode. */
   captureEventLane(request) {
-    const mode = this.captureControlMode(request);
-    if (mode === 3) return 0x100;
-    if (mode === 4) return 0x101;
     return Math.max(0, Math.min(SEQUENCER_UI_STATE_LANES - 1, Math.trunc(Number(request.sourceLaneIndex) || 0)));
   }
 

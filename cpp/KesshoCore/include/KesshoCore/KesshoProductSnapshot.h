@@ -318,9 +318,34 @@ typedef struct KesshoProductOrbitSequencerSnapshot {
   KesshoProductOrbitNoteSnapshot notes[32];
 } KesshoProductOrbitSequencerSnapshot;
 
+// Random lane settings (sequencer_mode 3). mode 0 plays chords, 1 plays notes.
+// part_id is the slot's stable identity: it seeds the lane's own random stream
+// and never changes when slots are reordered.
+typedef struct KesshoProductRandomSlotSnapshot {
+  uint32_t mode;
+  uint32_t part_id;
+  uint32_t voice_count;
+  float wave_spread;
+  int32_t octave;
+  uint32_t voice_mask;
+  uint32_t pad2_voice_assign;
+  uint32_t pad_split;
+  uint32_t fit_envelope_to_chord;
+  float phrase_seconds;
+  float density;
+  int32_t notes_octave;
+  uint32_t octave_range;
+  float hold_seconds;
+  float velocity_min;
+  float velocity_max;
+  float chord_bias;
+  float initial_delay_seconds;
+} KesshoProductRandomSlotSnapshot;
+
 typedef struct KesshoProductSequencerLaneModeSnapshot {
   KesshoProductAnchorWalkerSnapshot anchor_walker;
   KesshoProductOrbitSequencerSnapshot orbit;
+  KesshoProductRandomSlotSnapshot random;
 } KesshoProductSequencerLaneModeSnapshot;
 
 typedef struct KesshoProductSequencerSnapshot {
@@ -697,31 +722,10 @@ typedef struct KesshoProductEvolutionSnapshot {
   uint32_t state;
 } KesshoProductEvolutionSnapshot;
 
+// Settings shared by every Random lane and by Steps-lane pad ownership.
 typedef struct KesshoProductArrangementSnapshot {
-  uint32_t chord_generator_enabled;
-  uint32_t chord_generator_source_id;
-  uint32_t chord_generator_voice_count;
-  uint32_t lead_random_enabled;
-  uint32_t lead_random_source_id;
-  float lead_phrase_seconds;
-  float lead_density;
-  int32_t lead_octave;
-  uint32_t lead_octave_range;
-  float lead_hold_seconds;
-  float lead_velocity_min;
-  float lead_velocity_max;
-  uint32_t rng_state;
-  float wave_spread;
-  int32_t synth_octave;
-  float lead_chord_bias;
-  uint32_t synth_voice_mask;
-  uint32_t pad2_voice_assign;
-  uint32_t pad_euclid_owned_voice_mask;
-  uint32_t chord_generator_pad_split;
   float source_hold_seconds[8];
-  uint32_t pad1_fit_envelope_to_chord;
-  uint32_t pad2_fit_envelope_to_chord;
-  float lead_initial_delay_seconds;
+  uint32_t pad_euclid_owned_voice_mask;
 } KesshoProductArrangementSnapshot;
 
 #define KESSHO_PRODUCT_SOURCE_MORPH_AUTOMATION_COUNT 11u

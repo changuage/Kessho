@@ -1,12 +1,13 @@
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
-import { laneDefaults } from './coreProductSnapshotDefaults';
+import { laneDefaults, randomSlotDefaults } from './coreProductSnapshotDefaults';
 import type { CoreProductSnapshot } from './coreProductSnapshot';
 
 type ProductLaneSnapshot = CoreProductSnapshot['synthLanes'][number];
 
 const ANCHOR_WALKER_BYTES = 332;
 const ORBIT_BYTES = 2920;
-export const KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES = ANCHOR_WALKER_BYTES + ORBIT_BYTES;
+const RANDOM_BYTES = 72;
+export const KESSHO_PRODUCT_SEQUENCER_MODE_STATE_BYTES = ANCHOR_WALKER_BYTES + ORBIT_BYTES + RANDOM_BYTES;
 
 function bool(value: unknown): number {
   return value ? 1 : 0;
@@ -128,6 +129,26 @@ export function encodeCoreProductSequencerFaceModes(
       u32(note?.targetSourceId ?? 0);
       u32(note?.seed ?? 1);
     }
+
+    const random = lane.random ?? randomSlotDefaults();
+    u32(random.mode);
+    u32(random.partId);
+    u32(random.voiceCount);
+    f32(random.waveSpread);
+    i32(random.octave);
+    u32(random.voiceMask);
+    u32(random.pad2VoiceAssign);
+    u32(bool(random.padSplit));
+    u32(bool(random.fitEnvelopeToChord));
+    f32(random.phraseSeconds);
+    f32(random.density);
+    i32(random.notesOctave);
+    u32(random.octaveRange);
+    f32(random.holdSeconds);
+    f32(random.velocityMin);
+    f32(random.velocityMax);
+    f32(random.chordBias);
+    f32(random.initialDelaySeconds);
   }
   return offset;
 }

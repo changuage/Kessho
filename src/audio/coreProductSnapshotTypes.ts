@@ -112,6 +112,30 @@ export type ProductLaneSnapshot = {
   initialStartDelaySeconds: number;
   anchorWalker: ProductAnchorWalkerSnapshot;
   orbit: ProductOrbitSequencerSnapshot;
+  random: ProductRandomSlotSnapshot;
+};
+
+// Random lane settings (sequencerMode 3). mode 0 plays chords, 1 plays notes;
+// partId is the slot's stable identity and seeds its own random stream.
+export type ProductRandomSlotSnapshot = {
+  mode: number;
+  partId: number;
+  voiceCount: number;
+  waveSpread: number;
+  octave: number;
+  voiceMask: number;
+  pad2VoiceAssign: number;
+  padSplit: boolean;
+  fitEnvelopeToChord: boolean;
+  phraseSeconds: number;
+  density: number;
+  notesOctave: number;
+  octaveRange: number;
+  holdSeconds: number;
+  velocityMin: number;
+  velocityMax: number;
+  chordBias: number;
+  initialDelaySeconds: number;
 };
 
 export type ProductAnchorWalkerLayerSnapshot = {
@@ -705,30 +729,9 @@ export type CoreProductSnapshot = {
   sonicRuntime: {
     sourceMorph: ProductSourceMorphAutomationSnapshot[];
   };
+  // Settings shared by every Random lane and by Steps-lane pad ownership.
   arrangement: {
-    chordGeneratorEnabled: boolean;
-    chordGeneratorSourceId: number;
-    chordGeneratorVoiceCount: number;
-    leadRandomEnabled: boolean;
-    leadRandomSourceId: number;
-    leadPhraseSeconds: number;
-    leadDensity: number;
-    leadOctave: number;
-    leadOctaveRange: number;
-    leadHoldSeconds: number;
-    leadVelocityMin: number;
-    leadVelocityMax: number;
-    rngState: number;
-    waveSpread: number;
-    synthOctave: number;
-    leadChordBias: number;
-    synthVoiceMask: number;
-    pad2VoiceAssign: number;
-    padEuclidOwnedVoiceMask: number;
-    chordGeneratorPadSplit: boolean;
     sourceHoldSeconds: number[];
-    pad1FitEnvelopeToChord: boolean;
-    pad2FitEnvelopeToChord: boolean;
-    leadInitialDelaySeconds: number;
+    padEuclidOwnedVoiceMask: number;
   };
 };

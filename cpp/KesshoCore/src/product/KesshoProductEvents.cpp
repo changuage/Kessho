@@ -342,10 +342,7 @@ void retimeSequencerLanePreservingPhase(
           : KESSHO_PRODUCT_ERROR_INVALID_EVENT;
     case KESSHO_PRODUCT_EVENT_KIND_GENERATED_SEQUENCER_CAPTURE:
       return valid_sequencer(event.target_id) &&
-              (event.index < kMaxLaneCount ||
-               (event.value2 >= 3.0f &&
-                (event.index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS ||
-                 event.index == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES))) &&
+              event.index < kMaxLaneCount &&
               event.param_id < kMaxLaneCount &&
               event.value >= 0.0f && event.value <= 1.0f &&
               event.value2 >= 0.0f && event.value2 <= 4.0f
@@ -2152,103 +2149,10 @@ void KesshoProductEngine::stageNextPhraseTimingEvent(const KesshoProductEvent& e
       harmony.requested_voicing_spread = next_spread;
       if (!transport.running) {
         harmony.voicing_spread = next_spread;
-        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
+        requestRandomChordRetrigger();
       }
       break;
     }
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_SYNTH_OCTAVE_ID: {
-      const int32_t next_octave = std::max(-4, std::min(4, static_cast<int32_t>(std::lround(event.value))));
-      arrangement.requested_synth_octave = next_octave;
-      if (!transport.running && arrangement.synth_octave != next_octave) {
-        arrangement.synth_octave = next_octave;
-        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
-      }
-      break;
-    }
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_WAVE_SPREAD_ID: {
-      const float next_spread = clampFloat(event.value, 0.0f, 1.0f);
-      arrangement.requested_wave_spread = next_spread;
-      if (!transport.running) {
-        arrangement.wave_spread = next_spread;
-        arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
-      }
-      break;
-    }
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_ENABLED_ID:
-      arrangement.chord_generator_enabled = event.value >= 0.5f;
-      if (!arrangement.chord_generator_enabled) {
-        arrangement.chord_generator_pending = false;
-      } else if (!transport.running) {
-        arrangement.chord_generator_pending = true;
-      }
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_SOURCE_ID_ID:
-      arrangement.chord_generator_source_id = clampU32(
-          static_cast<uint32_t>(std::lround(event.value)),
-          1u,
-          kSourceCount);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_VOICE_COUNT_ID:
-      arrangement.chord_generator_voice_count = clampU32(
-          static_cast<uint32_t>(std::lround(event.value)),
-          1u,
-          8u);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_CHORD_GENERATOR_PAD_SPLIT_ID:
-      arrangement.chord_generator_pad_split = event.value >= 0.5f;
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_ENABLED_ID: {
-      const bool next_enabled = event.value >= 0.5f;
-      if (next_enabled && !arrangement.lead_random_enabled && transport.running) {
-        const uint64_t phrase_frames = std::max<uint64_t>(
-            1u,
-            static_cast<uint64_t>(std::llround(
-                sample_rate * static_cast<double>(arrangement.lead_phrase_seconds))));
-        const uint64_t next_shared_boundary = arrangement.chord_phrase_start_frame + phrase_frames;
-        arrangement.next_lead_phrase_frame = std::max(transport.sample_frame, next_shared_boundary);
-        arrangement.lead_phrase_index = arrangement.chord_phrase_index + 1u;
-      }
-      arrangement.lead_random_enabled = next_enabled;
-      break;
-    }
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_RANDOM_SOURCE_ID_ID:
-      arrangement.lead_random_source_id = clampU32(
-          static_cast<uint32_t>(std::lround(event.value)),
-          1u,
-          kSourceCount);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_PHRASE_SECONDS_ID:
-      arrangement.lead_phrase_seconds = clampFloat(event.value, 0.001f, 4096.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_DENSITY_ID:
-      arrangement.lead_density = clampFloat(event.value, 0.1f, 12.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_ID:
-      arrangement.lead_octave = std::max(
-          -4,
-          std::min(4, static_cast<int32_t>(std::lround(event.value))));
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_OCTAVE_RANGE_ID:
-      arrangement.lead_octave_range = clampU32(
-          static_cast<uint32_t>(std::lround(event.value)),
-          1u,
-          4u);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_HOLD_SECONDS_ID:
-      arrangement.lead_hold_seconds = clampFloat(event.value, 0.02f, 24.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_VELOCITY_MIN_ID:
-      arrangement.lead_velocity_min = clampFloat(event.value, 0.001f, 1.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_VELOCITY_MAX_ID:
-      arrangement.lead_velocity_max = clampFloat(event.value, 0.001f, 1.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_CHORD_BIAS_ID:
-      arrangement.lead_chord_bias = clampFloat(event.value, 0.0f, 1.0f);
-      break;
-    case KESSHO_PRODUCT_PARAM_ARRANGEMENT_LEAD_INITIAL_DELAY_SECONDS_ID:
-      arrangement.lead_initial_delay_seconds = clampFloat(event.value, 0.0f, 4096.0f);
-      break;
     case KESSHO_PRODUCT_PARAM_JOURNEY_ENABLED_ID:
       journey_running = event.value >= 0.5f;
       break;

@@ -121,7 +121,7 @@ assert(!arrangementProjection.includes('setInterval('), 'Product arrangement pro
 
 requireTokens('cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp', [
   'const uint64_t block_start = transport.sample_frame;',
-  'arrangement.next_lead_phrase_frame',
+  'random.next_phrase_frame',
   'queue_chord(',
 ]);
 

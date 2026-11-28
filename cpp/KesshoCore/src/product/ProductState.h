@@ -8,6 +8,7 @@
 #include "ProductModulationState.h"
 #include "ProductModuleRuntimeState.h"
 #include "ProductSourcePresetPatch.h"
+#include "ProductArrangementState.h"
 #include "ProductSequencerState.h"
 #include "ProductScatterRuntimeState.h"
 #include "ProductSceneProgramRuntimeState.h"
@@ -60,10 +61,10 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   bool harmony_preview_active = false;
   SourceState sources[kSourceCount]{};
   std::unique_ptr<kessho::product::internal::SequencerVariationStorage> sequencer_variation_storage;
+  std::unique_ptr<kessho::product::internal::RandomSlotPendingStorage> random_slot_pending_storage;
   LaneState synth_lanes[kMaxLaneCount]{};
   LaneState drum_lanes[kMaxLaneCount]{};
-  uint32_t synth_lane_count = 4;
-  uint32_t drum_lane_count = 8;
+  uint32_t synth_lane_count = 6; uint32_t drum_lane_count = 8;
   AssetSlot assets[kessho::product::generated::KESSHO_PRODUCT_MAX_ASSETS]{};
   Voice voices[kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES]{};
   uint16_t active_voice_indices[kessho::product::generated::KESSHO_PRODUCT_MAX_VOICES]{};
@@ -428,7 +429,9 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
       SequencerBuffer& out);
   void generateSequencerEvents(uint32_t frames, bool include_inactive_sources = false);
   void resetArrangementRuntime();
-  void generateArrangementEvents(uint32_t frames, SequencerBuffer& out);
+  void resetRandomSlotRuntime(uint32_t lane_index); void armRandomSlot(uint32_t lane_index);
+  void requestRandomChordRetrigger(); void applyRandomSlotParamEvent(LaneState& lane, const KesshoProductEvent& event);
+  void generateRandomLaneEvents(uint32_t lane_index, uint32_t frames, SequencerBuffer& out);
   uint32_t findAssetSlot(uint32_t asset_id) const;
   bool assetHasActiveVoice(uint32_t asset_id) const;
   bool pianoAssetRootMidi(uint32_t asset_id, float& out_midi, bool* out_short_variant = nullptr) const;

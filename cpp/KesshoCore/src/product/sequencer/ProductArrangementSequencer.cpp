@@ -7,6 +7,14 @@ uint64_t arrangementFrames(double sample_rate, float seconds) {
       sample_rate * static_cast<double>(std::max(0.001f, seconds)))));
 }
 
+// Mixes the engine seed with the slot's stable part_id so a stream depends on
+// who the slot is, never on where it sits.
+uint32_t randomSlotStreamSeed(uint32_t engine_seed, uint32_t part_id) {
+  uint32_t mixed = hashU32(engine_seed ^ 0x52414e44u);
+  mixed = hashU32(mixed ^ hashU32(part_id + 0x9e3779b9u));
+  return mixed == 0u ? 1u : mixed;
+}
+
 double arrangementNextRandom(uint32_t& state) {
   uint32_t t = (state += 0x6d2b79f5u);
   t = (t ^ (t >> 15u)) * (t | 1u);
@@ -25,30 +33,147 @@ struct ArrangementChordVoice {
 } // namespace
 
 void KesshoProductEngine::resetArrangementRuntime() {
-  arrangement.next_lead_phrase_frame = arrangement.lead_initial_delay_seconds <= 0.0f
-      ? transport.sample_frame
-      : transport.sample_frame + arrangementFrames(sample_rate, arrangement.lead_initial_delay_seconds);
-  arrangement.lead_phrase_index = 0u;
   arrangement.chord_phrase_start_frame = transport.sample_frame;
   arrangement.chord_phrase_index = harmony.next_phrase_index > 0u
       ? harmony.next_phrase_index - 1u
       : 0u;
-  arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
-  arrangement.pending_count = 0u;
-  arrangement.rng_state = arrangement.rng_seed;
+  for (uint32_t lane_index = 0u; lane_index < kMaxRandomSlotLanes; ++lane_index) {
+    resetRandomSlotRuntime(lane_index);
+  }
 }
 
-void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBuffer& out) {
-  if (!transport.running || frames == 0u) return;
+void KesshoProductEngine::resetRandomSlotRuntime(uint32_t lane_index) {
+  if (lane_index >= kMaxRandomSlotLanes) return;
+  const LaneState& lane = synth_lanes[lane_index];
+  RandomSlotState& random = synth_lanes[lane_index].random;
+  random.stream_state = randomSlotStreamSeed(rng_seed, random.part_id);
+  random.next_phrase_frame = random.initial_delay_seconds <= 0.0f
+      ? transport.sample_frame
+      : transport.sample_frame + arrangementFrames(sample_rate, random.initial_delay_seconds);
+  random.phrase_index = 0u;
+  random.chord_pending = lane.sequencer_mode == kSequencerModeRandom && lane.enabled &&
+      random.mode == kRandomSlotModeChords;
+  random.pending_count = 0u;
+}
+
+// A Random lane that becomes active while the transport runs joins on the
+// shared phrase timeline, as the singleton producers did when enabled.
+void KesshoProductEngine::armRandomSlot(uint32_t lane_index) {
+  if (lane_index >= kMaxRandomSlotLanes) return;
+  const LaneState& lane = synth_lanes[lane_index];
+  RandomSlotState& random = synth_lanes[lane_index].random;
+  const bool active = lane.sequencer_mode == kSequencerModeRandom && lane.enabled;
+  if (!active) {
+    random.chord_pending = false;
+    return;
+  }
+  if (random.mode == kRandomSlotModeChords) {
+    if (!transport.running) random.chord_pending = true;
+    return;
+  }
+  random.chord_pending = false;
+  if (transport.running) {
+    const uint64_t phrase_frames = arrangementFrames(sample_rate, random.phrase_seconds);
+    const uint64_t next_shared_boundary = arrangement.chord_phrase_start_frame + phrase_frames;
+    random.next_phrase_frame = std::max(transport.sample_frame, next_shared_boundary);
+    random.phrase_index = arrangement.chord_phrase_index + 1u;
+  }
+}
+
+// Harmony owns the pitches; every active Random Chords lane retriggers the
+// newly resolved pool at each Harmony tick.
+void KesshoProductEngine::requestRandomChordRetrigger() {
+  for (uint32_t lane_index = 0u; lane_index < kMaxRandomSlotLanes; ++lane_index) {
+    LaneState& lane = synth_lanes[lane_index];
+    lane.random.chord_pending = lane.sequencer_mode == kSequencerModeRandom && lane.enabled &&
+        lane.random.mode == kRandomSlotModeChords;
+  }
+}
+
+void KesshoProductEngine::applyRandomSlotParamEvent(LaneState& lane, const KesshoProductEvent& event) {
+  RandomSlotState& random = lane.random;
+  const auto retrigger_chords = [&]() {
+    random.chord_pending = lane.sequencer_mode == kSequencerModeRandom && lane.enabled &&
+        random.mode == kRandomSlotModeChords;
+  };
+  switch (event.param_id) {
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_MODE_ID: {
+      const uint32_t next_mode = clampU32(
+          static_cast<uint32_t>(std::lround(std::max(0.0f, event.value))),
+          kRandomSlotModeChords, kRandomSlotModeNotes);
+      if (random.mode != next_mode) {
+        random.mode = next_mode;
+        random.pending_count = 0u;
+        armRandomSlot(event.index);
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VOICE_COUNT_ID:
+      random.voice_count = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, 8u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_WAVE_SPREAD_ID:
+      random.requested_wave_spread = clampFloat(event.value, 0.0f, 1.0f);
+      if (!transport.running) {
+        random.wave_spread = random.requested_wave_spread;
+        retrigger_chords();
+      }
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_ID: {
+      const int32_t next_octave = std::max(-4, std::min(4, static_cast<int32_t>(std::lround(event.value))));
+      random.requested_octave = next_octave;
+      if (!transport.running && random.octave != next_octave) {
+        random.octave = next_octave;
+        retrigger_chords();
+      }
+      break;
+    }
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PAD_SPLIT_ID:
+      random.pad_split = event.value >= 0.5f;
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_PHRASE_SECONDS_ID:
+      random.phrase_seconds = clampFloat(event.value, 0.001f, 4096.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_DENSITY_ID:
+      random.density = clampFloat(event.value, 0.1f, 12.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_NOTES_OCTAVE_ID:
+      random.notes_octave = std::max(-4, std::min(4, static_cast<int32_t>(std::lround(event.value))));
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_OCTAVE_RANGE_ID:
+      random.octave_range = clampU32(static_cast<uint32_t>(std::lround(event.value)), 1u, 4u);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_HOLD_SECONDS_ID:
+      random.hold_seconds = clampFloat(event.value, 0.02f, 24.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MIN_ID:
+      random.velocity_min = clampFloat(event.value, 0.001f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_VELOCITY_MAX_ID:
+      random.velocity_max = clampFloat(event.value, 0.001f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_CHORD_BIAS_ID:
+      random.chord_bias = clampFloat(event.value, 0.0f, 1.0f);
+      break;
+    case KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_INITIAL_DELAY_SECONDS_ID:
+      random.initial_delay_seconds = clampFloat(event.value, 0.0f, 4096.0f);
+      break;
+    default:
+      break;
+  }
+}
+
+void KesshoProductEngine::generateRandomLaneEvents(uint32_t lane_index, uint32_t frames, SequencerBuffer& out) {
+  if (!transport.running || frames == 0u || lane_index >= kMaxRandomSlotLanes ||
+      !random_slot_pending_storage) return;
+  LaneState& lane = synth_lanes[lane_index];
+  RandomSlotState& random = lane.random;
+  RandomSlotPendingEvent* pending_events = random_slot_pending_storage->events[lane_index];
+  const uint32_t lane_source_id = clampU32(lane.target_source_id, 1u, kSourceCount);
+  const bool lane_active = lane.enabled;
   const uint64_t block_start = transport.sample_frame;
   const uint64_t block_end = block_start + frames;
-  const auto next_random = [&]() { return arrangementNextRandom(arrangement.rng_state); };
+  const auto next_random = [&]() { return arrangementNextRandom(random.stream_state); };
 
-  const auto capture_lane_for_mode = [](uint32_t mode) {
-    return mode == KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_CHORDS
-        ? static_cast<uint32_t>(KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_CHORDS)
-        : static_cast<uint32_t>(KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_LANE_RANDOM_NOTES);
-  };
   const auto next_capture_attack_id = [&]() {
     const uint64_t id = generated_sequencer_capture_attack_counter++;
     if (generated_sequencer_capture_attack_counter == 0u) generated_sequencer_capture_attack_counter = 1u;
@@ -57,7 +182,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
   const auto arrangement_capture_wanted = [&](uint32_t mode) {
     return generated_sequencer_capture_ring != nullptr &&
         kessho::product::shouldCaptureGeneratedSequencerEvent(
-            generated_sequencer_capture_config, capture_lane_for_mode(mode), mode);
+            generated_sequencer_capture_config, lane_index, mode);
   };
   const auto captureArrangementNote = [&](uint32_t mode, uint64_t absolute_sample,
                                           const KesshoSequencerEvent& event, uint32_t source_id,
@@ -66,7 +191,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     KesshoProductGeneratedSequencerCaptureEvent captured{};
     captured.event_id = generated_sequencer_capture_event_counter++;
     captured.absolute_sample = absolute_sample;
-    captured.source_lane_index = capture_lane_for_mode(mode);
+    captured.source_lane_index = lane_index;
     captured.source_mode = mode;
     captured.target_source_id = source_id;
     captured.midi_note = event.midi_note;
@@ -89,8 +214,8 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
                               uint64_t phrase_index, float phrase_seconds,
                               float trigger_interval_seconds, uint32_t capture_mode,
                               uint64_t capture_attack_id) {
-    if (arrangement.pending_count >= kMaxArrangementPendingEvents) return;
-    ProductArrangementPendingEvent& pending = arrangement.pending[arrangement.pending_count++];
+    if (random.pending_count >= kMaxRandomSlotPendingEvents) return;
+    RandomSlotPendingEvent& pending = pending_events[random.pending_count++];
     pending.absolute_sample = absolute_sample;
     pending.event = {};
     pending.event.source_id = static_cast<uint16_t>(source_id);
@@ -155,7 +280,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     }
     const uint64_t chord_attack_id = next_capture_attack_id();
     double voice_delays[8]{};
-    const double spread_seconds = static_cast<double>(arrangement.wave_spread) *
+    const double spread_seconds = static_cast<double>(random.wave_spread) *
         static_cast<double>(std::max(0.0f, spread_interval_seconds));
     for (uint32_t voice = 0u; voice < 8u; ++voice) {
       voice_delays[voice] = next_random() * spread_seconds;
@@ -191,9 +316,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         return arrangement.source_hold_seconds[std::min<uint32_t>(event_source_id - 1u, 7u)];
       }
       const SourceState& source = sources[event_source_id - 1u];
-      const bool fit = event_source_id == KESSHO_PRODUCT_SOURCE_PAD1
-          ? arrangement.pad1_fit_envelope_to_chord
-          : arrangement.pad2_fit_envelope_to_chord;
+      const bool fit = random.fit_envelope_to_chord;
       float hold = source.hold_seconds;
       if (fit) {
         const float available = std::max(
@@ -212,7 +335,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
       if (built_count >= 8u) return;
       ArrangementChordVoice& voice = built[built_count++];
       voice.source_id = event_source_id;
-      voice.midi = clampFloat(midi + static_cast<float>(arrangement.synth_octave * 12), 0.0f, 127.0f);
+      voice.midi = clampFloat(midi + static_cast<float>(random.octave * 12), 0.0f, 127.0f);
       voice.voice_index = voice_index;
       voice.base_delay_seconds = voice_delays[voice_index];
       voice.velocity = velocity;
@@ -232,18 +355,18 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     };
 
     if (source_id == KESSHO_PRODUCT_SOURCE_PAD1 || source_id == KESSHO_PRODUCT_SOURCE_PAD2 || pad_split) {
-      const uint32_t available = arrangement.synth_voice_mask & ~arrangement.pad_euclid_owned_voice_mask & 0xffu;
+      const uint32_t available = random.voice_mask & ~arrangement.pad_euclid_owned_voice_mask & 0xffu;
       uint32_t pad1_mask = 0u;
       uint32_t pad2_mask = 0u;
       if (pad_split) {
         const uint32_t selected = limit_mask(available, voice_count);
-        pad1_mask = selected & ~arrangement.pad2_voice_assign;
-        pad2_mask = selected & arrangement.pad2_voice_assign;
+        pad1_mask = selected & ~random.pad2_voice_assign;
+        pad2_mask = selected & random.pad2_voice_assign;
       } else if (source_id == KESSHO_PRODUCT_SOURCE_PAD2) {
-        const uint32_t eligible = available & arrangement.pad2_voice_assign;
+        const uint32_t eligible = available & random.pad2_voice_assign;
         pad2_mask = limit_mask(eligible != 0u ? eligible : available, voice_count);
       } else {
-        const uint32_t eligible = available & ~arrangement.pad2_voice_assign;
+        const uint32_t eligible = available & ~random.pad2_voice_assign;
         pad1_mask = limit_mask(eligible != 0u ? eligible : available, voice_count);
       }
       if (pad1_mask != 0u) build_pad_mask(pad1_mask, KESSHO_PRODUCT_SOURCE_PAD1);
@@ -295,16 +418,16 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
     }
   };
 
-  if (arrangement.chord_generator_pending) {
-    arrangement.chord_generator_pending = false;
-    queue_chord(
+  if (random.chord_pending) {
+    random.chord_pending = false;
+    if (lane_active && random.mode == kRandomSlotModeChords) queue_chord(
         block_start,
-        arrangement.chord_generator_source_id,
-        arrangement.chord_generator_voice_count,
+        lane_source_id,
+        random.voice_count,
         1.0f,
         std::max(0.02f, harmony.chord_interval_seconds),
         harmony.chord_interval_seconds,
-        arrangement.chord_generator_pad_split,
+        random.pad_split,
         false,
         nullptr,
         0u,
@@ -317,16 +440,16 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         harmony.chord_interval_seconds);
   }
 
-  if (arrangement.lead_random_enabled) {
-    const uint64_t phrase_frames = arrangementFrames(sample_rate, arrangement.lead_phrase_seconds);
-    while (arrangement.next_lead_phrase_frame < block_end) {
-      ++arrangement.lead_phrase_index;
+  if (lane_active && random.mode == kRandomSlotModeNotes) {
+    const uint64_t phrase_frames = arrangementFrames(sample_rate, random.phrase_seconds);
+    while (random.next_phrase_frame < block_end) {
+      ++random.phrase_index;
       const uint32_t note_count = std::max<uint32_t>(1u, static_cast<uint32_t>(
-          std::floor(arrangement.lead_density * 3.0f + next_random() * 2.0 + 0.5)));
+          std::floor(random.density * 3.0f + next_random() * 2.0 + 0.5)));
       int scale_intervals[kMaxScaleNotes]{};
       const uint32_t scale_count = std::max<uint32_t>(1u, scaleIntervals(harmony.scale_id, scale_intervals));
-      const int32_t low = 64 + arrangement.lead_octave * 12;
-      const int32_t high = std::min<int32_t>(127, low + static_cast<int32_t>(arrangement.lead_octave_range * 12u));
+      const int32_t low = 64 + random.notes_octave * 12;
+      const int32_t high = std::min<int32_t>(127, low + static_cast<int32_t>(random.octave_range * 12u));
       const int32_t root_pitch_class = positiveModulo(roundedInt(harmony.root_midi), 12u);
       const int32_t root_base = 36 + root_pitch_class;
       int32_t available[64]{};
@@ -361,7 +484,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
         const int32_t* pool = available;
         uint32_t pool_count = available_count;
         if (available_count > 1u && chord_tone_count > 0u) {
-          if (passing_tone_count == 0u || next_random() < arrangement.lead_chord_bias) {
+          if (passing_tone_count == 0u || next_random() < random.chord_bias) {
             pool = chord_tones;
             pool_count = chord_tone_count;
           } else {
@@ -374,34 +497,34 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
             static_cast<uint32_t>(next_random() * static_cast<double>(pool_count)));
         const int32_t midi = pool[pitch_index];
         const double velocity_random = next_random();
-        const uint64_t target = arrangement.next_lead_phrase_frame +
+        const uint64_t target = random.next_phrase_frame +
             static_cast<uint64_t>(std::llround(timing * static_cast<double>(phrase_frames)));
         queue_note(
             target,
-            arrangement.lead_random_source_id,
+            lane_source_id,
             static_cast<float>(std::min(high, midi)),
-            arrangement.lead_velocity_min +
-                (arrangement.lead_velocity_max - arrangement.lead_velocity_min) * static_cast<float>(velocity_random),
-            arrangement.lead_hold_seconds,
+            random.velocity_min +
+                (random.velocity_max - random.velocity_min) * static_cast<float>(velocity_random),
+            random.hold_seconds,
             note,
             -1.0f,
             -1.0f,
             1.0f,
             KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_RANDOM_TIMING,
-            arrangement.next_lead_phrase_frame,
-            arrangement.lead_phrase_index > 0u ? arrangement.lead_phrase_index - 1u : 0u,
-            arrangement.lead_phrase_seconds,
-            arrangement.lead_phrase_seconds,
+            random.next_phrase_frame,
+            random.phrase_index > 0u ? random.phrase_index - 1u : 0u,
+            random.phrase_seconds,
+            random.phrase_seconds,
             KESSHO_PRODUCT_GENERATED_SEQUENCER_CAPTURE_MODE_RANDOM_NOTES,
             0u);
       }
-      arrangement.next_lead_phrase_frame += phrase_frames;
+      random.next_phrase_frame += phrase_frames;
     }
   }
 
   uint32_t write_index = 0u;
-  for (uint32_t index = 0u; index < arrangement.pending_count; ++index) {
-    ProductArrangementPendingEvent pending = arrangement.pending[index];
+  for (uint32_t index = 0u; index < random.pending_count; ++index) {
+    RandomSlotPendingEvent pending = pending_events[index];
     if (pending.absolute_sample < block_end) {
       // Tap at emission: the note really sounds now, so a capture armed after
       // it was scheduled still sees it.
@@ -414,7 +537,7 @@ void KesshoProductEngine::generateArrangementEvents(uint32_t frames, SequencerBu
       (void)out.push(pending.event);
       continue;
     }
-    arrangement.pending[write_index++] = pending;
+    pending_events[write_index++] = pending;
   }
-  arrangement.pending_count = write_index;
+  random.pending_count = write_index;
 }

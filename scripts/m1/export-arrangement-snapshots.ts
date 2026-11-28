@@ -24,7 +24,10 @@ const { completeCanonicalPresetState } = await import('../../src/presets/presetS
 const { createCoreProductSnapshot } = await import('../../src/audio/coreProductSnapshot');
 const { encodeCoreProductSnapshot } = await import('../../src/audio/coreProductSnapshotEncoder');
 
-const PHRASES_TO_RENDER = 8;
+// 256 phrases: an 8-phrase capture was a single noisy sample (the old engine
+// failed its own fixture for every other seed); this keeps seed noise inside
+// tolerance while real parameter changes still drift.
+const PHRASES_TO_RENDER = 256;
 const outDir = resolve(process.env.KESSHO_M1_FIXTURE_DIR ?? 'build/m1-fixtures');
 const asset = JSON.parse(readFileSync(resolve('public/presets/StringWaves.json'), 'utf8')) as {
   state: Record<string, unknown>;
@@ -47,6 +50,7 @@ for (const entry of cases) {
   const bytes = encodeCoreProductSnapshot(snapshot);
   writeFileSync(resolve(outDir, `${entry.name}.snapshot.bin`), Buffer.from(bytes));
   manifest.push({ name: entry.name, renderSeconds: phraseSeconds * PHRASES_TO_RENDER, phraseSeconds });
-  console.log(`exported ${entry.name}: ${bytes.byteLength} bytes, phrase ${phraseSeconds}s, chordGen=${snapshot.arrangement.chordGeneratorEnabled} lead=${snapshot.arrangement.leadRandomEnabled} leadPhrase=${snapshot.arrangement.leadPhraseSeconds} bpm=${snapshot.transport.bpm}`);
+  const [chordLane, notesLane] = snapshot.synthLanes.slice(4, 6);
+  console.log(`exported ${entry.name}: ${bytes.byteLength} bytes, phrase ${phraseSeconds}s, randomChords=${chordLane?.enabled} randomNotes=${notesLane?.enabled} notesPhrase=${notesLane?.random.phraseSeconds} bpm=${snapshot.transport.bpm}`);
 }
 writeFileSync(resolve(outDir, 'cases.json'), JSON.stringify({ cases: manifest }, null, 2) + '\n');

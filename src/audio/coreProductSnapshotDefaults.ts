@@ -22,7 +22,9 @@ import type {
   ProductSourceSnapshot,
 } from './coreProductSnapshotTypes';
 
-export { anchorWalkerDefaults, orbitSequencerDefaults } from './coreProductSequencerFaceDefaults';
+import { randomSlotDefaults } from './coreProductSequencerFaceDefaults';
+
+export { anchorWalkerDefaults, orbitSequencerDefaults, randomSlotDefaults } from './coreProductSequencerFaceDefaults';
 
 export const SOURCE_ORDER = [
   CORE_PRODUCT_SOURCE_IDS.pad1,
@@ -80,6 +82,7 @@ export function laneDefaults(targetSourceId: number, midiNote: number): ProductL
     tempoMultiplier: 1, initialStartDelaySeconds: -1,
     anchorWalker: anchorWalkerDefaults(),
     orbit: orbitSequencerDefaults(),
+    random: randomSlotDefaults(),
   };
 }
 

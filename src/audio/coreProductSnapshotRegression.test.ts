@@ -4,6 +4,7 @@ import { encodeCoreProductSnapshot } from './coreProductSnapshotEncoder';
 import { buildCoreProductSnapshotDiff } from './CoreProductRuntimeAdapter';
 import { coreProductSequencerClockRejoinMask } from './CoreProductHostSequencerClock';
 import {
+  CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID,
   CORE_PRODUCT_SOURCE_IDS,
   CORE_PRODUCT_TIMING_FLAGS,
   CORE_PRODUCT_TRANSPORT_FLAGS,
@@ -86,7 +87,7 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
       edges: [{ from: 'delayA', to: 'reverb', amount: 0.5, mode: 'sampleHold', min: 0.2, max: 0.8 }],
     },
   });
-  assert.equal(encodeCoreProductSnapshot(modulated).byteLength, 167836, 'web snapshot size must match the native ABI');
+  assert.equal(encodeCoreProductSnapshot(modulated).byteLength, 170052, 'web snapshot size must match the native ABI');
   const edge = 5;
   assert.equal(modulated.routing.fxRouteMode[edge], 3, 'FX Sample & Hold mode did not reach the snapshot');
   assert.equal(modulated.routing.fxRouteMin[edge], 0.2, 'FX route minimum did not reach the snapshot');
@@ -161,16 +162,20 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
     synthChordGeneratorVoiceCount: 5,
     sample2Enabled: true,
   });
-  assert.equal(generator.arrangement.chordGeneratorEnabled, true);
-  assert.equal(generator.arrangement.chordGeneratorSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
-  assert.equal(generator.arrangement.chordGeneratorVoiceCount, 5);
+  // The chord generator is Random Chords on native lane 5 (index 4).
+  assert.equal(generator.synthLanes.length, 6);
+  assert.equal(generator.synthLanes[4]!.sequencerMode, 3);
+  assert.equal(generator.synthLanes[4]!.enabled, true);
+  assert.equal(generator.synthLanes[4]!.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
+  assert.equal(generator.synthLanes[4]!.random.mode, 0);
+  assert.equal(generator.synthLanes[4]!.random.voiceCount, 5);
   const disabledSource = createCoreProductSnapshot({
     synthChordGeneratorEnabled: true,
     synthChordGeneratorSource: 'sample2',
     sample2Enabled: false,
   });
   assert.equal(
-    disabledSource.arrangement.chordGeneratorEnabled,
+    disabledSource.synthLanes[4]!.enabled,
     false,
     'Chord Generator must not schedule an explicitly disabled target source',
   );
@@ -191,14 +196,14 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   const retargetDiff = buildCoreProductSnapshotDiff(liveTarget, liveRetarget);
   assert.equal(retargetDiff.applied, true, 'Chord Generator routing changes should use live dirty diffs');
   const arrangementParamIds = retargetDiff.applied
-    ? retargetDiff.events.map((event) => event.paramId)
+    ? retargetDiff.events.filter((event) => event.index === 4).map((event) => event.paramId)
     : [];
   assert.ok(
-    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorSourceId),
+    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource),
     'a live source change must reach the arrangement renderer without restarting playback',
   );
   assert.ok(
-    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.ArrangementChordGeneratorVoiceCount),
+    arrangementParamIds.includes(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomVoiceCount),
     'a live voice-count change must reach the arrangement renderer',
   );
 
@@ -221,12 +226,14 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   });
   const leadDiff = buildCoreProductSnapshotDiff(sparseLead, denseRetargetedLead);
   assert.equal(leadDiff.applied, true, 'Random Timing changes should use live dirty diffs');
-  const leadParamIds = leadDiff.applied ? leadDiff.events.map((event) => event.paramId) : [];
+  const leadParamIds = leadDiff.applied
+    ? leadDiff.events.filter((event) => event.index === 5).map((event) => event.paramId)
+    : [];
   for (const paramId of [
-    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadRandomSourceId,
-    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadDensity,
-    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctave,
-    KESSHO_PRODUCT_PARAM_IDS.ArrangementLeadOctaveRange,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerLaneTargetSource,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerRandomDensity,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerRandomNotesOctave,
+    KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctaveRange,
   ]) {
     assert.ok(
       leadParamIds.includes(paramId),
@@ -242,15 +249,9 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   assert.equal(octaveDiff.applied, true, 'synth octave changes should use the live dirty-diff path');
   assert.deepEqual(
     octaveDiff.applied
-      ? octaveDiff.events.filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave)
+      ? octaveDiff.events.filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctave)
       : [],
-    [{
-      eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
-      targetId: 0,
-      index: 0,
-      paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementSynthOctave,
-      value: 1,
-    }],
+    [createCoreProductSequencerLaneParamEvent('synth', 4, KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctave, 1)],
     'synth octave changes must reach the core arrangement generator',
   );
 }
@@ -264,7 +265,7 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
     spreadDiff.applied
       ? spreadDiff.events.filter((event) =>
           event.paramId === KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread ||
-          event.paramId === KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread
+          event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread
         )
       : [],
     [
@@ -275,13 +276,7 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
         paramId: KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread,
         value: 1,
       },
-      {
-        eventKind: KESSHO_PRODUCT_EVENT_IDS.SetParam,
-        targetId: 0,
-        index: 0,
-        paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread,
-        value: 1,
-      },
+      createCoreProductSequencerLaneParamEvent('synth', 4, KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread, 1),
     ],
     'spread changes must reach the core harmony and arrangement generators',
   );
@@ -295,8 +290,8 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   );
   assert.deepEqual(
     waveRangeTargets.map(({ targetId, paramId }) => ({ targetId, paramId })),
-    [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.ArrangementWaveSpread }],
-    'Wave Spread Walk mode must modulate the native arrangement parameter',
+    [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread }],
+    'Wave Spread Walk mode walks the state value; the lane param diff carries it to the Random Chords lane',
   );
 }
 

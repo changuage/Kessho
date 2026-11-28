@@ -96,8 +96,8 @@ for (const [path, source] of activeSources) {
 }
 
 assert(
-  arrangementSnapshot.includes('chordGeneratorEnabled: synthChordGeneratorSourceEnabled(arrangementState)')
-    && arrangementSnapshot.includes('// Harmony owns the pitches; Arrangement owns only rendering/routing.'),
+  arrangementSnapshot.includes('lane.enabled = synthChordGeneratorSourceEnabled(state)')
+    && arrangementSnapshot.includes('// Harmony owns the pitches; a Random Chords lane only renders and routes them.'),
   'Chord Generator must remain a renderer of canonical Harmony rather than a second chord authority',
 );
 assert(

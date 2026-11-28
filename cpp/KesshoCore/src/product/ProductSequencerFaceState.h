@@ -9,6 +9,9 @@ namespace kessho::product::internal {
 constexpr uint32_t kSequencerModeEuclid = 0u;
 constexpr uint32_t kSequencerModeAnchorWalker = 1u;
 constexpr uint32_t kSequencerModeOrbit = 2u;
+constexpr uint32_t kSequencerModeRandom = 3u;
+constexpr uint32_t kRandomSlotModeChords = 0u;
+constexpr uint32_t kRandomSlotModeNotes = 1u;
 constexpr uint32_t kMaxAnchorWalkerLayers = 4u;
 constexpr uint32_t kMaxAnchorWalkerPatternSteps = 16u;
 constexpr uint32_t kMaxOrbitSequencerNotes = 32u;
@@ -141,6 +144,40 @@ struct OrbitSequencerState {
   uint32_t seed = 1u;
   uint64_t runtime_sample_frame = 0u;
   bool runtime_initialized = false;
+};
+
+// One Random lane: Chords or Notes. Settings come from the snapshot or lane
+// param events; the runtime half is owned by this lane alone and is seeded
+// from the engine seed and part_id, never from the lane position.
+struct RandomSlotState {
+  uint32_t mode = kRandomSlotModeChords;
+  uint32_t part_id = 0u;
+  // Chords.
+  uint32_t voice_count = 6u;
+  float wave_spread = 0.125f;
+  float requested_wave_spread = 0.125f;
+  int32_t octave = 0;
+  int32_t requested_octave = 0;
+  uint32_t voice_mask = 63u;
+  uint32_t pad2_voice_assign = 0u;
+  bool pad_split = false;
+  bool fit_envelope_to_chord = true;
+  // Notes.
+  float phrase_seconds = 16.0f;
+  float density = 0.5f;
+  int32_t notes_octave = 1;
+  uint32_t octave_range = 2u;
+  float hold_seconds = 0.5f;
+  float velocity_min = 0.5f;
+  float velocity_max = 0.9f;
+  float chord_bias = 0.78f;
+  float initial_delay_seconds = 0.0f;
+  // Runtime.
+  uint32_t stream_state = 1u;
+  uint64_t next_phrase_frame = 0u;
+  uint64_t phrase_index = 0u;
+  bool chord_pending = false;
+  uint32_t pending_count = 0u;
 };
 
 } // namespace kessho::product::internal

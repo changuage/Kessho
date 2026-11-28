@@ -359,8 +359,11 @@ void KesshoProductEngine::advanceHarmonyClock() {
     bool staged_voicing_change = false;
     if (phrase_boundary) {
       staged_voicing_change = harmony.voicing_spread != harmony.requested_voicing_spread;
-      arrangement.synth_octave = arrangement.requested_synth_octave;
-      arrangement.wave_spread = arrangement.requested_wave_spread;
+      for (uint32_t lane_index = 0u; lane_index < kMaxRandomSlotLanes; ++lane_index) {
+        RandomSlotState& random = synth_lanes[lane_index].random;
+        random.octave = random.requested_octave;
+        random.wave_spread = random.requested_wave_spread;
+      }
       harmony.voicing_spread = harmony.requested_voicing_spread;
     }
     const uint64_t phrase_index = phrase_boundary
@@ -496,7 +499,7 @@ void KesshoProductEngine::advanceHarmonyClock() {
     // Harmony remains the pitch authority. The arrangement renderer retriggers
     // the newly resolved pool at every Harmony tick, so Chords / Phrase controls
     // texture density without creating a second chord engine.
-    arrangement.chord_generator_pending = arrangement.chord_generator_enabled;
+    requestRandomChordRetrigger();
     harmony.harmony_rng_state = random.state;
     harmony.chord_sub_tick = (harmony.chord_sub_tick + 1u) % chords_per_phrase;
     harmony.next_harmony_frame += interval;
@@ -516,9 +519,18 @@ void KesshoProductEngine::stageNextHarmonyPreview() {
     return;
   }
   const HarmonyState saved_harmony = harmony;
-  const int32_t saved_synth_octave = arrangement.synth_octave;
-  const float saved_wave_spread = arrangement.wave_spread;
-  const bool saved_chord_generator_pending = arrangement.chord_generator_pending;
+  // The preview ticks the real Harmony clock; keep every Random lane's
+  // phrase-staged values and pending chord untouched by it.
+  struct RandomLanePreviewSave {
+    int32_t octave;
+    float wave_spread;
+    bool chord_pending;
+  };
+  RandomLanePreviewSave saved_random[kMaxRandomSlotLanes]{};
+  for (uint32_t lane_index = 0u; lane_index < kMaxRandomSlotLanes; ++lane_index) {
+    const RandomSlotState& random = synth_lanes[lane_index].random;
+    saved_random[lane_index] = {random.octave, random.wave_spread, random.chord_pending};
+  }
   harmony_preview_active = true;
   harmony.next_harmony_frame = transport.sample_frame;
   advanceHarmonyClock();
@@ -532,9 +544,12 @@ void KesshoProductEngine::stageNextHarmonyPreview() {
   for (uint32_t index = 0u; index < 8u; ++index) harmony.next_note_pool_midi[index] = preview_notes[index];
   harmony.next_source = preview_source;
   harmony.next_step_index = preview_step;
-  arrangement.synth_octave = saved_synth_octave;
-  arrangement.wave_spread = saved_wave_spread;
-  arrangement.chord_generator_pending = saved_chord_generator_pending;
+  for (uint32_t lane_index = 0u; lane_index < kMaxRandomSlotLanes; ++lane_index) {
+    RandomSlotState& random = synth_lanes[lane_index].random;
+    random.octave = saved_random[lane_index].octave;
+    random.wave_spread = saved_random[lane_index].wave_spread;
+    random.chord_pending = saved_random[lane_index].chord_pending;
+  }
   harmony_preview_active = false;
 }
 
