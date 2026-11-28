@@ -1,3 +1,5 @@
+import { randomSlotStatePatch } from './randomSlotStatePatch.mjs';
+
 const statePatch = {
   padEnabled: true,
   synthLevel: 0.5,
@@ -529,7 +531,7 @@ const sequencedPad1EuclidStatePatch = createSequencedSynthEuclidStatePatch('pad1
 });
 const sequencedPad2EuclidStatePatch = createSequencedSynthEuclidStatePatch('pad2', {
   pad2Enabled: true,
-  pad2VoiceAssign: 1 << 1,
+  synthEuclid1VoiceMask: 1 << 1,
   pad2Level: 0.65,
 });
 
@@ -788,10 +790,10 @@ const sample2ChordGeneratorStatePatch = {
   ...statePatch,
   ...sample2PianoPatch,
   padEnabled: false,
-  synthChordGeneratorEnabled: false,
-  synthChordGeneratorSource: 'sample2',
-  synthChordGeneratorVoiceCount: 2,
-  leadRandomEnabled: false,
+  // Random Chords starts off in slot 5; the case's stateEvents switch it on.
+  ...randomSlotStatePatch({
+    chords: { enabled: false, source: 'sample2', voiceCount: 2, waveSpread: 0 },
+  }),
   synthEuclideanMasterEnabled: true,
   synthEuclid1Enabled: false,
   rootNote: 0,
@@ -799,21 +801,24 @@ const sample2ChordGeneratorStatePatch = {
   manualScale: 'Major (Ionian)',
   chordRate: 32,
   voicingSpread: 0.5,
-  waveSpread: 0,
 };
 const sample2RandomTimingStatePatch = {
   ...statePatch,
   ...sample2SoftStringPatch,
   padEnabled: false,
-  synthChordGeneratorEnabled: false,
-  leadRandomEnabled: false,
-  leadRandomSource: 'sample2',
-  lead1Density: 1,
-  lead1Octave: 2,
-  lead1OctaveRange: 1,
-  leadRandomClockDivision: 16,
-  leadRandomClockSource: 'localPhrase',
-  leadRandomSyncPolicy: 'immediate',
+  // Random Notes starts off in slot 6; the case's stateEvents switch it on.
+  ...randomSlotStatePatch({
+    notes: {
+      enabled: false,
+      source: 'sample2',
+      density: 1,
+      octave: 2,
+      octaveRange: 1,
+      clock: 'localPhrase',
+      referenceSyncPolicy: 'immediate',
+      referenceClockDivision: 16,
+    },
+  }),
   phraseLength: 0.5,
   synthEuclideanMasterEnabled: true,
   synthEuclid1Enabled: false,
@@ -825,8 +830,6 @@ const sample2GeneratorStatePatch = {
   ...statePatch,
   ...sample2PianoPatch,
   padEnabled: false,
-  synthChordGeneratorEnabled: false,
-  leadRandomEnabled: false,
   synthEuclideanMasterEnabled: true,
   synthEuclid1Enabled: false,
   sequencerMasterBPM: 120,
@@ -2039,7 +2042,7 @@ const rawCases = [
     minSignalRms: 0.0001,
     statePatch: sample2ChordGeneratorStatePatch,
     stateEvents: [
-      { delayMs: 100, patch: { synthChordGeneratorEnabled: true, synthChordGeneratorSource: 'sample2' } },
+      { delayMs: 100, patch: randomSlotStatePatch({ chords: { enabled: true, source: 'sample2' } }) },
     ],
     manualNotes: false,
     routeSmokeOnly: true,
@@ -2048,7 +2051,7 @@ const rawCases = [
   sample2MasterOutputCase(
     'simple-chord-generator-sample2-master-output',
     sample2ChordGeneratorStatePatch,
-    [{ delayMs: 100, patch: { synthChordGeneratorEnabled: true, synthChordGeneratorSource: 'sample2' } }],
+    [{ delayMs: 100, patch: randomSlotStatePatch({ chords: { enabled: true, source: 'sample2' } }) }],
   ),
   {
     id: 'simple-random-timing-sample2-dry-routing',
@@ -2061,7 +2064,7 @@ const rawCases = [
     minSignalRms: 0.00002,
     statePatch: sample2RandomTimingStatePatch,
     stateEvents: [
-      { delayMs: 100, patch: { leadRandomEnabled: true, leadRandomSource: 'sample2' } },
+      { delayMs: 100, patch: randomSlotStatePatch({ notes: { enabled: true, source: 'sample2' } }) },
     ],
     manualNotes: false,
     routeSmokeOnly: true,
@@ -2070,7 +2073,7 @@ const rawCases = [
   sample2MasterOutputCase(
     'simple-random-timing-sample2-master-output',
     sample2RandomTimingStatePatch,
-    [{ delayMs: 100, patch: { leadRandomEnabled: true, leadRandomSource: 'sample2' } }],
+    [{ delayMs: 100, patch: randomSlotStatePatch({ notes: { enabled: true, source: 'sample2' } }) }],
     2000,
     0.00002,
   ),

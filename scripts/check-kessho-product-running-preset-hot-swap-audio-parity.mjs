@@ -134,7 +134,6 @@ function lowNoisePatch() {
     insectsEnabled: false,
     lead2Enabled: false,
     leadEnabled: false,
-    leadRandomEnabled: false,
     masterVolume: 0.8,
     natureLevel: 0,
     oceanSampleEnabled: false,
@@ -239,7 +238,6 @@ function createCases() {
       sourceId: 3,
       initialState: sequencedSynthPatch('lead1', {
         leadEnabled: true,
-        lead1Density: 0,
         lead1Hold: 0.35,
         lead1Level: 0.72,
         lead1Morph: 0,

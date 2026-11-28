@@ -473,10 +473,6 @@ export function loadCoreProductHostHarness(options = {}) {
     'LoopEnabled',
     'MaxVoices',
   ];
-  const simpleSequencerSourceKeys = [
-    'synthChordGeneratorSource',
-    'leadRandomSource',
-  ];
   const stateValueChanged = (previous, next, key) => previous?.[key] !== next?.[key];
   const productSamplePlaybackTriggerCriticalChange = (previous, next) => {
     if (!previous || !next) return false;
@@ -485,10 +481,7 @@ export function loadCoreProductHostHarness(options = {}) {
         if (stateValueChanged(previous, next, `${slotId}${suffix}`)) return true;
       }
     }
-    for (const key of simpleSequencerSourceKeys) {
-      if (stateValueChanged(previous, next, key)) return true;
-    }
-    for (let lane = 1; lane <= 4; lane += 1) {
+    for (let lane = 1; lane <= 6; lane += 1) {
       if (stateValueChanged(previous, next, `synthEuclid${lane}Source`)) return true;
     }
     return previous?.synthSequencerFaces !== next?.synthSequencerFaces;
@@ -668,10 +661,7 @@ export function loadCoreProductHostHarness(options = {}) {
       }
       return next;
     },
-    isCoreProductRuntimeWalkStatePatchKey: (key) => [
-      'lead1Density',
-      'lead1Octave',
-      'lead1OctaveRange',
+    isCoreProductRuntimeWalkStatePatchKey: (key) => /^synthEuclid[1-6]Random(WaveSpread|Octave|Density|NotesOctave|OctaveRange)$/.test(key) || [
       'lead1Distance',
       'lead2Distance',
       'padDistance',

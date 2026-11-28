@@ -8,6 +8,7 @@ import {
   writeJsonReport,
   writeMarkdownReport,
 } from './product-core/lib/reporting.mjs';
+import { randomSlotStatePatch } from './lib/randomSlotStatePatch.mjs';
 
 const root = process.cwd();
 const DEFAULT_PORT = 4196;
@@ -135,7 +136,6 @@ function lowNoisePatch() {
     insectsEnabled: false,
     lead2Enabled: false,
     leadEnabled: false,
-    leadRandomEnabled: false,
     oceanSampleEnabled: false,
     oceanWaveSynthEnabled: false,
     pad2Enabled: false,
@@ -162,7 +162,6 @@ function stringWavesArrangementPatch() {
     padEnabled: true,
     synthLevel: 0.25,
     synthEuclideanMasterEnabled: false,
-    synthVoiceMask: 63,
     synthAttack: 6,
     synthDecay: 1,
     synthRelease: 12,
@@ -173,16 +172,21 @@ function stringWavesArrangementPatch() {
     granularPad1Send: 0.59,
     pad1ReverbSend: 0.31,
     leadEnabled: true,
-    leadRandomEnabled: true,
-    leadRandomSource: 'lead1',
-    leadRandomClockSource: 'globalPhrase',
-    leadRandomSyncPolicy: 'restartNow',
+    // String Waves: Random Chords on Pad 1 (slot 5) and Random Notes on Lead 1 (slot 6).
+    ...randomSlotStatePatch({
+      chords: { source: 'pad1', voiceMask: 63 },
+      notes: {
+        source: 'lead1',
+        clock: 'globalPhrase',
+        density: 0.5,
+        octave: 0,
+        octaveRange: 2,
+        referenceSyncPolicy: 'restartNow',
+      },
+    }),
     leadLevel: 1,
     lead1Level: 0.01,
-    lead1Density: 0.5,
     lead1Hold: 0.5,
-    lead1Octave: 0,
-    lead1OctaveRange: 2,
     lead1PresetA: 'soft_rhodes',
     lead1PresetB: 'gamelan',
     lead1Morph: 0.413588,

@@ -20,6 +20,7 @@ import {
   writeJsonReport,
   writeMarkdownReport,
 } from './product-core/lib/reporting.mjs';
+import { randomSlotStatePatch } from './lib/randomSlotStatePatch.mjs';
 
 const root = process.cwd();
 const DEFAULT_PORT = 4197;
@@ -231,7 +232,6 @@ function basePatch() {
     synthEuclid2Enabled: false,
     synthEuclid3Enabled: false,
     synthEuclid4Enabled: false,
-    leadRandomEnabled: false,
 
     drumEnabled: false,
     drumLevel: 0,
@@ -335,13 +335,11 @@ function synthSourcesPatch(level = 0.45) {
     padMorph: 0.25,
     pad2Enabled: true,
     pad2Level: level * 0.85,
-    pad2VoiceAssign: 42,
     pad2PresetA: 'init',
     pad2PresetB: 'saturated_drift',
     pad2Morph: 0.35,
     leadEnabled: true,
     lead1Level: level * 0.9,
-    lead1Density: 0.7,
     lead1Hold: 0.35,
     lead1PresetA: 'soft_rhodes',
     lead1PresetB: 'gamelan',
@@ -763,10 +761,14 @@ const SCENARIOS = [
           duration: { unit: 'phrase', value: 1 },
         })),
       },
-      leadRandomEnabled: true,
-      leadRandomSource: 'lead1',
-      leadRandomClockSource: 'globalBeat',
-      leadRandomSyncPolicy: 'restartNow',
+      ...randomSlotStatePatch({
+        notes: {
+          source: 'lead1',
+          clock: 'globalBeat',
+          density: 0.7,
+          referenceSyncPolicy: 'restartNow',
+        },
+      }),
     },
     { manualNotes: DEFAULT_MANUAL_NOTES.slice(0, 3) },
   ),
@@ -784,10 +786,14 @@ const SCENARIOS = [
       padLfo1Dest: 'filterCutoff',
       pad2Lfo1Depth: 0.25,
       pad2Lfo1Dest: 'filterCutoff',
-      leadRandomEnabled: true,
-      leadRandomSource: 'lead1',
-      leadRandomClockSource: 'globalBeat',
-      leadRandomSyncPolicy: 'restartNow',
+      ...randomSlotStatePatch({
+        notes: {
+          source: 'lead1',
+          clock: 'globalBeat',
+          density: 0.7,
+          referenceSyncPolicy: 'restartNow',
+        },
+      }),
     },
     { manualNotes: DEFAULT_MANUAL_NOTES },
   ),

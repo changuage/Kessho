@@ -96,14 +96,14 @@ for (const [path, source] of activeSources) {
 }
 
 assert(
-  arrangementSnapshot.includes('lane.enabled = synthChordGeneratorSourceEnabled(state)')
-    && arrangementSnapshot.includes('// Harmony owns the pitches; a Random Chords lane only renders and routes them.'),
+  arrangementSnapshot.includes('synthRandomSettingsFromState(record, laneNumber)')
+    && arrangementSnapshot.includes('// Harmony owns the pitches and Random lanes own their generators;'),
   'Chord Generator must remain a renderer of canonical Harmony rather than a second chord authority',
 );
 assert(
-  synthPage.includes('harmonyProjection={props.harmonyProjection}')
-    && synthPage.includes('synthChordGeneratorVoiceCount'),
-  'Synth Simple mode must expose the Harmony-driven Chord Generator controls and projection',
+  synthPage.includes('props.harmonyProjection.activeFrame.currentNotePool')
+    && synthPage.includes('<RandomSlotSurface'),
+  'Synth page must expose the Harmony projection and the Random slot controls',
 );
 
 for (const [path, source] of activeSources) {

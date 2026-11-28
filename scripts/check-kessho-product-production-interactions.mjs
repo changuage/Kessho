@@ -37,9 +37,9 @@ requireTokens('scripts/check-kessho-product-browser-runtime.mjs', [
   'captureRuntimeWalkProbe',
   'assertRuntimeWalkProbe',
   'runtime-walk-ui',
-  "const key = 'lead1Density'",
+  "const key = 'synthEuclid6RandomDensity'",
   "activeTab: 'synth'",
-  "leadRandomSource: 'piano'",
+  "synthEuclid6Source: 'sample1'",
   'distinctPositions.length >= 3',
   'runtimeSliderDebug.walkIndicatorConsumeCount',
   'inactive runtime-walk UI store received unnecessary position updates',
@@ -127,6 +127,7 @@ requireTokens('cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.
   ]) {
     assert(!harmonySeedSource.includes(token), `harmony seed payload must not include live sequencer key ${token}`);
   }
+  assert(!/synthEuclid\dRandom/.test(harmonySeedSource), 'harmony seed payload must not include Random slot keys');
 }
 
 requireTokens('cpp/KesshoCore/src/product/sources/SourceModulation.cpp', [
