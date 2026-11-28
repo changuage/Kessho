@@ -75,17 +75,12 @@ requireTokens('src/audio/coreProductEvents.ts', [
   'isCoreProductRuntimeWalkStatePatchKey',
   "'chordRate'",
   "'voicingSpread'",
-  "'waveSpread'",
   "'detune'",
-  "'synthOctave'",
-  "'lead1Density'",
-  "'lead1Octave'",
-  "'lead1OctaveRange'",
+  // Random settings are per slot (synthEuclid<N>Random<Param>) since M3.
+  'resolveCoreProductRandomSlotRangeTargets',
+  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS[paramName], key)',
   'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, key)',
   'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key)',
-  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, key)',
-  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key)',
-  'controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, key)',
 ]);
 
 requireTokens('src/audio/product/host/CoreProductModulationRangeBridge.ts', [

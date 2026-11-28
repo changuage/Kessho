@@ -123,7 +123,8 @@ assert(
       source.includes("const probabilityDelta = pointerType === 'touch' ? deltaX : -deltaY;") &&
       source.includes("pointerType === 'touch' && Math.abs(deltaX) <= Math.abs(deltaY)") &&
       source.includes("addEventListener('pointercancel'") &&
-      source.includes('aria-label={`Trigger step ${step + 1}`}') &&
+      // Synth labels a printed variation's steps by its name ("Printed A step 3").
+      /aria-label=\{`[^`]*step \$\{step \+ 1\}`\}/.test(source) &&
       source.includes('aria-pressed={inRange ? hit : undefined}') &&
       source.includes('e.detail !== 0')
     ),
