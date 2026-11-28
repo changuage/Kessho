@@ -195,7 +195,7 @@ M0 ─► M1 ─► M2 ─► M3 ─► M4 ─► M8 ─► M9
 | M0 Host transport landed | Done on `main` | — |
 | M1 Fixtures and baselines | Done on `main` | — |
 | M2 Chord model and printer | Done on `main` ([m2-chord-model-design.md](m2-chord-model-design.md)); lane pitch binding moved to M4, Voicing drawer to M5 | — |
-| M3 Six slots, per-slot generators | Done on `main` ([m3-slots-design.md](m3-slots-design.md)); the web reference engine still reads the retired arrangement keys |  — |
+| M3 Six slots, per-slot generators | Done on `main` ([m3-slots-design.md](m3-slots-design.md)); the web reference engine still reads the retired arrangement keys | — |
 | M4 Part, Overview, lane model | Not started | — |
 | M5 Global Harmony surface | Not started | — |
 | M6 Live layer (Brain) | Not started | — |
