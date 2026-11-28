@@ -957,66 +957,9 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   SYNTH-SPECIFIC: Simple mode, source selectors
+   SYNTH-SPECIFIC: source selectors
    ══════════════════════════════════════════════════════════════════ */
 
-/* ── Simple Mode ── */
-.synth-root .synth-simple-seq {
-  display: flex; flex-direction: column; gap: 12px; padding: 8px 0;
-}
-.synth-root .synth-simple-section {
-  background: rgba(255,255,255,0.03); border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle); padding: 10px 12px;
-}
-.synth-root .synth-simple-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-  font-size: var(--k-fs-4); font-weight: var(--k-fw-semi); color: #ccc;
-}
-.synth-root .synth-simple-content {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr);
-  gap: 12px;
-  align-items: stretch;
-}
-.synth-root .synth-simple-controls {
-  min-width: 0;
-}
-.synth-root .synth-random-timing-advanced {
-  margin-top: 4px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 5px;
-}
-.synth-root .synth-random-timing-advanced summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-bold);
-  letter-spacing: 0.04em;
-  padding: 3px 0;
-  user-select: none;
-}
-.synth-root .synth-random-timing-advanced summary:hover,
-.synth-root .synth-random-timing-advanced summary:focus-visible {
-  color: var(--text-primary);
-}
-.synth-root .synth-random-timing-advanced-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding-top: 5px;
-}
-@media (max-width: 520px) {
-  .synth-root .synth-random-timing-advanced-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.synth-root .synth-harmony-viz-context {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: var(--k-fs-2);
-  font-weight: var(--k-fw-medium);
-  text-transform: capitalize;
-}
 .synth-root .synth-wave-spread-scale {
   display: flex;
   justify-content: space-between;
@@ -1034,51 +977,6 @@
 }
 .synth-root .synth-octave-scale-span {
   padding-right: 2px;
-}
-.synth-root .synth-simple-content .optional-visualizer-active {
-  min-width: 0;
-  min-height: 184px;
-  display: flex;
-  flex-direction: column;
-}
-.synth-root .synth-simple-content .optional-visualizer-active .simple-phrase-viz {
-  flex: 1;
-}
-.synth-root .synth-simple-content .optional-visualizer-placeholder__text h2 {
-  font-size: var(--k-fs-4);
-  font-weight: var(--k-fw-semi);
-}
-.synth-root .synth-simple-content .optional-visualizer-placeholder__text p {
-  font-size: var(--k-fs-3);
-  font-weight: var(--k-fw-normal);
-}
-.synth-root .synth-simple-content .optional-visualizer-placeholder__button {
-  font-size: var(--k-fs-3);
-  font-weight: var(--k-fw-semi);
-}
-.synth-root .simple-phrase-viz {
-  min-width: 0;
-  min-height: 184px;
-  height: 100%;
-  border: 1px solid rgba(255,255,255,0.075);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: rgba(2,6,23,0.62);
-}
-.synth-root .simple-phrase-viz canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.synth-root .synth-simple-enable {
-  padding: 4px 10px; font-size: var(--k-fs-1); font-weight: var(--k-fw-bold); border: none;
-  border-radius: var(--radius-sm); cursor: pointer;
-  background: var(--bg-control); color: #666; transition: all 0.15s;
-  text-transform: uppercase; letter-spacing: 0.5px;
-}
-.synth-root .synth-simple-enable.on {
-  background: var(--accent-cyan); color: #000;
-  box-shadow: 0 0 8px rgba(0,212,255,0.3);
 }
 
 .synth-root .seq-lane-controls .seq-drag-num {
@@ -2408,17 +2306,6 @@
 
 /* ══ MOBILE OVERRIDES (≤ 600px) ══ */
 @media (max-width: 600px) {
-  .synth-root .synth-simple-content {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .synth-root .simple-phrase-viz {
-    min-height: 150px;
-  }
-  .synth-root .synth-simple-content .optional-visualizer-active {
-    min-height: 150px;
-  }
   .synth-root .synth-keyboard-toggle { margin-left: 0; }
   .synth-root .synth-keyboard-panel { padding: 10px; }
   .synth-root .synth-keyboard-header { flex-direction: column; align-items: flex-start; }
@@ -2438,7 +2325,7 @@
 }
 
 /* Card shell, header and title resolve from designSystem.css. */
-.synth-root .synth-keyboard-panel, .synth-root .synth-simple-section {
+.synth-root .synth-keyboard-panel {
   background: var(--fx-card-bg);
   border: var(--k-card-border);
   border-radius: var(--k-radius-card);
@@ -3098,5 +2985,78 @@
 
   .synth-root .seq-arp-contour {
     grid-template-columns: 28px minmax(0, 1fr);
+  }
+}
+
+/* Overview rows for Random slots show one macro instead of a trigger grid. */
+.synth-root .seq-ov-type {
+  color: var(--text-primary);
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-semi);
+}
+.synth-root .seq-ov-random-macro {
+  padding: 2px 8px 6px;
+  min-width: 0;
+}
+/* The controls of one Random slot. Spacing and hairline rules only: no boxes,
+   no accent stripes, no glow. Colour comes from the slot's own --sc. */
+.synth-root .random-slot-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 2px 4px;
+  min-width: 0;
+}
+.synth-root .random-slot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.synth-root .random-slot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-medium);
+}
+.synth-root .random-slot-voices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+.synth-root .random-slot-voices-label {
+  color: var(--text-muted);
+  font-size: var(--k-fs-3);
+  font-weight: var(--k-fw-medium);
+}
+.synth-root .random-slot-surface .sc-toggle-btn {
+  min-height: 32px;
+}
+.synth-root .random-slot-surface .sc-toggle-btn.on {
+  color: var(--text-primary);
+  font-weight: var(--k-fw-bold);
+}
+
+/* Six slots: one row at full width, two rows of three in a narrow panel. */
+.synth-root .seq-slot-strip {
+  container-type: inline-size;
+  container-name: seq-slot-strip;
+}
+.synth-root .seq-slot-strip .seq-tab-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+@container seq-slot-strip (max-width: 560px) {
+  .synth-root .seq-slot-strip .seq-tab-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .synth-root .seq-slot-strip .seq-tab {
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius-md);
   }
 }

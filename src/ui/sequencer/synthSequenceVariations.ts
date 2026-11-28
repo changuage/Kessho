@@ -1,3 +1,4 @@
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../../audio/sequencerLaneCounts';
 import type { ProductArpConfig } from '../../audio/productArpeggiator';
 import type { ClockDivision } from '../../audio/drumSeqTypes';
 import { CHORD_MAX_NOTES_PER_CELL, createFixedChord, normalizeChord, normalizeChordNote, type Chord, type ChordNote } from '../../audio/harmony/chord';
@@ -841,7 +842,7 @@ export function serializeSynthSequenceVariationBank(
   return normalized ? cloneJson(normalized) : null;
 }
 
-export function normalizeSynthSequenceVariationBanks(value: unknown, laneCount = 4): SynthSequenceVariationBanks {
+export function normalizeSynthSequenceVariationBanks(value: unknown, laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT): SynthSequenceVariationBanks {
   if (value === undefined || value === null) return createDefaultSynthSequenceVariationBanks(laneCount);
   if (!Array.isArray(value)) invalid('variation banks must be an array');
   const values = value;
@@ -852,14 +853,14 @@ export function normalizeSynthSequenceVariationBanks(value: unknown, laneCount =
 
 export function serializeSynthSequenceVariationBanks(
   banks: readonly (SynthSequenceVariationBank | null)[] | undefined,
-  laneCount = 4,
+  laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT,
 ): SynthSequenceVariationBanks {
   return Array.from({ length: Math.max(0, laneCount) }, (_, laneIndex) => (
     serializeSynthSequenceVariationBank(banks?.[laneIndex])
   ));
 }
 
-export function createDefaultSynthSequenceVariationBanks(laneCount = 4): SynthSequenceVariationBanks {
+export function createDefaultSynthSequenceVariationBanks(laneCount: number = SYNTH_EUCLIDEAN_LANE_COUNT): SynthSequenceVariationBanks {
   return Array.from({ length: Math.max(0, laneCount) }, () => null);
 }
 

@@ -1,3 +1,4 @@
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import { deriveMissingWaterLayerEnabledFlags } from '../audio/waterLayerActivation';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import {
@@ -7,6 +8,7 @@ import {
 import { PARAM_REGISTRY } from './ParamRegistry';
 import { normalizeFxRoutingGraphState } from '../ui/routing/fxRoutingGraph';
 import { normalizeSynthSequenceVariationBanks } from '../ui/sequencer/synthSequenceVariations';
+import { migrateSynthRandomSlots } from './synthRandomMigration';
 
 const CANONICAL_PRESET_STATE_KEYS = Object.keys(PARAM_REGISTRY) as (keyof SliderState)[];
 
@@ -26,6 +28,8 @@ export function completeCanonicalPresetState(
   state: Partial<SliderState> | Record<string, unknown>,
 ): SliderState {
   const completed = { ...state } as Record<string, unknown>;
+  // Presets from before the Random slots carry the singleton generator keys.
+  migrateSynthRandomSlots({ state: completed });
   completed.modulationSourceA = normalizeModulationSourceConfig(
     completed.modulationSourceA as never,
     {
@@ -59,7 +63,7 @@ export function completeCanonicalPresetState(
     completed.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
   } else {
     try {
-      completed.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(completed.synthSequenceVariationBanks, 4);
+      completed.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(completed.synthSequenceVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
     } catch {
       completed.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
     }

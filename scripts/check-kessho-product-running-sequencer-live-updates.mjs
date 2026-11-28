@@ -361,7 +361,7 @@ check(
 check(
   'audio-sync-sequencer-lane-enabled-resolved',
   files.audioSync.includes('SEQUENCER_LANE_ENABLED_KEY_PATTERNS') &&
-    files.audioSync.includes('/^synthEuclid[1-4](Enabled|Solo)$/') &&
+    files.audioSync.includes('/^synthEuclid[1-6](Enabled|Solo)$/') &&
     files.audioSync.includes('/^drumEuclid[1-6](Enabled|Solo)$/') &&
     count(files.audioSync, 'requiresSequencerLaneEnabledResolvedCommit(patch)') >= 3,
   'sequencer lane enable/mute keys must route through immediate trigger-critical ProductControl commits',
@@ -369,7 +369,7 @@ check(
 check(
   'audio-sync-sequencer-target-resolved',
   files.audioSync.includes('SEQUENCER_TARGET_KEY_PATTERNS') &&
-    files.audioSync.includes('/^synthEuclid[1-4]Source$/') &&
+    files.audioSync.includes('/^synthEuclid[1-6]Source$/') &&
     files.audioSync.includes('/^drumEuclid[1-6]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/') &&
     count(files.audioSync, 'requiresSequencerTargetResolvedCommit(patch)') >= 3,
   'sequencer source/target keys must route through immediate trigger-critical ProductControl commits so running lanes update selected engines',
@@ -518,10 +518,8 @@ check(
     files.synthPage.includes('if (onRequestPlaybackStart) setRecordedCaptureStartPendingLane(laneIndex)') &&
     files.synthPage.includes('if (laneIndex === null || !isRunning) return') &&
     files.synthPage.includes('if (laneIndex === seq.activeTab) startRecordedCaptureForActiveLane()') &&
-    files.synthPage.includes('? sourceForMode(activeSequencerMode)') &&
+    files.synthPage.includes('sourceForMode(activeSequencerMode, activeRandomMode)') &&
     files.synthPage.includes("policy: 'fixed'") &&
-    files.synthPage.includes("id: 'randomChords' as const") &&
-    files.synthPage.includes("id: 'randomNotes' as const") &&
     files.recordedCaptureHook.includes("request.policy ?? 'fixed'") &&
     files.recordedCaptureHook.includes("if (mode === 'anchorWalker') return 'walker'") &&
     files.recordedCaptureHook.includes("if (mode === 'orbit') return 'orbit'") &&

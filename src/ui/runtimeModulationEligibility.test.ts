@@ -87,8 +87,12 @@ test('shared routing ownership gates source-local ranges without cross-gating un
   );
 });
 
-test('arrangement lead timing keys are independent of the Lead 1 source toggle', () => {
-  for (const key of ['lead1Density', 'lead1Octave', 'lead1OctaveRange']) {
-    assert.equal(isRuntimeModulationKeyEligible(key, { leadEnabled: false }), true, `${key} must remain available for arrangement timing`);
+test('Random slot keys are independent of every source toggle', () => {
+  for (const key of ['synthEuclid5RandomDensity', 'synthEuclid5RandomNotesOctave', 'synthEuclid6RandomWaveSpread']) {
+    assert.equal(
+      isRuntimeModulationKeyEligible(key, { leadEnabled: false, padEnabled: false }),
+      true,
+      `${key} must remain available for the slot's own generator`,
+    );
   }
 });

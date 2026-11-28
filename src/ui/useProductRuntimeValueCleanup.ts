@@ -8,6 +8,7 @@ const STOPPED_RUNTIME_VALUE_KEYS = [
   'padDistance', 'pad2Distance', 'pianoDistance', 'sample1Distance', 'sample2Distance',
   'synthEuclid1NoteMin', 'synthEuclid1NoteMax', 'synthEuclid2NoteMin', 'synthEuclid2NoteMax',
   'synthEuclid3NoteMin', 'synthEuclid3NoteMax', 'synthEuclid4NoteMin', 'synthEuclid4NoteMax',
+  'synthEuclid5NoteMin', 'synthEuclid5NoteMax', 'synthEuclid6NoteMin', 'synthEuclid6NoteMax',
 ];
 
 const STOPPED_TRIGGER_POSITION_KEYS = [

@@ -19,12 +19,6 @@ export const RECORDED_CAPTURE_MODE_IDS: Readonly<Record<RecordedNoteSource, numb
   randomNotes: 4,
 };
 
-/** Fixed source_lane_index the arrangement producers stamp on their capture events. */
-export const RECORDED_CAPTURE_ARRANGEMENT_LANES = {
-  randomChords: 0x100,
-  randomNotes: 0x101,
-} as const;
-
 export function recordedCaptureModeId(source: RecordedNoteSource): number {
   return RECORDED_CAPTURE_MODE_IDS[source];
 }
@@ -32,13 +26,6 @@ export function recordedCaptureModeId(source: RecordedNoteSource): number {
 /** The native source-mode mask that selects this source's producer tap. */
 export function recordedCaptureModeMask(source: RecordedNoteSource): number {
   return 1 << recordedCaptureModeId(source);
-}
-
-/** Random producers have no lane, so a request targets their sentinel lane. */
-export function recordedCaptureSourceLane(source: RecordedNoteSource, laneIndex: number): number {
-  return source === 'randomChords' || source === 'randomNotes'
-    ? RECORDED_CAPTURE_ARRANGEMENT_LANES[source]
-    : laneIndex;
 }
 
 export type RecordedNoteCaptureBatchPhase = 'recording' | 'finishing' | 'ready' | 'error';

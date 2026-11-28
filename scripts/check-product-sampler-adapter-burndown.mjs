@@ -39,7 +39,6 @@ const allowedLegacyAliasFiles = new Set([
   'src/audio/distanceMacro.ts',
   'src/audio/CoreProductHostMidi.ts',
   'src/audio/coreProductArrangementSchedulerUtils.ts',
-  'src/audio/coreProductChordVoices.ts',
   'src/audio/coreProductSnapshotPadVoiceRouting.ts',
   'src/audio/coreProductSourceMapping.ts',
   'src/audio/simpleSequencerPhrasePreview.ts',

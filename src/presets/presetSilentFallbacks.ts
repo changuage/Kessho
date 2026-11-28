@@ -9,7 +9,6 @@ export function sourceSlotFallbackOverrides(slot: string): Record<string, unknow
         lead2Level: 0,
         pianoLevel: 0,
         leadEnabled: false,
-        leadRandomEnabled: false,
         pianoEnabled: false,
         synthEuclideanMasterEnabled: false,
         padEnabled: false,

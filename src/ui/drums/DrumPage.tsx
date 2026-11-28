@@ -407,7 +407,7 @@ const DrumPage: React.FC<DrumPageProps> = (props) => {
     playheads,
     hitCounts,
     evolveFlashing,
-    initialViewMode: initialViewMode === 'simple' ? 'scatter' : initialViewMode,
+    initialViewMode,
     initialStepOverrides,
     initialSubLaneStates,
     initialPitchSettings,

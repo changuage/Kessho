@@ -749,7 +749,7 @@ export function loadCoreProductHostHarness(options = {}) {
       subLaneConfig: 9 << 8,
     },
     CORE_PRODUCT_SOURCE_IDS: harnessSourceIds,
-    SYNTH_EUCLIDEAN_LANE_COUNT: 4,
+    SYNTH_EUCLIDEAN_LANE_COUNT: 6,
     DRUM_EUCLIDEAN_LANE_COUNT: 6,
     DRUM_VOICE_BASE_MIDI: {
       sub: 35,
@@ -774,8 +774,8 @@ export function loadCoreProductHostHarness(options = {}) {
       };
       return midiByVoice[voice] ?? midiByVoice[fallback] ?? 36;
     },
-    euclideanLaneCount: (kind) => (kind === 'drum' ? 6 : 4),
-    euclideanLaneNumbers: (kind) => (kind === 'drum' ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4]),
+    euclideanLaneCount: () => 6,
+    euclideanLaneNumbers: () => [1, 2, 3, 4, 5, 6],
     CORE_PRODUCT_GRAPH_TAP_IDS: {
       master: 1,
       pad: 2,
@@ -1705,6 +1705,11 @@ globalThis.__generatedProductParams = KESSHO_PRODUCT_PARAMS;`, generatedParamsCo
       soundscape: 7,
       sample2: 8,
     },
+    randomSlotDefaults: () => ({
+      mode: 0, partId: 0, voiceCount: 6, waveSpread: 0.125, octave: 0, voiceMask: 63, pad2VoiceAssign: 0,
+      padSplit: false, fitEnvelopeToChord: true, phraseSeconds: 16, density: 0.5, notesOctave: 1,
+      octaveRange: 2, holdSeconds: 0.5, velocityMin: 0.5, velocityMax: 0.9, chordBias: 0.78, initialDelaySeconds: 0,
+    }),
 	    KESSHO_PRODUCT_DRUM_PARAM_COUNT: 126,
 	    KESSHO_PRODUCT_DRUM_VOICE_COUNT: 7,
     KESSHO_PRODUCT_DRUM_VOICES: [

@@ -13,39 +13,16 @@ function clamp(value: number, min: number, max: number): number {
 
 type PadVoice = 'pad1' | 'pad2';
 
-type PadEnvelopeGateOptions = {
-  triggerIntervalSeconds?: number;
-  voiceDelaySeconds?: number;
-};
-
-const PAD_CHORD_ENVELOPE_SAFETY_SECONDS = 0.05;
-
 export function coreProductPadEnvelopeGateSecondsFromState(
   state: Record<string, unknown> | undefined,
   voice: PadVoice,
-  options: PadEnvelopeGateOptions = {},
 ): number {
   const attackKey: keyof SliderState = voice === 'pad2' ? 'pad2Attack' : 'synthAttack';
   const decayKey: keyof SliderState = voice === 'pad2' ? 'pad2Decay' : 'synthDecay';
   const holdKey: keyof SliderState = voice === 'pad2' ? 'pad2Hold' : 'synthHold';
-  const releaseKey: keyof SliderState = voice === 'pad2' ? 'pad2Release' : 'synthRelease';
-  const fitKey: keyof SliderState = voice === 'pad2' ? 'pad2FitEnvelopeToChord' : 'padFitEnvelopeToChord';
   const attack = clamp(numberFromState(state, attackKey, 6), 0.001, 16);
   const decay = clamp(numberFromState(state, decayKey, 1), 0.01, 8);
-  const requestedHold = clamp(numberFromState(state, holdKey, 1), 0, 20);
-  const release = clamp(numberFromState(state, releaseKey, 12), 0.01, 30);
-  let hold = requestedHold;
-  if (
-    state?.[fitKey] !== false &&
-    Number.isFinite(options.triggerIntervalSeconds) &&
-    Number.isFinite(options.voiceDelaySeconds)
-  ) {
-    const availableSeconds =
-      Math.max(0, options.triggerIntervalSeconds ?? 0) -
-      Math.max(0, options.voiceDelaySeconds ?? 0) -
-      PAD_CHORD_ENVELOPE_SAFETY_SECONDS;
-    hold = clamp(requestedHold, 0, Math.max(0, availableSeconds - attack - decay - release));
-  }
+  const hold = clamp(numberFromState(state, holdKey, 1), 0, 20);
   return clamp(attack + decay + hold, 0.02, 20);
 }
 

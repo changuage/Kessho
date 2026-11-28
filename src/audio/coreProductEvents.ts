@@ -51,6 +51,9 @@ import type {
   RoutingMuteGroupsState,
 } from '../ui/routing/routingMuteGroups';
 import { resolveSequencerLaneAudibility } from './sequencerAudibility';
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from './sequencerLaneCounts';
+import { normalizeSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
+import { parseSynthRandomKey } from '../ui/sequencer/synthRandomSlot';
 import type { HarmonyLiveLayer } from './harmony/harmonyProjection';
 import type { ProductRuntimeModulationConfig } from './product/ProductEngineTypes';
 import { FX_ROUTING_NODE_IDS, type FxRoutingNodeId } from './fxRoutingGraph';
@@ -526,13 +529,20 @@ function routingMuteSequencerMasks(state: SliderState): {
   let drumEnabled = 0;
   let drumMuted = 0;
   let granular = 0;
-  for (let lane = 1; lane <= 4; lane += 1) {
-    if (
-      state.synthEuclideanMasterEnabled === true &&
-      state[`synthEuclid${lane}Enabled` as keyof SliderState] === true
-    ) synthEnabled |= 1 << (lane - 1);
-    if (resolveSequencerLaneAudibility(state, 'synth', lane).muted) synthMuted |= 1 << (lane - 1);
-    if (state[`granularV${lane}Enabled` as keyof SliderState] === true) granular |= 1 << (lane - 1);
+  const slots = normalizeSynthSequencerFaceState(state.synthSequencerFaces).slots;
+  for (const lane of SYNTH_EUCLIDEAN_LANE_NUMBERS) {
+    const muted = resolveSequencerLaneAudibility(state, 'synth', lane).muted;
+    // A Random slot runs on its own phrase clock, so the Euclid master does not
+    // gate it; native checks the source before emitting.
+    const enabled = slots[lane - 1]?.mode === 'random'
+      ? !muted
+      : state.synthEuclideanMasterEnabled === true &&
+        state[`synthEuclid${lane}Enabled` as keyof SliderState] === true;
+    if (enabled) synthEnabled |= 1 << (lane - 1);
+    if (muted) synthMuted |= 1 << (lane - 1);
+  }
+  for (const voice of [1, 2, 3, 4] as const) {
+    if (state[`granularV${voice}Enabled` as keyof SliderState] === true) granular |= 1 << (voice - 1);
   }
   for (let lane = 1; lane <= 6; lane += 1) {
     if (
@@ -929,12 +939,7 @@ type ProductParamIdName = keyof typeof KESSHO_PRODUCT_PARAM_IDS;
 export const CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS = [
   'chordRate',
   'voicingSpread',
-  'waveSpread',
   'detune',
-  'synthOctave',
-  'lead1Density',
-  'lead1Octave',
-  'lead1OctaveRange',
 ] as const;
 
 export const CORE_PRODUCT_LIVE_TRIGGER_RUNTIME_WALK_KEYS = [
@@ -946,8 +951,9 @@ export const CORE_PRODUCT_LIVE_TRIGGER_RUNTIME_WALK_KEYS = [
   'sample2Distance',
 ] as const;
 
-export function isCoreProductArrangementRuntimeWalkKey(key: string): key is typeof CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS[number] {
-  return (CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS as readonly string[]).includes(key);
+export function isCoreProductArrangementRuntimeWalkKey(key: string): boolean {
+  return (CORE_PRODUCT_ARRANGEMENT_RUNTIME_WALK_KEYS as readonly string[]).includes(key)
+    || SYNTH_RANDOM_RANGE_PARAM_IDS[parseSynthRandomKey(key)?.param ?? ''] !== undefined;
 }
 
 export function isCoreProductRuntimeWalkStatePatchKey(key: string): boolean {
@@ -1946,29 +1952,14 @@ const RANGE_KEY_TARGETS: Record<string, CoreProductRangeTargetResolver> = {
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularReverbLpfHz, key, granularMacroMap(key, (model) => model.finalReverbLPF)),
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularOutputLpfHz, key, granularMacroMap(key, (model) => model.finalOutputLPF)),
   ],
-  lead1Density: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability, key),
-  ],
-  lead1Octave: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key),
-  ],
-  lead1OctaveRange: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneHoldSeconds, key),
-  ],
   chordRate: (key) => [
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneClockDivision, key),
   ],
   voicingSpread: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread, key),
   ],
-  waveSpread: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread, key),
-  ],
   detune: (key) => [
     controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneVelocity, key),
-  ],
-  synthOctave: (key) => [
-    controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS.SequencerLaneMidiNote, key),
   ],
   granularMacroChaos: (key) => [
     productParamTarget(KESSHO_PRODUCT_PARAM_IDS.FxGranularTimingRandomness, key, granularMacroMap(key, (model) => model.timingRandomness)),
@@ -2268,6 +2259,22 @@ const DRUM_RUNTIME_RANGE_VOICES: Array<[RegExp, number]> = [
   [/^drumMembrane/, 6],
 ];
 
+// Per-slot Random settings: `synthEuclid<N>Random<Param>` walks write back to the
+// slot's own state key, which the snapshot turns into that lane's native param.
+const SYNTH_RANDOM_RANGE_PARAM_IDS: Partial<Record<string, ProductParamIdName>> = {
+  WaveSpread: 'SequencerRandomWaveSpread',
+  Octave: 'SequencerRandomOctave',
+  Density: 'SequencerRandomDensity',
+  NotesOctave: 'SequencerRandomNotesOctave',
+  OctaveRange: 'SequencerRandomOctaveRange',
+};
+
+function resolveCoreProductRandomSlotRangeTargets(key: string): CoreProductRangeTarget[] | undefined {
+  const random = parseSynthRandomKey(key);
+  const paramName = random ? SYNTH_RANDOM_RANGE_PARAM_IDS[random.param] : undefined;
+  return paramName ? [controlOnlyRangeTarget(KESSHO_PRODUCT_PARAM_IDS[paramName], key)] : undefined;
+}
+
 function resolveCoreProductDrumRuntimeRangeTargets(key: string): CoreProductRangeTarget[] {
   const voiceIndex = DRUM_RUNTIME_RANGE_VOICES.find(([pattern]) => pattern.test(key))?.[1];
   if (voiceIndex === undefined) return [];
@@ -2297,7 +2304,9 @@ export function resolveCoreProductRangeTargets(key: string, mode?: CoreProductMo
     const sampleHoldTargets = SAMPLE_HOLD_RANGE_KEY_TARGETS[key]?.(key);
     if (sampleHoldTargets) return sampleHoldTargets;
   }
-  return RANGE_KEY_TARGETS[key]?.(key) ?? resolveCoreProductDrumRuntimeRangeTargets(key);
+  return RANGE_KEY_TARGETS[key]?.(key)
+    ?? resolveCoreProductRandomSlotRangeTargets(key)
+    ?? resolveCoreProductDrumRuntimeRangeTargets(key);
 }
 
 export function isCoreProductRangeKeySupported(key: string): boolean {

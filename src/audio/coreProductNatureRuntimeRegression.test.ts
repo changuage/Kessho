@@ -513,7 +513,8 @@ function assertStateBackedEnumValue<K extends keyof SliderState>(key: K, stateVa
     ['delayBGranularSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingDelayBToGranular }]],
     ['granularReverbSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingGranularToReverb }]],
     ['degradeReverbSend', [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.RoutingDegradeToReverb }]],
-    ['lead1Density', [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerLaneProbability }]],
+    ['synthEuclid6RandomDensity', [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerRandomDensity }]],
+    ['synthEuclid5RandomWaveSpread', [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread }]],
   ];
   for (const [key, expected] of fxCases) assertResolvedTargets(key, expected);
 }

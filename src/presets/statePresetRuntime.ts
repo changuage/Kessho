@@ -1,3 +1,4 @@
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import { normalizeDegradeReverbCrossfeed } from '../ui/routing';
 import { DEFAULT_STATE, type SliderState } from '../ui/state';
 import { loadPresetsFromFolder, type BundledSavedPreset } from './bundledPresetLoader';
@@ -94,13 +95,13 @@ export function statePresetEntryToSavedPreset(entry: PresetEntry, versionSelecti
   const stateRecord = state as unknown as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
     try {
-      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
     } catch {
       // Preserve the canonical state when optional authored variation content is malformed.
     }
   } else if (Object.prototype.hasOwnProperty.call(stateRecord, 'synthSequenceVariationBanks')) {
     try {
-      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stateRecord.synthSequenceVariationBanks, 4);
+      stateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stateRecord.synthSequenceVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
     } catch {
       stateRecord.synthSequenceVariationBanks = DEFAULT_STATE.synthSequenceVariationBanks;
     }

@@ -1,6 +1,8 @@
 import { prepareSpectralFreezeCaptureForMorph } from './spectralFreezeGesture';
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { calculateDriftedRoot } from '../audio/harmony';
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from '../audio/sequencerLaneCounts';
+import { normalizeSynthSequencerFaceState } from './sequencer/sequencerModeTypes';
 import { clampMorphPosition, isAtEndpoint0, isAtEndpoint1, isInMidMorph } from '../audio/morphUtils';
 import type { DualSliderRange } from './DualSlider';
 import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
@@ -121,10 +123,10 @@ function sameMorphResolvedInputs(left: MorphResolvedInputs, right: MorphResolved
 function captureMorphLiveStateValues(state: SliderState, stateRef: SliderState): unknown[] {
   return [
     ...USER_PREFERENCE_KEYS.map((key) => state[key]),
-    stateRef.synthChordGeneratorEnabled,
-    stateRef.synthChordGeneratorSource,
-    stateRef.leadRandomEnabled,
-    stateRef.leadRandomSource,
+    ...SYNTH_EUCLIDEAN_LANE_NUMBERS.flatMap((lane) => [
+      stateRef[`synthEuclid${lane}Enabled`],
+      stateRef[`synthEuclid${lane}Source`],
+    ]),
   ];
 }
 
@@ -175,20 +177,16 @@ type MorphPositionRuntimeSurface = {
   invalidateMorphInputs: () => void;
 };
 
-export function preserveRunningSimpleSequencers(next: SliderState, current: SliderState): SliderState {
+/** A morph never switches off a Random slot that is playing, nor changes its source. */
+export function preserveRunningRandomSlots(next: SliderState, current: SliderState): SliderState {
+  const slots = normalizeSynthSequencerFaceState(current.synthSequencerFaces).slots;
   let preserved = next;
-  if (current.synthChordGeneratorEnabled) {
+  for (const lane of SYNTH_EUCLIDEAN_LANE_NUMBERS) {
+    if (slots[lane - 1]?.mode !== 'random' || !current[`synthEuclid${lane}Enabled`]) continue;
     preserved = {
       ...preserved,
-      synthChordGeneratorEnabled: true,
-      synthChordGeneratorSource: current.synthChordGeneratorSource,
-    };
-  }
-  if (current.leadRandomEnabled) {
-    preserved = {
-      ...preserved,
-      leadRandomEnabled: true,
-      leadRandomSource: current.leadRandomSource,
+      [`synthEuclid${lane}Enabled`]: true,
+      [`synthEuclid${lane}Source`]: current[`synthEuclid${lane}Source`],
     };
   }
   return preserved;
@@ -346,7 +344,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
     for (const key of USER_PREFERENCE_KEYS) {
       (stateWithPrefs as Record<string, unknown>)[key] = state[key];
     }
-    stateWithPrefs = preserveRunningSimpleSequencers(stateWithPrefs, stateRef.current);
+    stateWithPrefs = preserveRunningRandomSlots(stateWithPrefs, stateRef.current);
 
     setState((prev) => ({ ...prev, ...stateWithPrefs }));
     scheduleProductRuntimeParamUpdate(stateWithPrefs, {
@@ -472,7 +470,7 @@ export function useMorphPositionRuntimeSurface<TPreset extends MorphRuntimePrese
         }
       }
 
-      finalState = preserveRunningSimpleSequencers(finalState, stateRef.current);
+      finalState = preserveRunningRandomSlots(finalState, stateRef.current);
       finalState = prepareSpectralFreezeCaptureForMorph(finalState, stateRef.current);
 
       setState(finalState);

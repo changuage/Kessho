@@ -385,7 +385,6 @@
 #root .synth-root .seq-body,
 #root .synth-root .seq-lane,
 #root .synth-root .seq-evolve-panel,
-#root .synth-root .synth-simple-section,
 #root .synth-root .seq-ov-row,
 #root .delay-root .delay-card,
 #root .earth-root .earth-card,
@@ -432,7 +431,6 @@
 #root .drum-root .seq-ov-row,
 #root .synth-root .seq-body,
 #root .synth-root .seq-evolve-panel,
-#root .synth-root .synth-simple-section,
 #root .synth-root .seq-ov-row {
   --engine-accent: var(--sc, var(--page-accent));
 }
@@ -469,7 +467,6 @@
 #root .synth-root .seq-body,
 #root .synth-root .seq-lane,
 #root .synth-root .seq-evolve-panel,
-#root .synth-root .synth-simple-section,
 #root .synth-root .seq-ov-row,
 #root .delay-root .delay-card,
 #root .earth-root .earth-card,
@@ -521,7 +518,6 @@
 #root .synth-root .seq-body,
 #root .synth-root .seq-lane,
 #root .synth-root .seq-evolve-panel,
-#root .synth-root .synth-simple-section,
 #root .synth-root .seq-ov-row,
 #root .delay-root .delay-card,
 #root .earth-root .earth-card,

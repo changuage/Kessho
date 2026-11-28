@@ -328,7 +328,7 @@ export function buildPresetVersionMetadata(
   if (source.synthSequenceVariationBanks !== undefined) {
     metadata.synthSequenceVariationBanks = serializeSynthSequenceVariationBanks(
       source.synthSequenceVariationBanks as SynthSequenceVariationBanks,
-      4,
+      SYNTH_EUCLIDEAN_LANE_COUNT,
     );
     hasMetadata = true;
   }

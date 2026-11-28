@@ -33,7 +33,6 @@ if (!sampleSlotState.includes('createLegacyPianoSample1State') || !sampleSlotSta
 
 const productRuntimeFiles = [
   'src/audio/coreProductArrangementSchedulerUtils.ts',
-  'src/audio/coreProductChordVoices.ts',
   'src/audio/coreProductEvents.ts',
   'src/audio/coreProductSampleSequencerTargets.ts',
   'src/audio/coreProductSequencerFaceSnapshot.ts',

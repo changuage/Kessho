@@ -46,7 +46,7 @@ import {
   extractEuclideanPatternLaneDataFromSynthState,
 } from './euclideanPatternBank';
 import type { PresetEntry, PresetPoolMetadata, PresetRecoveryWarning, PresetVersionMetadata } from './types';
-import { DEFAULT_STATE, RETIRED_CHORD_STATE_KEYS, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
+import { DEFAULT_STATE, RETIRED_STATE_KEYS, decodeStateFromUrl, encodeStateToUrl, migratePreset, type SavedPreset } from '../ui/state';
 import { createEmptyStepOverrides, deserializeStepOverrides, serializeStepOverrides } from '../ui/sequencer/stepOverrideSerialization';
 import {
   applySequencePresetClockDivs,
@@ -305,13 +305,13 @@ function testRetiredHarmonyChordFieldsAreIgnored(): void {
       harmonyProgression: { version: 1, enabled: true, events: [{ id: 'old', source: { type: 'slot', slotId: 3 }, duration: { unit: 'bar', value: 2 } }] },
     },
   });
-  for (const key of RETIRED_CHORD_STATE_KEYS) assert.equal(key in migrated.state, false, `${key} is ignored on load`);
+  for (const key of RETIRED_STATE_KEYS) assert.equal(key in migrated.state, false, `${key} is ignored on load`);
   assert.equal(migrated.state.harmonyProgression.version, 2);
   assert.equal(migrated.state.harmonyProgression.enabled, true, 'a version 1 progression keeps its events and enabled flag');
   assert.deepEqual(migrated.state.harmonyProgression.events[0]?.source, { type: 'auto' }, 'slot sources load as Auto');
 
   const encoded = encodeStateToUrl({ ...DEFAULT_STATE });
-  for (const key of RETIRED_CHORD_STATE_KEYS) assert.equal(encoded.includes(key), false, `new URL state must not author ${key}`);
+  for (const key of RETIRED_STATE_KEYS) assert.equal(encoded.includes(key), false, `new URL state must not author ${key}`);
   const decoded = decodeStateFromUrl(`?harmonyChordSequence=${encodeURIComponent(JSON.stringify(legacySequence))}&harmonyChordSequenceEnabled=true`);
   assert.deepEqual(decoded?.harmonyProgression, DEFAULT_STATE.harmonyProgression);
 }
@@ -322,7 +322,7 @@ function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
     root: 40 + index,
     scale: index % 2 === 0 ? 'Minor' : 'Major',
   }));
-  const synthPitchSettings: PitchSettings[] = Array.from({ length: 4 }, (_, index) => ({
+  const synthPitchSettings: PitchSettings[] = Array.from({ length: 6 }, (_, index) => ({
     mode: 'notes',
     root: 60 + index,
     scale: 'Dorian',
@@ -335,7 +335,7 @@ function testStatePresetPitchMetadataUsesAuthoritativeLaneCounts(): void {
 
   assert.equal(normalized.drumPitchSettings?.length, 6);
   assert.deepStrictEqual(normalized.drumPitchSettings, drumPitchSettings);
-  assert.equal(normalized.synthPitchSettings?.length, 4);
+  assert.equal(normalized.synthPitchSettings?.length, 6);
   assert.deepStrictEqual(normalized.synthPitchSettings, synthPitchSettings);
 }
 

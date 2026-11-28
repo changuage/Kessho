@@ -16,7 +16,7 @@ export type SliderCapability = ParamModulationCapability;
 const DYNAMIC_SINGLE_KEYS = new Set<string>([
   'sample1MaxVoices', 'sample2MaxVoices',
   'granularV1Slice', 'granularV2Slice', 'granularV3Slice', 'granularV4Slice',
-  'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
+  'padTensionValue', 'synthEuclidTensionValue',
   'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
   'sidechainSample1Target', 'sidechainSample2Target', 'driftWetHp',
 ]);

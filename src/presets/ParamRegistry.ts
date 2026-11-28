@@ -2,6 +2,14 @@
 // Phase 0 — Canonical mapping of live preset-owned keys to their preset level + scope.
 // Intentional exclusions: `granularPreset` (UI shortcut) and `leadTimbre` (legacy/ignored).
 
+import {
+  SYNTH_RANDOM_DUAL_KEYS,
+  SYNTH_RANDOM_LANE_NUMBERS,
+  SYNTH_RANDOM_PARAMS,
+  SYNTH_RANDOM_SINGLE_KEYS,
+  synthRandomKey,
+} from '../ui/sequencer/synthRandomSlot';
+
 export type ParamLevel = 1 | 2 | 3 | 4;
 
 /** UI/runtime modulation policy stored with the canonical parameter library. */
@@ -228,8 +236,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   transportBeatsPerBar:  { level: 4, scope: 'global' },
   harmonyClockSource:    { level: 4, scope: 'global' },
   harmonySyncPolicy:     { level: 4, scope: 'global' },
-  leadRandomClockSource: { level: 4, scope: 'global' },
-  leadRandomSyncPolicy:  { level: 4, scope: 'global' },
   synthEuclidClockSource:{ level: 4, scope: 'global' },
   synthEuclidJoinPolicy: { level: 4, scope: 'global' },
   drumEuclidClockSource: { level: 4, scope: 'global' },
@@ -240,13 +246,9 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   // L3: Synth Source
   // ═══════════════════════════════════════════════════════════════════════
   leadEnabled:           { level: 3, scope: 'synth' },
-  leadRandomEnabled:     { level: 3, scope: 'synth' },
-  leadRandomSource:      { level: 3, scope: 'synth' },
   leadVibratoDepth:      { level: 3, scope: 'synth' },
   leadVibratoRate:       { level: 3, scope: 'synth' },
   leadGlide:             { level: 3, scope: 'synth' },
-  leadTensionMode:       { level: 3, scope: 'synth' },
-  leadTensionValue:      { level: 3, scope: 'synth' },
   pianoEnabled:          { level: 3, scope: 'synth' },
   pianoAttack:           { level: 3, scope: 'synth' },
   pianoDecay:            { level: 3, scope: 'synth' },
@@ -610,9 +612,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   padMorph:              { level: 2, scope: 'pad1Kit' },
   padMorphAuto:          { level: 2, scope: 'pad1Kit' },
   padMorphSpeed:         { level: 2, scope: 'pad1Kit' },
-  synthVoiceMask:        { level: 2, scope: 'pad1Kit' },
-  waveSpread:            { level: 2, scope: 'pad1Kit' },
-  synthOctave:           { level: 2, scope: 'pad1Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
   // L2: Pad 2 Kit Preset
@@ -623,7 +622,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2Morph:             { level: 2, scope: 'pad2Kit' },
   pad2MorphAuto:         { level: 2, scope: 'pad2Kit' },
   pad2MorphSpeed:        { level: 2, scope: 'pad2Kit' },
-  pad2VoiceAssign:       { level: 2, scope: 'pad2Kit' },
   pad2Octave:            { level: 2, scope: 'pad2Kit' },
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -796,7 +794,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthSustain:          { level: 1, scope: 'pad1' },
   synthHold:             { level: 1, scope: 'pad1' },
   synthRelease:          { level: 1, scope: 'pad1' },
-  padFitEnvelopeToChord: { level: 1, scope: 'pad1' },
   padLfo1Rate:           { level: 1, scope: 'pad1' },
   padLfo1Depth:          { level: 1, scope: 'pad1' },
   padLfo1Wave:           { level: 1, scope: 'pad1' },
@@ -826,7 +823,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   pad2Sustain:           { level: 1, scope: 'pad2' },
   pad2Hold:              { level: 1, scope: 'pad2' },
   pad2Release:           { level: 1, scope: 'pad2' },
-  pad2FitEnvelopeToChord: { level: 1, scope: 'pad2' },
   pad2Hardness:          { level: 1, scope: 'pad2' },
   pad2Warmth:            { level: 1, scope: 'pad2' },
   pad2Presence:          { level: 1, scope: 'pad2' },
@@ -894,9 +890,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   lead1Sustain:          { level: 1, scope: 'lead1' },
   lead1Hold:             { level: 1, scope: 'lead1' },
   lead1Release:          { level: 1, scope: 'lead1' },
-  lead1Density:          { level: 1, scope: 'lead1' },
-  lead1Octave:           { level: 1, scope: 'lead1' },
-  lead1OctaveRange:      { level: 1, scope: 'lead1' },
   lead1Distance:         { level: 1, scope: 'lead1' },
   lead1PostLPF:          { level: 1, scope: 'lead1' },
   lead1PostLPFKeyTracking: { level: 1, scope: 'lead1' },
@@ -943,9 +936,6 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclideanTempo:         { level: 1, scope: 'synthEuclidean' },
   synthEuclidTensionMode:      { level: 1, scope: 'synthEuclidean' },
   synthEuclidTensionValue:     { level: 1, scope: 'synthEuclidean' },
-  synthChordGeneratorEnabled:  { level: 1, scope: 'synthEuclidean' },
-  synthChordGeneratorSource:   { level: 1, scope: 'synthEuclidean' },
-  synthChordGeneratorVoiceCount: { level: 1, scope: 'synthEuclidean' },
   synthSequencerFaces:         { level: 1, scope: 'synthEuclidean' },
   synthSequencerChain:         { level: 1, scope: 'synthEuclidean' },
   synthSequenceVariationBanks: { level: 1, scope: 'synthEuclidean' },
@@ -1005,6 +995,36 @@ export const PARAM_REGISTRY: Record<string, { level: ParamLevel; scope: string }
   synthEuclid4Probability: { level: 1, scope: 'synthEuclidean' },
   synthEuclid4Source:      { level: 1, scope: 'synthEuclidean' },
   synthEuclid4VoiceMask:   { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Solo:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5ResumeQuantization: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid5VoiceMask:   { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Enabled:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Solo:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6ResumeQuantization: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Preset:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Steps:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Hits:        { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Rotation:    { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6NoteMin:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6NoteMax:     { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Level:       { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Probability: { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6Source:      { level: 1, scope: 'synthEuclidean' },
+  synthEuclid6VoiceMask:   { level: 1, scope: 'synthEuclidean' },
+  // Per-slot Random settings (`synthEuclid<N>Random<Param>`)
+  ...Object.fromEntries(SYNTH_RANDOM_LANE_NUMBERS.flatMap((lane) => (
+    SYNTH_RANDOM_PARAMS.map((param) => [synthRandomKey(lane, param), { level: 1, scope: 'synthEuclidean' }] as const)
+  ))),
 
   // ═══════════════════════════════════════════════════════════════════════
   // L1: Drum Sub Engine (10 params)
@@ -1641,6 +1661,7 @@ export const WALK_ONLY_PARAM_KEYS = [
 
 /** Intentionally scalar controls and controls without a Product range target. */
 export const SINGLE_ONLY_PARAM_KEYS = [
+  ...SYNTH_RANDOM_SINGLE_KEYS,
   'lead1MorphSpeed', 'lead2MorphSpeed', 'pad2MorphSpeed', 'padMorphSpeed', 'phraseLength',
   'randomWalkSpeed', 'shapeLfoSpeed', 'randomness', 'sequencerMasterBPM',
   'transportBarsPerPhrase', 'transportBeatsPerBar',
@@ -1655,6 +1676,7 @@ export const SINGLE_ONLY_PARAM_KEYS = [
 
 /** Shared Slider keys with continuously variable Product ranges. */
 export const DUAL_SLIDER_PARAM_KEYS = [
+  ...SYNTH_RANDOM_DUAL_KEYS,
   'chordRate', 'damping', 'delayACrossFeedFilter', 'delayADuck', 'delayAFeedback',
   'delayADegradeSend', 'delayAFilter', 'delayAGranularSend', 'delayAMix', 'delayAModDepth', 'delayAModRate',
   'delayAReverbSend', 'delayAToBSend', 'delayAWidth', 'delayBGranularSend', 'delayBSpread',
@@ -1677,8 +1699,8 @@ export const DUAL_SLIDER_PARAM_KEYS = [
   'granularReverbLPF', 'granularSprayMacro', 'granularWaterSend', 'granularWavesSend',
   'granularNatureSend',
   'insDelayASend', 'insDelayBSend',
-  'lead1DelayBSend', 'lead1Density', 'lead1DiffuseSend', 'lead1Distance', 'lead1Level', 'lead1Morph', 'lead1Octave',
-  'lead1OctaveRange', 'lead1PostLPF', 'lead1PostLPFKeyTracking', 'lead1ReverbSend',
+  'lead1DelayBSend', 'lead1DiffuseSend', 'lead1Distance', 'lead1Level', 'lead1Morph', 
+  'lead1PostLPF', 'lead1PostLPFKeyTracking', 'lead1ReverbSend',
   'lead1StereoWidth', 'lead1VibratoDepth', 'lead1VibratoRate', 'lead1Glide',
   'lead2DelayASend', 'lead2DelayBSend', 'lead2DiffuseSend', 'lead2Distance', 'lead2Level',
   'lead2Morph', 'lead2PostLPF', 'lead2PostLPFKeyTracking', 'lead2ReverbSend', 'lead2StereoWidth',
@@ -1712,7 +1734,7 @@ export const DUAL_SLIDER_PARAM_KEYS = [
   'spectralFreezePosition', 'spectralFreezeRefresh', 'spectralFreezeReverbCrossfade',
   'spectralFreezeStretchSpeed', 'spectralFreezeSustain', 'spectralFreezeTone',
   'spectralFreezeWidth', 'synthHold', 'synthAttack', 'synthDecay', 'synthLevel',
-  'synthOctave', 'synthRelease', 'synthSustain', 'voicingSpread', 'warmth', 'waveSpread', 'width',
+  'synthRelease', 'synthSustain', 'voicingSpread', 'warmth', 'width',
 ] as const;
 
 export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulationCapability>> = Object.freeze({
@@ -1725,7 +1747,7 @@ export const PARAM_MODULATION_CAPABILITIES: Readonly<Record<string, ParamModulat
 // Runtime assertion — catches accidental registry drift.
 if (typeof globalThis !== 'undefined') {
   const count = Object.keys(PARAM_REGISTRY).length;
-  if (count !== 1352) {
-    console.error(`PARAM_REGISTRY has ${count} entries, expected 1352`);
+  if (count !== 1444) {
+    console.error(`PARAM_REGISTRY has ${count} entries, expected 1444`);
   }
 }

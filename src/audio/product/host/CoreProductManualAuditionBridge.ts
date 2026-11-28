@@ -111,11 +111,8 @@ export function triggerCoreProductSynthVoice(
   const triggerVelocity = requireFiniteRange(velocity, 'synth trigger velocity', 0.000001, 1);
   const durationSeconds = requirePositive(noteDuration, 'synth trigger duration');
   if (padParamsOverride) void context.applyProductStatePatch(padParamsOverride);
-  const state = context.latestSliderState();
-  const pad2Assign = typeof state?.pad2VoiceAssign === 'number' ? Math.round(state.pad2VoiceAssign) & 0xff : 0;
-  const targetSource = state?.pad2Enabled === true && (pad2Assign & (1 << voiceIndex)) !== 0
-    ? CORE_PRODUCT_SOURCE_IDS.pad2
-    : CORE_PRODUCT_SOURCE_IDS.pad1;
+  // Voice slots are Pad 1 voices; Pad 2 is reached through its own source.
+  const targetSource = CORE_PRODUCT_SOURCE_IDS.pad1;
   const post = () => {
     context.recordSoundTrigger();
     context.runtime.postEvent(createCoreProductManualNoteEvent(

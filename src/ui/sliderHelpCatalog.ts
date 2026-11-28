@@ -507,16 +507,6 @@ const globalEntries: Record<string, SliderHelpEntry> = {
     'Next Phrase waits for the next phrase boundary before applying transport edits, which keeps live changes predictable. Immediate keeps the current anchors and lets the next scheduled event use the new values right away. Restart Now re-anchors the relevant local clock and restarts harmony scheduling immediately.',
     [g('Transport & Sync', 'Harmony / Pad Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
   ),
-  leadRandomClockSource: entry(
-    'Chooses the phrase clock for the free-running random lead melody.',
-    'This only affects the random Lead 1 phrase scheduler. It does not change lead Euclidean lanes, pad chords, or harmony itself. Phrase modes schedule random lead events over phrase windows; beat-phrase modes derive those windows from the BPM transport.',
-    [sy('Random Timing / Advanced', 'Clock', 'single-only', [GLOBAL_SINGLE_NOTE])],
-  ),
-  leadRandomSyncPolicy: entry(
-    'Chooses when the random lead melody adopts timing changes.',
-    'Next Phrase defers edits until the next phrase boundary so the current lead phrase can finish cleanly. Immediate clears the pending lead phrase and reschedules right away on the new timing model.',
-    [sy('Random Timing / Advanced', 'Apply', 'single-only', [GLOBAL_SINGLE_NOTE])],
-  ),
   synthEuclidClockSource: entry(
     'Chooses the beat clock used by the synth Euclidean sequencer.',
     'Local Beat anchors synth Euclid to this session\'s local beat transport. Global Beat ties it to the shared wall-clock beat grid. This clock applies to both lead-sourced Euclidean lanes and any pad-sourced Euclidean lanes.',
@@ -554,11 +544,6 @@ Object.assign(globalEntries, {
     'Offsets or locks harmonic tension for pad-sourced synth Euclidean evolution.',
     'In follow mode this slider shifts the global tension up or down for pad-sourced synth lanes; in locked mode it becomes Pad\'s own absolute tension target. Lower effective tension keeps pad-lane evolution calmer and more consonant, while higher effective tension allows more restless harmonic movement. It does not change pad level or filter gain.',
     [g('Per-Engine Tension', 'Pad')],
-  ),
-  leadTensionValue: entry(
-    'Offsets or locks harmonic tension for lead note choice and FM timbre drift.',
-    'In follow mode this shifts the global tension for the lead engine; in locked mode it sets a fixed lead-only tension target. Lower effective tension keeps the lead closer to chord tones and calmer FM settings, while higher effective tension loosens chord bias and adds more random movement to FM index, feedback, beat detune, and layer mix.',
-    [g('Per-Engine Tension', 'Lead')],
   ),
   synthEuclidTensionValue: entry(
     'Offsets or locks harmonic tension for non-pad synth Euclidean lanes.',
@@ -885,9 +870,9 @@ const voicingSpreadHelp = entry(
 );
 
 const waveSpreadHelp = entry(
-  'Sets how staggered the pad voices are within a chord.',
+  'Sets how staggered the voices are within a Random Chords slot.',
   'Low values make the chord arrive together. High values smear the voice entries across time.',
-  [sy('Harmony', 'Wave Spread')],
+  [sy('Random Slot / Chords', 'Wave Spread')],
 );
 
 const detuneHelp = entry(
@@ -896,22 +881,34 @@ const detuneHelp = entry(
   [sy('Harmony', 'Detune')],
 );
 
-const leadDensityHelp = entry(
-  'Sets how many Lead 1 notes are generated per phrase.',
-  'Low values make the lead sparer and more spacious. High values make it speak more often inside each phrase.',
-  [sy('Lead 1 / Melody', 'Note Density')],
+const randomDensityHelp = entry(
+  'Sets how many notes this Random Notes slot generates per phrase.',
+  'Low values make the slot sparer and more spacious. High values make it speak more often inside each phrase.',
+  [sy('Random Slot / Notes', 'Note Density')],
 );
 
-const leadOctaveHelp = entry(
-  'Sets the base register of Lead 1.',
-  'Low values move the lead downward into a darker register. High values shift it upward into a brighter one.',
-  [sy('Lead 1 / Melody', 'Octave Offset')],
+const randomNotesOctaveHelp = entry(
+  'Sets the base register of this Random Notes slot.',
+  'Low values move the notes downward into a darker register. High values shift them upward into a brighter one.',
+  [sy('Random Slot / Notes', 'Octave Offset')],
 );
 
-const leadOctaveRangeHelp = entry(
-  'Sets how wide Lead 1 can roam across octaves.',
+const randomOctaveRangeHelp = entry(
+  'Sets how wide this Random Notes slot can roam across octaves.',
   'Low values keep note choices in a tighter register. High values allow bigger jumps across more octaves.',
-  [sy('Lead 1 / Melody', 'Octave Range')],
+  [sy('Random Slot / Notes', 'Octave Range')],
+);
+
+const randomChordOctaveHelp = entry(
+  'Shifts the register of this Random Chords slot.',
+  'Negative values move the whole chord down in octaves and positive values move it up. Every voice moves together, so the shape of the chord is unchanged.',
+  [sy('Random Slot / Chords', 'Octave Offset')],
+);
+
+const randomTensionHelp = entry(
+  'Offsets or locks harmonic tension for this Random Notes slot.',
+  'In follow mode this shifts the global tension for the slot; in locked mode it sets a fixed target for this slot only. Lower effective tension keeps the notes closer to chord tones, while higher effective tension lets more passing tones through.',
+  [sy('Random Slot / Notes', 'Tension', 'single-only', [GLOBAL_SINGLE_NOTE])],
 );
 
 const synthEntries: Record<string, SliderHelpEntry> = {
@@ -1058,12 +1055,21 @@ const synthEntries: Record<string, SliderHelpEntry> = {
   lead2MorphSpeed: cloneEntry(leadMorphSpeedHelp, [sy('Lead 2 / Morph', 'Speed')]),
   chordRate: chordRateHelp,
   voicingSpread: voicingSpreadHelp,
-  waveSpread: waveSpreadHelp,
   detune: detuneHelp,
-  lead1Density: leadDensityHelp,
-  lead1Octave: leadOctaveHelp,
-  lead1OctaveRange: leadOctaveRangeHelp,
 };
+
+/** Per-slot Random settings share one help entry per setting across the six slots. */
+const RANDOM_SLOT_HELP: ReadonlyArray<readonly [string, SliderHelpEntry]> = [
+  ['WaveSpread', waveSpreadHelp],
+  ['Octave', randomChordOctaveHelp],
+  ['Density', randomDensityHelp],
+  ['NotesOctave', randomNotesOctaveHelp],
+  ['OctaveRange', randomOctaveRangeHelp],
+  ['TensionValue', randomTensionHelp],
+];
+for (let lane = 1; lane <= 6; lane += 1) {
+  for (const [param, help] of RANDOM_SLOT_HELP) synthEntries[`synthEuclid${lane}Random${param}`] = help;
+}
 
 const reverbEntries: Record<string, SliderHelpEntry> = {
   reverbDecay: entry('Sets how long the shared reverb tail lasts.', 'Low values make the space dry up quickly. High values create a much longer, more lingering tail.', [rv('Core', 'Decay')]),

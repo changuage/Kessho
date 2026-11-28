@@ -1,4 +1,5 @@
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from './sequencerLaneCounts';
 import { PAD_VOICE_COUNT, PAD_VOICE_DEFAULT_MASK, PAD_VOICE_MASK_ALL } from './coreProductArrangementVoiceMapping';
 import { normalizeSynthEuclidSource } from './coreProductSourceMapping';
 import { booleanFromState, clamp, numberFromState } from './coreProductSnapshotState';
@@ -18,14 +19,9 @@ export function synthSourceIdFromState(state: Record<string, unknown> | undefine
   if (source === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
   if (source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
   if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
-  if (source.startsWith('synth')) {
-    const voiceIndex = Number.parseInt(source.slice('synth'.length), 10) - 1;
-    const pad2Assign = Math.round(numberFromState(state, 'pad2VoiceAssign', 0)) & PAD_VOICE_MASK_ALL;
-    const pad2Enabled = booleanFromState(state, 'pad2Enabled', false);
-    return pad2Enabled && voiceIndex >= 0 && voiceIndex < PAD_VOICE_COUNT && (pad2Assign & (1 << voiceIndex)) !== 0
-      ? CORE_PRODUCT_SOURCE_IDS.pad2
-      : CORE_PRODUCT_SOURCE_IDS.pad1;
-  }
+  // Legacy `synthN` voice sources are rewritten to Pad 1 or Pad 2 when an old
+  // preset loads; a stray one plays on Pad 1.
+  if (source.startsWith('synth')) return CORE_PRODUCT_SOURCE_IDS.pad1;
   return CORE_PRODUCT_SOURCE_IDS.lead1;
 }
 
@@ -42,7 +38,7 @@ export function synthSourcePadVoiceMaskFromState(state: Record<string, unknown> 
 
 export function synthEuclidUsesSourceId(state: Record<string, unknown> | undefined, sourceId: number): boolean {
   if (!booleanFromState(state, 'synthEuclideanMasterEnabled', false)) return false;
-  for (let laneNumber = 1; laneNumber <= 4; laneNumber += 1) {
+  for (const laneNumber of SYNTH_EUCLIDEAN_LANE_NUMBERS) {
     if (
       booleanFromState(state, `synthEuclid${laneNumber}Enabled`, laneNumber === 1) &&
       synthSourceIdFromState(state, `synthEuclid${laneNumber}Source`) === sourceId

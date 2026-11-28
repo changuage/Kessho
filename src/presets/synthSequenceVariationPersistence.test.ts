@@ -29,7 +29,7 @@ function bank() {
 test('variation banks round-trip through URL and preset metadata', () => {
   const source: SliderState = {
     ...DEFAULT_STATE,
-    synthSequenceVariationBanks: [bank(), null, null, null],
+    synthSequenceVariationBanks: [bank(), null, null, null, null, null],
   };
   const loaded = decodeStateFromUrl(`?${encodeStateToUrl(source)}`);
   assert.ok(loaded);
@@ -51,7 +51,7 @@ test('variation banks round-trip through URL and preset metadata', () => {
 test('variation bank is a portable sequencer content component', () => {
   const source: SliderState = {
     ...DEFAULT_STATE,
-    synthSequenceVariationBanks: [bank(), null, null, null],
+    synthSequenceVariationBanks: [bank(), null, null, null, null, null],
   };
   const metadata = buildPresetVersionMetadata({ synthSequenceVariationBanks: source.synthSequenceVariationBanks });
   const group = buildSequencerContentGroup({ state: source, metadata, kind: 'synth', laneIndex: 0 });

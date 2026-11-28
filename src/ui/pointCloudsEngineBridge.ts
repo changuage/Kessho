@@ -42,7 +42,7 @@ type PointCloudsKesshoStatus = {
   telemetry: ProductTelemetrySnapshot | null;
   sourceState: Pick<
     SliderState,
-    'masterVolume' | 'leadEnabled' | 'leadLevel' | 'lead1Level' | 'lead1Density' |
+    'masterVolume' | 'leadEnabled' | 'leadLevel' | 'lead1Level' |
     'synthLevel' | 'granularLevel' | 'drumLevel' | 'pianoLevel' | 'waterLevel' |
     'natureLevel' | 'insectsLevel' | 'natureMasterEnabled' | 'insectsMasterEnabled' |
     'padEnabled' | 'pad2Enabled' | 'reverbQuality'
@@ -183,7 +183,6 @@ export function usePointCloudsEngineBridge({
             leadEnabled: state.leadEnabled,
             leadLevel: state.leadLevel,
             lead1Level: state.lead1Level,
-            lead1Density: state.lead1Density,
             synthLevel: state.synthLevel,
             granularLevel: state.granularLevel,
             drumLevel: state.drumLevel,

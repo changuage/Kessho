@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { applyPreset } from './presetUtils';
-import { DEFAULT_STATE, RETIRED_CHORD_STATE_KEYS, type SavedPreset, type SliderState } from './state';
+import { DEFAULT_STATE, RETIRED_STATE_KEYS, type SavedPreset, type SliderState } from './state';
 
 function normalize(state: SliderState): SliderState {
   return state;
@@ -52,7 +52,7 @@ assert.equal(safe.state.synthEuclideanMasterEnabled, false);
 assert.equal(safe.state.drumEnabled, false);
 
 const currentWithoutRetiredChordKeys = makePreset({});
-for (const key of RETIRED_CHORD_STATE_KEYS) {
+for (const key of RETIRED_STATE_KEYS) {
   delete (currentWithoutRetiredChordKeys.state as unknown as Record<string, unknown>)[key];
 }
 assert.doesNotThrow(

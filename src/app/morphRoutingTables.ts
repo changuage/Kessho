@@ -1,4 +1,9 @@
 import type { SliderState } from '../ui/state';
+import {
+  SYNTH_RANDOM_BOOLEAN_KEYS,
+  SYNTH_RANDOM_CONTINUOUS_KEYS,
+  SYNTH_RANDOM_ENUM_KEYS,
+} from '../ui/sequencer/synthRandomSlot';
 import { LEAD_VIBRATO_KEYS } from './presetInterpolationKeys';
 
 export const ROUTER_MATRIX_BY_ENGINE: Array<{
@@ -165,9 +170,6 @@ export const PARENT_CHILD_MAP: Record<string, (keyof SliderState)[]> = {
     'delayATime',
     'delayAFeedback',
     'delayAMix',
-    'lead1Density',
-    'lead1Octave',
-    'lead1OctaveRange',
     'leadVibratoDepth',
     'leadVibratoRate',
     'leadGlide',
@@ -210,6 +212,7 @@ export const PARENT_CHILD_MAP: Record<string, (keyof SliderState)[]> = {
 };
 
 export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
+  ...SYNTH_RANDOM_CONTINUOUS_KEYS,
   'spectralFreezeSample1Send', 'spectralFreezeSample2Send',
   'spectralFreezeStretchSpeed', 'spectralFreezePosition', 'spectralFreezeRefresh',
   'spectralFreezeInputSensitivity', 'spectralFreezeDiffusion', 'spectralFreezeTone',
@@ -305,16 +308,12 @@ export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
   'tension',
   'chordRate',
   'voicingSpread',
-  'waveSpread',
   'detune',
   'synthAttack',
   'synthDecay',
   'synthSustain',
   'synthHold',
   'synthRelease',
-  'padFitEnvelopeToChord',
-  'synthVoiceMask',
-  'synthOctave',
   'hardness',
   'filterCutoff',
   'filterResonance',
@@ -370,9 +369,6 @@ export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
   'delayATime',
   'delayAFeedback',
   'delayAMix',
-  'lead1Density',
-  'lead1Octave',
-  'lead1OctaveRange',
   'leadVibratoDepth',
   'leadVibratoRate',
   'leadGlide',
@@ -559,7 +555,6 @@ export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
   'pad2Sustain',
   'pad2Hold',
   'pad2Release',
-  'pad2FitEnvelopeToChord',
   'pad2Octave',
   'pad2Hardness',
   'pad2Warmth',
@@ -598,10 +593,10 @@ export const NUMERIC_MORPH_KEYS: (keyof SliderState)[] = [
   'pad2ModEnvDepth',
   'pad2Morph',
   'pad2MorphSpeed',
-  'pad2VoiceAssign',
 ];
 
 export const DISCRETE_MORPH_KEYS: (keyof SliderState)[] = [
+  ...SYNTH_RANDOM_ENUM_KEYS,
   'spectralFreezeMode', 'spectralFreezeDirection', 'spectralFreezeRouting',
   'seedWindow',
   'filterType',
@@ -609,7 +604,6 @@ export const DISCRETE_MORPH_KEYS: (keyof SliderState)[] = [
   'reverbType',
   'grainPitchMode',
   'cofDriftDirection',
-  'leadRandomSource',
   // Dynamics discrete choices
   'driftMode',
   'dynamicsSaturationMode',
@@ -663,6 +657,7 @@ export const DISCRETE_MORPH_KEYS: (keyof SliderState)[] = [
 ];
 
 export const BOOLEAN_MORPH_KEYS: (keyof SliderState)[] = [
+  ...SYNTH_RANDOM_BOOLEAN_KEYS,
   'lead1UseCustomAdsr',
   'lead2UseCustomAdsr',
   'synthEuclideanMasterEnabled',
@@ -670,6 +665,8 @@ export const BOOLEAN_MORPH_KEYS: (keyof SliderState)[] = [
   'synthEuclid2Enabled',
   'synthEuclid3Enabled',
   'synthEuclid4Enabled',
+  'synthEuclid5Enabled',
+  'synthEuclid6Enabled',
   // Drum synth booleans
   'drumSubMorphAuto',
   'drumKickMorphAuto',

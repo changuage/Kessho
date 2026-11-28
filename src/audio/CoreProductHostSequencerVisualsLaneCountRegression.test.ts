@@ -13,8 +13,8 @@ publishCoreProductSequencerVisuals({
     transportRunning: true,
     sampleRate: 48000,
     absoluteSampleTime: 128,
-    synthSequencerCurrentSteps: [23, 1, 2, 3],
-    synthSequencerHitCounts: [1, 2, 3, 4],
+    synthSequencerCurrentSteps: [23, 1, 2, 3, 4, 5],
+    synthSequencerHitCounts: [1, 2, 3, 4, 5, 6],
     drumSequencerCurrentSteps: [0, 1, 2, 3, 4, 5],
     drumSequencerHitCounts: [1, 2, 3, 4, 5, 6],
   } as never,
@@ -38,7 +38,7 @@ publishCoreProductSequencerVisuals({
     drumEuclid5Enabled: true,
     drumEuclid6Enabled: true,
   },
-  synthToggles: [[], [], [], []],
+  synthToggles: [[], [], [], [], [], []],
   drumToggles: [[], [], [], [], [], []],
   synthVisibleLaneCount: SYNTH_EUCLIDEAN_LANE_COUNT,
   drumVisibleLaneCount: DRUM_EUCLIDEAN_LANE_COUNT,
@@ -51,9 +51,9 @@ publishCoreProductSequencerVisuals({
 
 assert.equal(published.drumStepPosition?.steps.length, 6);
 assert.equal(published.drumStepPosition?.hitCounts.length, 6);
-assert.equal(published.synthStepPosition?.steps.length, 4);
+assert.equal(published.synthStepPosition?.steps.length, 6);
 assert.equal(published.synthStepPosition?.steps[0], 23, 'printed 24-step runtime position must not fold into the legacy 16-step grid');
-assert.equal(published.synthStepPosition?.hitCounts.length, 4);
+assert.equal(published.synthStepPosition?.hitCounts.length, 6);
 assert.equal(diagnostics.derivedVisualFallbackCount, 0, 'authoritative Product telemetry must avoid derived visual fallback');
 
 console.log('Core Product sequencer visual lane-count regression passed');

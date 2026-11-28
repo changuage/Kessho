@@ -1,3 +1,4 @@
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import type { ClockDivision, PitchBindingMode } from '../audio/drumSeqTypes';
 import {
   type SerializedStepOverrides,
@@ -25,6 +26,7 @@ import {
 import { sanitizePresetParameterBehaviorMetadata } from './versionMetadataHelpers';
 import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 import { completeCanonicalPresetState } from './presetStateCompatibility';
+import { migrateSynthRandomPresetRecord } from './synthRandomMigration';
 import type { DualSliderConfig } from '../ui/sliderSystem/dualConfigReducer';
 
 const BUNDLED_PRESET_FALLBACK_FILES = [
@@ -93,14 +95,15 @@ function bundledPresetFromFileData(
     && !data.type
     && !data.versions
   ) {
-    const metadata = { ...data } as Record<string, unknown>;
+    const migratedData = migrateSynthRandomPresetRecord(data);
+    const metadata = { ...migratedData } as Record<string, unknown>;
     delete metadata.state;
     delete metadata.timestamp;
-    const directState = enforceProductCorePresetBoundaryState(completeCanonicalPresetState(data.state as SliderState));
+    const directState = enforceProductCorePresetBoundaryState(completeCanonicalPresetState(migratedData.state as SliderState));
     const directStateRecord = directState as unknown as Record<string, unknown>;
     if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
       try {
-        directStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+        directStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
       } catch {
         // Keep the canonical state when a bundled metadata bank is malformed.
       }
@@ -108,7 +111,7 @@ function bundledPresetFromFileData(
       try {
         directStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(
           directStateRecord.synthSequenceVariationBanks,
-          4,
+          SYNTH_EUCLIDEAN_LANE_COUNT,
         );
       } catch {
         directStateRecord.synthSequenceVariationBanks = completeCanonicalPresetState({}).synthSequenceVariationBanks;
@@ -152,7 +155,7 @@ function bundledPresetFromFileData(
   const restoredStateRecord = restoredState as unknown as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(metadata, 'synthSequenceVariationBanks')) {
     try {
-      restoredStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, 4);
+      restoredStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(metadata.synthSequenceVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
     } catch {
       // Preserve the staged state when optional authored variation content is invalid.
     }
@@ -160,7 +163,7 @@ function bundledPresetFromFileData(
     try {
       restoredStateRecord.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(
         restoredStateRecord.synthSequenceVariationBanks,
-        4,
+        SYNTH_EUCLIDEAN_LANE_COUNT,
       );
     } catch {
       restoredStateRecord.synthSequenceVariationBanks = completeCanonicalPresetState({}).synthSequenceVariationBanks;

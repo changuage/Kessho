@@ -13,10 +13,6 @@ const SAMPLE_SLOT_TRIGGER_CRITICAL_SUFFIXES = [
   'MaxVoices',
 ] as const;
 
-const SIMPLE_SEQUENCER_SOURCE_KEYS = [
-  'leadRandomSource',
-] as const;
-
 function stateValueChanged(
   previous: Record<string, unknown> | null,
   next: Record<string, unknown> | null,
@@ -41,9 +37,6 @@ function synthSequencerTargetStateChanged(
   previous: Record<string, unknown> | null,
   next: Record<string, unknown> | null,
 ): boolean {
-  for (const key of SIMPLE_SEQUENCER_SOURCE_KEYS) {
-    if (stateValueChanged(previous, next, key)) return true;
-  }
   for (let lane = 1; lane <= SYNTH_EUCLIDEAN_LANE_COUNT; lane += 1) {
     if (stateValueChanged(previous, next, `synthEuclid${lane}Source`)) return true;
   }

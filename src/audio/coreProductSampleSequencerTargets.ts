@@ -2,7 +2,9 @@ import {
   normalizeSynthSequencerFaceState,
   type SequencerSlotModeState,
 } from '../ui/sequencer/sequencerModeTypes';
+import { synthRandomSettingsFromState } from '../ui/sequencer/synthRandomSlot';
 import { CORE_PRODUCT_SOURCE_IDS } from './coreProductEvents';
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from './sequencerLaneCounts';
 import type { SampleSlotId } from './sampleLibraries/SampleLibraryTypes';
 
 export type CoreProductSampleSequencerLaneRange = {
@@ -21,6 +23,8 @@ const DEFAULT_SYNTH_EUCLID_NOTE_RANGES = [
   { min: 76, max: 88 },
   { min: 52, max: 64 },
   { min: 88, max: 96 },
+  { min: 64, max: 76 },
+  { min: 76, max: 88 },
 ] as const;
 
 function booleanFromState(state: Record<string, unknown> | null | undefined, key: string, fallback: boolean): boolean {
@@ -93,13 +97,17 @@ function synthEuclidRange(state: Record<string, unknown>, laneNumber: number): {
   );
 }
 
-function addRandomTimingTarget(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
-  if (!booleanFromState(state, 'leadRandomEnabled', false)) return;
-  const sourceId = productSourceIdFromValue(state.leadRandomSource, CORE_PRODUCT_SOURCE_IDS.lead1);
-  const baseOctaveOffset = Math.max(-4, Math.min(4, Math.round(numberFromState(state, 'lead1Octave', 1))));
-  const octaveRange = Math.max(1, Math.min(4, Math.round(numberFromState(state, 'lead1OctaveRange', 2))));
-  const baseLow = 64 + baseOctaveOffset * 12;
-  const baseHigh = baseLow + octaveRange * 12;
+function addRandomSlotTarget(
+  discovery: CoreProductSequencerTargetDiscovery,
+  state: Record<string, unknown>,
+  laneNumber: number,
+): void {
+  if (!booleanFromState(state, `synthEuclid${laneNumber}Enabled`, false)) return;
+  const settings = synthRandomSettingsFromState(state, laneNumber);
+  if (settings.Mode !== 'notes') return;
+  const sourceId = productSourceIdFromValue(state[`synthEuclid${laneNumber}Source`], CORE_PRODUCT_SOURCE_IDS.lead1);
+  const baseLow = 64 + settings.NotesOctave * 12;
+  const baseHigh = baseLow + settings.OctaveRange * 12;
   addSampleRange(discovery, sourceId, Math.max(24, baseLow), Math.min(127, baseHigh));
 }
 
@@ -162,13 +170,19 @@ function addOrbitTarget(
 }
 
 function addNativeSynthSequencerTargets(discovery: CoreProductSequencerTargetDiscovery, state: Record<string, unknown>): void {
-  if (!booleanFromState(state, 'synthEuclideanMasterEnabled', false)) return;
   const faceState = normalizeSynthSequencerFaceState(state.synthSequencerFaces);
-  for (let laneNumber = 1; laneNumber <= 4; laneNumber += 1) {
-    if (!booleanFromState(state, `synthEuclid${laneNumber}Enabled`, laneNumber === 1)) continue;
-    const fallbackSourceId = productSourceIdFromValue(state[`synthEuclid${laneNumber}Source`], CORE_PRODUCT_SOURCE_IDS.lead1);
+  const masterEnabled = booleanFromState(state, 'synthEuclideanMasterEnabled', false);
+  for (const laneNumber of SYNTH_EUCLIDEAN_LANE_NUMBERS) {
     const slot = faceState.slots[laneNumber - 1];
     const mode = slot?.mode ?? 'euclid';
+    // Random slots run on their own phrase clock, independent of the Euclid master.
+    if (mode === 'random') {
+      addRandomSlotTarget(discovery, state, laneNumber);
+      continue;
+    }
+    if (!masterEnabled) continue;
+    if (!booleanFromState(state, `synthEuclid${laneNumber}Enabled`, laneNumber === 1)) continue;
+    const fallbackSourceId = productSourceIdFromValue(state[`synthEuclid${laneNumber}Source`], CORE_PRODUCT_SOURCE_IDS.lead1);
     if (mode === 'anchorWalker') {
       addAnchorWalkerTarget(discovery, slot, fallbackSourceId);
     } else if (mode === 'orbit') {
@@ -187,7 +201,6 @@ export function discoverCoreProductSequencerTargets(
     sampleRanges: [],
   };
   if (!state) return discovery;
-  addRandomTimingTarget(discovery, state);
   addNativeSynthSequencerTargets(discovery, state);
   return discovery;
 }

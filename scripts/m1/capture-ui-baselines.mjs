@@ -22,7 +22,7 @@ const VIEWPORTS = [
 ];
 const PAGES = [
   { id: 'global', label: 'Global', views: [] },
-  { id: 'synth', label: 'Synth', views: ['Simple', 'Detail', 'Overview'] },
+  { id: 'synth', label: 'Synth', views: ['Detail', 'Overview'] },
   { id: 'drums', label: 'Drums', views: ['Overview', 'Detail', 'Scatter'] },
 ];
 
@@ -166,6 +166,20 @@ try {
         if (!(await tab.count())) throw new Error(`nav button "${def.label}" not found`);
         await tab.click();
         await settle(page);
+        if (def.id === 'synth') {
+          // Show all six slots with a Random slot: slot 5 becomes Random Chords, slot 6 Random Notes.
+          const detail = page.locator('.seq-view-btn', { hasText: /^Detail$/ }).first();
+          if (await detail.count()) { await detail.click(); await settle(page); }
+          for (const [slotName, plays] of [['Seq 6', 'Notes'], ['Seq 5', 'Chords']]) {
+            const slotTab = page.locator('.seq-tab[role="button"]').filter({ hasText: new RegExp(`^\\s*${slotName.replace(' ', '\\s*')}\\b`) }).first();
+            if (!(await slotTab.count())) continue;
+            await slotTab.click();
+            await settle(page);
+            await page.locator('.seq-mode-segmented button', { hasText: /^Random$/ }).first().click();
+            await page.locator('.seq-mode-segmented button', { hasText: new RegExp(`^${plays}$`) }).first().click();
+          }
+          await settle(page);
+        }
         const views = def.views.length ? def.views : [null];
         for (const view of views) {
           let viewName = 'default';

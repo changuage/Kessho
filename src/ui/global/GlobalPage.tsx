@@ -2071,7 +2071,6 @@ const GlobalPage: React.FC<GlobalPageProps> = ({
                 <div className="tension-engine-grid">
                   {([
                     ['pad', 'Pad', 'padTensionMode', 'padTensionValue'],
-                    ['lead', 'Lead', 'leadTensionMode', 'leadTensionValue'],
                     ['synthEuclid', 'Synth', 'synthEuclidTensionMode', 'synthEuclidTensionValue'],
                     ['granular', 'Gran', 'granularTensionMode', 'granularTensionValue'],
                     ['reverb', 'Reverb', 'reverbTensionMode', 'reverbTensionValue'],

@@ -394,7 +394,7 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (/^synthEuclid[1-4](Enabled|Source|VoiceMask|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax|ResumeQuantization)$/.test(key)) {
+  if (/^synthEuclid[1-6](Enabled|Source|VoiceMask|Steps|Hits|Rotation|ClockDivision|Swing|Probability|Level|NoteMin|NoteMax|ResumeQuantization)$/.test(key)) {
     return {
       path: 'sequencer-lane-diff',
       evidence: ['src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'cpp/KesshoCore/src/product/sequencer/SynthEuclidSequencer.cpp'],
@@ -422,13 +422,6 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
       path: 'sequencer-variation-bank-transaction',
       evidence: ['src/audio/product/host/CoreProductHostStateApplyCoordinator.ts#setVariationTargetsFromState', 'src/audio/product/host/CoreProductSynthSequenceVariationSynchronizer.ts', 'src/audio/coreProductRuntime.ts#commitSynthSequenceVariationBank', 'cpp/KesshoCore/src/product/KesshoProductSequencerApi.cpp#kessho_product_set_sequencer_variation_bank'],
       reason: 'Persisted variation banks are normalized, encoded, and committed through acknowledged Product bank transactions, with changed targets synchronized and accepted banks replayed after snapshot loads.',
-    };
-  }
-
-  if (key === 'synthVoiceMask' || key === 'pad2VoiceAssign') {
-    return {
-      path: 'pad-voice-routing-snapshot',
-      evidence: ['src/audio/coreProductSnapshotPadVoiceRouting.ts', 'src/audio/CoreProductRuntimeAdapter.ts#appendSequencerLaneDiffs', 'src/audio/coreProductArrangementVoiceMapping.ts'],
     };
   }
 
@@ -578,15 +571,15 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     };
   }
 
-  if (key === 'padFitEnvelopeToChord' || key === 'pad2FitEnvelopeToChord') {
+  if (/^synthEuclid[1-6]Random[A-Za-z]+$/.test(key)) {
     return {
-      path: 'arrangement-snapshot',
+      path: 'sequencer-lane-diff',
       evidence: [
-        'src/audio/coreProductArrangementSnapshot.ts#fitEnvelopeToChord',
-        'cpp/KesshoCore/src/product/ProductSequencerFaceState.h#fit_envelope_to_chord',
+        'src/audio/coreProductArrangementSnapshot.ts#applyRandomSlotToLane',
+        'src/audio/CoreProductRuntimeAdapterSequencerFaces.ts#appendRandomSlotDiffs',
         'cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp',
       ],
-      reason: 'Pad fit-to-chord flags are snapshot-owned and clamp generated note gates inside Product Core arrangement scheduling.',
+      reason: 'Per-slot Random settings are written into the slot\'s own lane Random block and diffed as that lane\'s Random params.',
     };
   }
 
@@ -599,21 +592,9 @@ function appVisibleLiveUpdatePathForKey(key, rangeTargetKeys, snapshotReferenced
     'detune',
     'drumEuclidMasterEnabled',
     'harmonyClockSource',
-    'lead1Density',
-    'lead1Octave',
-    'lead1OctaveRange',
-    'leadRandomClockSource',
-    'leadRandomEnabled',
-    'leadRandomSource',
-    'leadRandomSyncPolicy',
     'seedWindow',
-    'synthChordGeneratorEnabled',
-    'synthChordGeneratorSource',
-    'synthChordGeneratorVoiceCount',
     'synthEuclideanMasterEnabled',
-    'synthOctave',
     'voicingSpread',
-    'waveSpread',
   ].includes(key)) {
     return {
       path: 'arrangement-snapshot',
@@ -785,7 +766,7 @@ function collectPostLpfBoundedNumberRangeMismatches() {
 }
 
 function addDynamicSequencerKeys(keys) {
-  for (let lane = 1; lane <= 4; lane += 1) {
+  for (let lane = 1; lane <= 6; lane += 1) {
     for (const suffix of [
       'Source',
       'ManualStepMaskLow',
@@ -1029,7 +1010,6 @@ const PRODUCT_SNAPSHOT_KEY_PATHS = [
   'src/audio/coreProductArrangementSnapshot.ts',
   'src/audio/coreProductArrangementVoiceMapping.ts',
   'src/audio/coreProductArrangementSchedulerUtils.ts',
-  'src/audio/coreProductChordVoices.ts',
   'src/audio/granularMacroCore.ts',
   'src/audio/transport.ts',
 ];
@@ -1084,14 +1064,9 @@ function addGeneratedProductSnapshotKeys(keys) {
   }
 }
 
-function addArrangementSchedulerSnapshotKeys(keys) {
-  keys.add('waveSpread');
-}
-
 function collectProductSnapshotReferencedKeys(sliderKeys) {
   const keys = collectStateReferencedKeysInProductFiles(sliderKeys, PRODUCT_SNAPSHOT_KEY_PATHS);
   addGeneratedProductSnapshotKeys(keys);
-  addArrangementSchedulerSnapshotKeys(keys);
   addDynamicSequencerKeys(keys);
   addDynamicSampleSlotKeys(keys);
   addDynamicNatureSlotKeys(keys);

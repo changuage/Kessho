@@ -9,6 +9,7 @@ export const SEQUENCER_MODE_IDS: Record<SequencerMode, number> = {
   euclid: 0,
   anchorWalker: 1,
   orbit: 2,
+  random: 3,
 };
 
 const ANCHOR_WALKER_MODE_IDS = {

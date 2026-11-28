@@ -1,8 +1,10 @@
+import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
+
 export type SequencerAudibilityKind = 'synth' | 'drum';
 
 const LANE_COUNTS: Readonly<Record<SequencerAudibilityKind, number>> = {
-  synth: 4,
-  drum: 6,
+  synth: SYNTH_EUCLIDEAN_LANE_COUNT,
+  drum: DRUM_EUCLIDEAN_LANE_COUNT,
 };
 
 export type SequencerLaneAudibility = Readonly<{

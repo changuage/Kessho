@@ -21,6 +21,7 @@ import {
 import { SOUNDSCAPE_TEXTURE_PARAM_START, SOUNDSCAPE_TEXTURE_PARAM_STRIDE } from './coreProductSoundscapesSnapshot';
 import { CORE_PRODUCT_SOUNDSCAPE_ASSETS } from './coreProductAssets';
 import { DEFAULT_STATE } from '../ui/state';
+import { normalizeSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
 
 function normalSlotEvents(events: readonly ReturnType<typeof createCoreProductRoutingMuteGroupEvents>[number][]) {
   return events.filter((event) => event.eventKind === KESSHO_PRODUCT_EVENT_IDS.SetRoutingMuteGroupSlot &&
@@ -206,9 +207,54 @@ test('uses individual lane enabled bits while retaining solo mute masks', () => 
     random: { enabled: false, defaultMinPhrases: 2, defaultMaxPhrases: 6, transitionPhrases: 1, avoidRepeat: true },
   }, { sampleRate: 1_000, phraseSeconds: 4, seed: 9, state });
   const slot = normalSlotEvents(events)[0]!;
-  assert.equal(slot.paramId, 0b1101 | (0b1111 << 16));
+  assert.equal(slot.paramId, 0b1101 | (0b111111 << 16));
   assert.equal(slot.value4, 0b110101 | (0b001010 << 16));
   assert.equal((slot.flags ?? 0) >>> 8, 0b0001);
+});
+
+test('mute groups cover all six synth slots, and Random slots ignore the Euclid master', () => {
+  const faces = normalizeSynthSequencerFaceState(undefined);
+  const randomFaces = {
+    ...faces,
+    slots: faces.slots.map((slot, index) => (index >= 4 ? { ...slot, mode: 'random' as const } : slot)),
+  };
+  const state = {
+    ...DEFAULT_STATE,
+    synthEuclideanMasterEnabled: false,
+    synthEuclid1Enabled: true,
+    synthEuclid5Enabled: true,
+    synthEuclid6Enabled: false,
+    synthSequencerFaces: randomFaces,
+  };
+  const events = createCoreProductRoutingMuteGroupEvents({
+    slots: [{ mutedSourceIds: [] }, null, null, null, null, null, null, null],
+    random: { enabled: false, defaultMinPhrases: 2, defaultMaxPhrases: 6, transitionPhrases: 1, avoidRepeat: true },
+  }, { sampleRate: 1_000, phraseSeconds: 4, seed: 9, state });
+  const slot = normalSlotEvents(events)[0]!;
+  const enabledMask = (slot.paramId ?? 0) & 0xffff;
+  const mutedMask = (slot.paramId ?? 0) >>> 16;
+  assert.equal(enabledMask, 0b010000, 'master off disables the Steps slots, while an enabled Random slot stays enabled');
+  assert.equal(mutedMask, 0b101110, 'only the enabled slots 1 and 5 are audible; the rest are muted');
+
+  const allOn = createCoreProductRoutingMuteGroupEvents({
+    slots: [{ mutedSourceIds: [] }, null, null, null, null, null, null, null],
+    random: { enabled: false, defaultMinPhrases: 2, defaultMaxPhrases: 6, transitionPhrases: 1, avoidRepeat: true },
+  }, {
+    sampleRate: 1_000,
+    phraseSeconds: 4,
+    seed: 9,
+    state: {
+      ...DEFAULT_STATE,
+      synthEuclideanMasterEnabled: true,
+      synthEuclid1Enabled: true,
+      synthEuclid2Enabled: true,
+      synthEuclid3Enabled: true,
+      synthEuclid4Enabled: true,
+      synthEuclid5Enabled: true,
+      synthEuclid6Enabled: true,
+    },
+  });
+  assert.equal(((normalSlotEvents(allOn)[0]!.paramId ?? 0) & 0xffff), 0b111111, 'applying a group keeps slots 5 and 6 enabled');
 });
 
 test('keeps canonical Waves audible when Earth scenes refresh during an active freeze', () => {

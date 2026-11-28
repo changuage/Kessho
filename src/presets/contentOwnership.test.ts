@@ -61,7 +61,7 @@ const drumPitchSettings: PitchSettings[] = Array.from({ length: 6 }, (_, index) 
 const normalizedPitch = normalizeStatePresetPitchMetadata({ drumPitchSettings });
 assert.equal(normalizedPitch.drumPitchSettings?.length, 6);
 assert.deepStrictEqual(normalizedPitch.drumPitchSettings, drumPitchSettings);
-assert.equal(normalizedPitch.synthPitchSettings?.length, 4);
+assert.equal(normalizedPitch.synthPitchSettings?.length, 6);
 
 const v2Metadata = preparePresetVersionMetadataForV2Storage({
   refs: { synth: { name: 'Sound', version: 'latest' } },

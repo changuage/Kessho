@@ -30,12 +30,12 @@ assert.equal(
   'untouched empty drum sequencer should auto-enable one lane on first start',
 );
 
-assert.equal(SYNTH_LANE_ENABLED_KEYS.length, 4, 'synth transport registry should cover every lane');
+assert.equal(SYNTH_LANE_ENABLED_KEYS.length, 6, 'synth transport registry should cover every lane');
 assert.equal(DRUM_LANE_ENABLED_KEYS.length, 6, 'drum transport registry should cover every lane');
 assert.equal(MANUAL_SYNTH_SOURCE_ENABLED_KEYS.sample2, 'sample2Enabled');
 
-assert.equal(manualSynthSourceForLaneSource('synth2', 0), 'pad1');
-assert.equal(manualSynthSourceForLaneSource('synth2', 0b10), 'pad2');
+assert.equal(manualSynthSourceForLaneSource('synth2'), 'pad1', 'a stray legacy voice source plays on Pad 1');
+assert.equal(manualSynthSourceForLaneSource('pad2'), 'pad2');
 
 const emptySynthStart = planSynthSequencerTransportToggle({
   ...DEFAULT_STATE,
@@ -46,6 +46,8 @@ const emptySynthStart = planSynthSequencerTransportToggle({
   synthEuclid2Enabled: false,
   synthEuclid3Enabled: false,
   synthEuclid4Enabled: false,
+  synthEuclid5Enabled: false,
+  synthEuclid6Enabled: false,
 }, 2);
 assert.deepEqual(emptySynthStart, {
   starting: true,

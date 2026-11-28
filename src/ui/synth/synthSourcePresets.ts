@@ -8,7 +8,7 @@ export interface SynthSourcePreset {
   description: string;
   tags: string[];
   params: Pick<SliderState,
-    'leadEnabled' | 'leadRandomEnabled' |
+    'leadEnabled' |
     'lead1VibratoDepth' | 'lead1VibratoRate' | 'lead1Glide' |
     'lead2VibratoDepth' | 'lead2VibratoRate' | 'lead2Glide'
   >;
@@ -21,7 +21,6 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     tags: ['init', 'clean'],
     params: {
       leadEnabled: false,
-      leadRandomEnabled: false,
       lead1VibratoDepth: 0,
       lead1VibratoRate: 0,
       lead1Glide: 0,
@@ -36,7 +35,6 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     tags: ['lead', 'active', 'vibrato'],
     params: {
       leadEnabled: true,
-      leadRandomEnabled: false,
       lead1VibratoDepth: 0.15,
       lead1VibratoRate: 0.3,
       lead1Glide: 0,
@@ -51,7 +49,6 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
     tags: ['expressive', 'vibrato', 'glide'],
     params: {
       leadEnabled: true,
-      leadRandomEnabled: false,
       lead1VibratoDepth: 0.4,
       lead1VibratoRate: 0.5,
       lead1Glide: 0.6,
@@ -60,28 +57,12 @@ export const SYNTH_SOURCE_PRESETS: Record<string, SynthSourcePreset> = {
       lead2Glide: 0.6,
     },
   },
-  randomMelody: {
-    name: 'Random Melody',
-    description: 'Random lead phrases, subtle vibrato.',
-    tags: ['random', 'melody', 'generative'],
-    params: {
-      leadEnabled: true,
-      leadRandomEnabled: true,
-      lead1VibratoDepth: 0.1,
-      lead1VibratoRate: 0.25,
-      lead1Glide: 0.2,
-      lead2VibratoDepth: 0.1,
-      lead2VibratoRate: 0.25,
-      lead2Glide: 0.2,
-    },
-  },
   smoothGlide: {
     name: 'Smooth Glide',
     description: 'Maximum glide, moderate vibrato — smooth legato.',
     tags: ['glide', 'legato', 'smooth'],
     params: {
       leadEnabled: true,
-      leadRandomEnabled: false,
       lead1VibratoDepth: 0.2,
       lead1VibratoRate: 0.35,
       lead1Glide: 1.0,

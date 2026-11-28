@@ -110,7 +110,7 @@ test('dynamic audit families are classified', () => {
   const single = [
     'sample1MaxVoices', 'sample2MaxVoices',
     'granularV1Slice', 'granularV2Slice', 'granularV3Slice', 'granularV4Slice',
-    'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
+    'padTensionValue', 'synthEuclidTensionValue',
     'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
     'sidechainSample1Target', 'sidechainSample2Target', 'driftWetHp',
   ];
@@ -185,7 +185,7 @@ test('dynamic numeric families never advertise dual without a Product target', (
 test('the tension family is an explicit single-only custom architecture', () => {
   const source = fs.readFileSync(path.join(ROOT, 'src/ui/global/GlobalPage.tsx'), 'utf8');
   for (const key of [
-    'padTensionValue', 'leadTensionValue', 'synthEuclidTensionValue',
+    'padTensionValue', 'synthEuclidTensionValue',
     'granularTensionValue', 'reverbTensionValue', 'drumTensionValue',
   ]) {
     assert.equal(getSliderCapability(key), 'single', key);

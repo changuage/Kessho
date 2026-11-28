@@ -12,7 +12,7 @@ import {
   type TransportAnchors,
 } from './transport';
 import type { SimpleSequencerVizSource } from './simpleSequencerPhrasePreview';
-import type { LeadRandomSource, PhraseClockSource, SliderState } from '../ui/state';
+import type { PhraseClockSource, SliderState } from '../ui/state';
 import type { SampleSlotId } from './sampleLibraries/SampleLibraryTypes';
 
 export function clamp(value: number, min: number, max: number): number {
@@ -110,51 +110,6 @@ export function pickChordWeightedNote(
   return passingTones[Math.floor(rng() * passingTones.length)] ?? availableNotes[0] ?? 60;
 }
 
-export function leadRandomSource(state: Record<string, unknown>): LeadRandomSource {
-  // ALLOW_PIANO_ALIAS_MIGRATION: legacy preset reads normalize Piano to Sample 1.
-  const source = state.leadRandomSource;
-  if (source === 'pad1') return 'pad1';
-  if (source === 'pad2') return 'pad2';
-  if (source === 'lead2') return 'lead2';
-  if (source === 'sample1' || source === 'piano') return 'sample1';
-  if (source === 'sample2') return 'sample2';
-  return 'lead1';
-}
-
-export function leadRandomSourceId(source: LeadRandomSource): number {
-  if (source === 'pad1') return CORE_PRODUCT_SOURCE_IDS.pad1;
-  if (source === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
-  if (source === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (source === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
-  if (source === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
-  return CORE_PRODUCT_SOURCE_IDS.lead1;
-}
-
-export function simpleSequencerSourceId(source: unknown, fallback: number = CORE_PRODUCT_SOURCE_IDS.sample1): number {
-  const sourceValue = String(source ?? '').trim().toLowerCase();
-  if (sourceValue === 'pad1' || sourceValue === 'pad') return CORE_PRODUCT_SOURCE_IDS.pad1;
-  if (sourceValue === 'pad2') return CORE_PRODUCT_SOURCE_IDS.pad2;
-  if (sourceValue === 'lead1' || sourceValue === 'lead') return CORE_PRODUCT_SOURCE_IDS.lead1;
-  if (sourceValue === 'lead2') return CORE_PRODUCT_SOURCE_IDS.lead2;
-  if (sourceValue === 'sample1') return CORE_PRODUCT_SOURCE_IDS.sample1;
-  if (sourceValue === 'sample2') return CORE_PRODUCT_SOURCE_IDS.sample2;
-  return fallback;
-}
-
-export function synthChordGeneratorSource(state: Record<string, unknown>): string {
-  return String(state.synthChordGeneratorSource ?? 'sample1').trim().toLowerCase();
-}
-
-export function synthChordGeneratorSourceEnabled(state: Record<string, unknown>): boolean {
-  if (!booleanFromState(state, 'synthChordGeneratorEnabled', false)) return false;
-  const source = synthChordGeneratorSource(state);
-  if (source === 'both') {
-    return manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad1)
-      || manualNoteSourceEnabled(state, CORE_PRODUCT_SOURCE_IDS.pad2);
-  }
-  return manualNoteSourceEnabled(state, simpleSequencerSourceId(source));
-}
-
 export function runtimeSourceFromSourceId(sourceId: number): SimpleSequencerVizSource {
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
   if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
@@ -227,18 +182,6 @@ export function publishManualNoteTriggerForEvent(
 export type EnsureScheduledSampleAsset = (slotId: SampleSlotId, midi: number, velocity: number) => Promise<void>;
 type PostManualNoteEvent = (event: CoreProductEvent) => void;
 type PublishManualNoteTrigger = (name: string, ...payload: unknown[]) => void;
-
-export function leadRandomSourceEnabled(state: Record<string, unknown>, source: LeadRandomSource): boolean {
-  if (!booleanFromState(state, 'leadRandomEnabled', false)) return false;
-  if (source === 'sample1' && (
-    state.leadRandomSource === 'piano' ||
-    (booleanFromState(state, 'pianoEnabled', false) && sourceDistanceValue(state, 'pianoDistance') > 0)
-  )) {
-    return booleanFromState(state, 'pianoEnabled', false) ||
-      productSourceEnabledForPlayback(state, CORE_PRODUCT_SOURCE_IDS.sample1);
-  }
-  return manualNoteSourceEnabled(state, leadRandomSourceId(source));
-}
 
 export function manualNoteSourceEnabled(state: Record<string, unknown>, sourceId: number): boolean {
   return productSourceEnabledForPlayback(state, sourceId);

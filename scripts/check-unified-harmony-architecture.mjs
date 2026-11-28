@@ -108,7 +108,7 @@ assert(
 
 for (const [path, source] of activeSources) {
   assert(
-    !source.includes('slot.intent') && !/\bHarmonyChordSlot\b|\bSharedHarmonyChord\b|harmonyChordSlots/.test(source.replace(/RETIRED_CHORD_STATE_KEYS[\s\S]*?\] as const;/, '')),
+    !source.includes('slot.intent') && !/\bHarmonyChordSlot\b|\bSharedHarmonyChord\b|harmonyChordSlots/.test(source.replace(/RETIRED_STATE_KEYS[\s\S]*?\] as const;/, '')),
     `${path} must not reference the retired chord bank`,
   );
 }

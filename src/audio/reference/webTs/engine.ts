@@ -104,7 +104,11 @@ import { harmonySeedPayloadJsonFromState } from '../../harmonySeedMaterial';
 import { SEQUENCER_VISUAL_SYNC_OFFSET_MS } from '../../sequencerVisualSync';
 import { getChangedRuntimeWalkParameterKeys } from './runtimeWalkParameterDiff';
 import type { StemRecordTrackId } from '../../recordingTracks';
-import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState } from '../../../ui/state';
+import { DEFAULT_REVERB_PRE_COMP, getIndexedDelayDivisionValue, getStateValueFromSliderNumber, quantize, type IndexedDelayDivisionKey, type SliderState as ProductSliderState } from '../../../ui/state';
+import type { LegacyArrangementKeys } from '../legacyArrangementState';
+
+// The reference engine still plays the retired singleton generators.
+type SliderState = ProductSliderState & LegacyArrangementKeys;
 import {
   applyDistanceValue,
   applyLeadDistanceEnvelope,
@@ -8245,7 +8249,7 @@ export class AudioEngine {
     for (const [key, range] of walkEntries) {
       if (!range) continue;
       const position = this.runtimeWalkStates.get(key)?.position ?? 0.5;
-      const paramKey = key as keyof SliderState;
+      const paramKey = key as keyof ProductSliderState;
       const numericValue = quantize(paramKey, range.min + position * (range.max - range.min));
       nextStateRecord[key] = getStateValueFromSliderNumber(paramKey, numericValue) as SliderState[keyof SliderState];
     }
@@ -10911,8 +10915,8 @@ export class AudioEngine {
     }
 
     // ─── Shared delay (NOT from presets) ───
-    const lead1DelayActive = this.isLead1RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled && this.getLeadRandomSource(this.sliderState) === 'lead1' && this.isLeadRandomSourceEnabled(this.sliderState));
-    const lead2DelayActive = this.isLead2RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled && this.getLeadRandomSource(this.sliderState) === 'lead2' && this.isLeadRandomSourceEnabled(this.sliderState));
+    const lead1DelayActive = this.isLead1RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled === true && this.getLeadRandomSource(this.sliderState) === 'lead1' && this.isLeadRandomSourceEnabled(this.sliderState));
+    const lead2DelayActive = this.isLead2RouteActive(this.sliderState) || (this.sliderState.leadRandomEnabled === true && this.getLeadRandomSource(this.sliderState) === 'lead2' && this.isLeadRandomSourceEnabled(this.sliderState));
     const pianoDelayActive = this.isPianoRouteActive(this.sliderState);
     const granularBusArmed = this.isGranularBusArmed(this.sliderState, lead1DelayActive, lead2DelayActive, pianoDelayActive);
     const delayAState = this.getSharedDelayAState(
@@ -11343,7 +11347,7 @@ export class AudioEngine {
       this.sliderState,
       this.sliderState.leadRandomClockSource ?? 'globalPhrase',
     ) * 1000;
-    const density = this.sliderState.lead1Density;
+    const density = this.sliderState.lead1Density ?? 0.5;
     const notesThisPhrase = Math.max(1, Math.round(density * 3 + rng() * 2));
     const baseLow = 64 + (baseOctaveOffset * 12);
     const baseHigh = baseLow + (octaveRange * 12);

@@ -95,7 +95,7 @@ function booleanFromState(state: Record<string, unknown> | null | undefined, key
 }
 
 function defaultClockDivision(laneNumber: number): number {
-  return laneNumber === 1 ? 8 : laneNumber === 2 ? 16 : laneNumber === 3 ? 12 : 4;
+  return [8, 16, 12, 4, 8, 16][laneNumber - 1] ?? 4;
 }
 
 function effectiveSequencerBpm(state: Record<string, unknown> | null | undefined): number {

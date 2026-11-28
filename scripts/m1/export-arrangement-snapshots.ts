@@ -34,11 +34,13 @@ const asset = JSON.parse(readFileSync(resolve('public/presets/StringWaves.json')
 };
 const baseState = completeCanonicalPresetState(asset.state) as Record<string, unknown>;
 
+// String Waves loads with two Random slots (the migrated Random Chords in slot 5,
+// the migrated Random Notes in slot 6), so the cases edit those slots' own keys.
 const cases: Array<{ name: string; overrides: Record<string, unknown> }> = [
   { name: 'string-waves', overrides: {} },
-  { name: 'string-waves-chords-only', overrides: { leadRandomEnabled: false } },
-  { name: 'string-waves-notes-only', overrides: { synthChordGeneratorEnabled: false } },
-  { name: 'string-waves-beat-clock', overrides: { leadRandomClockSource: 'globalBeat', transportPrimaryClock: 'bpm', sequencerMasterBPM: 90 } },
+  { name: 'string-waves-chords-only', overrides: { synthEuclid6Enabled: false } },
+  { name: 'string-waves-notes-only', overrides: { synthEuclid5Enabled: false } },
+  { name: 'string-waves-beat-clock', overrides: { synthEuclid6RandomPhraseSource: 'globalBeat', transportPrimaryClock: 'bpm', sequencerMasterBPM: 90 } },
 ];
 
 mkdirSync(outDir, { recursive: true });

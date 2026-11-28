@@ -1,3 +1,4 @@
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 // src/presets/presetUtils.ts
 // Shared helpers for preset identity, normalization, compatibility checks, and diffing.
 
@@ -305,7 +306,7 @@ export function normalizePresetVersion(input: unknown): PresetVersion | null {
     const normalized = field === 'synthSequenceVariationBanks'
         ? (() => {
             try {
-              return normalizeSynthSequenceVariationBanks(input[field], 4);
+              return normalizeSynthSequenceVariationBanks(input[field], SYNTH_EUCLIDEAN_LANE_COUNT);
             } catch {
               return undefined;
             }

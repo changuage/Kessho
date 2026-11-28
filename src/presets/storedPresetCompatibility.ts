@@ -1,11 +1,12 @@
 import type { PresetLevel } from './types';
-import { RETIRED_CHORD_STATE_KEYS, applyLegacyStateKeyAliases } from '../ui/state';
+import { RETIRED_STATE_KEYS, applyLegacyStateKeyAliases } from '../ui/state';
+import { migrateSynthRandomSlots, stripRetiredStateKeys } from './synthRandomMigration';
 import { convertLegacyPadPitchFields } from '../ui/synth/padPitch';
 
 type JsonRecord = Record<string, unknown>;
 
 const RETIRED_INERT_STATE_KEYS = new Set<string>([
-  ...RETIRED_CHORD_STATE_KEYS,
+  ...RETIRED_STATE_KEYS,
   'airNoise',
   'filterModSpeed',
   'oscBrightness',
@@ -170,6 +171,22 @@ function canonicalizeStoredVersion(
         };
       }
       version.dualSliderConfigs = dualSliderConfigs;
+    }
+  }
+  if (type !== 'journey') {
+    // Random Chords and Random Notes moved into slots (M3). A state preset gets
+    // the one-time slot migration; engine, kit and source presets only drop the
+    // retired keys, since they have no slots to receive them.
+    const metadataMaps = {
+      dualRanges: isRecord(version.dualRanges) ? { ...version.dualRanges } : undefined,
+      sliderModes: isRecord(version.sliderModes) ? { ...version.sliderModes } : undefined,
+      dualSliderConfigs: isRecord(version.dualSliderConfigs) ? { ...version.dualSliderConfigs } : undefined,
+    };
+    const target = { state: data, ...metadataMaps };
+    if (type === 'state') migrateSynthRandomSlots(target);
+    else stripRetiredStateKeys(target);
+    for (const [field, map] of Object.entries(metadataMaps)) {
+      if (map) version[field] = map;
     }
   }
   if (type === 'state') {

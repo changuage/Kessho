@@ -42,7 +42,8 @@ import {
   progressionPhraseSeconds,
 } from './coreProductArrangementSchedulerUtils';
 import { harmonySeedMaterialFromState } from './harmonySeedMaterial';
-import { coreProductArrangementSnapshotFromState, coreProductRandomLanesFromState } from './coreProductArrangementSnapshot';
+import { applyRandomSlotToLane, coreProductArrangementSnapshotFromState } from './coreProductArrangementSnapshot';
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from './sequencerLaneCounts';
 import { compileProductSourceMorphAutomation } from './product/compileProductSourceMorphAutomation';
 import {
   FX_ROUTING_NODE_IDS,
@@ -281,7 +282,7 @@ function clockDivisionFromState(state: Record<string, unknown> | undefined, key:
 }
 
 function defaultSequencerClockDivision(laneNumber: number): number {
-  return laneNumber === 1 ? 8 : laneNumber === 2 ? 16 : laneNumber === 3 ? 12 : 4;
+  return [8, 16, 12, 4, 8, 16][laneNumber - 1] ?? 4;
 }
 
 function secondsPerSequencerStep(transport: CoreProductSnapshot['transport'], clockDivision: number, tempoMultiplier: number): number {
@@ -327,6 +328,8 @@ const DEFAULT_SYNTH_EUCLID_NOTE_RANGES = [
   { min: DEFAULT_STATE.synthEuclid2NoteMin, max: DEFAULT_STATE.synthEuclid2NoteMax },
   { min: DEFAULT_STATE.synthEuclid3NoteMin, max: DEFAULT_STATE.synthEuclid3NoteMax },
   { min: DEFAULT_STATE.synthEuclid4NoteMin, max: DEFAULT_STATE.synthEuclid4NoteMax },
+  { min: DEFAULT_STATE.synthEuclid5NoteMin, max: DEFAULT_STATE.synthEuclid5NoteMax },
+  { min: DEFAULT_STATE.synthEuclid6NoteMin, max: DEFAULT_STATE.synthEuclid6NoteMax },
 ] as const;
 
 function synthEuclidDefaultNoteRange(laneNumber: number): { min: number; max: number } {
@@ -574,6 +577,13 @@ function synthLaneFromState(
 ): ProductLaneSnapshot {
   const prefix = `synthEuclid${laneNumber}`;
   const sourceId = synthSourceIdFromState(state, `${prefix}Source`);
+  const faceSlot = synthSequencerFaceSlotsFromState(state)[laneNumber - 1] ?? synthSequencerFaceSlotsFromState(undefined)[0]!;
+  if (faceSlot.mode === 'random') {
+    // A Random slot is built from its own settings only, never from Euclid fields.
+    const randomLane = laneDefaults(sourceId, 60);
+    applyRandomSlotToLane(randomLane, state, laneNumber, faceSlot.partId);
+    return randomLane;
+  }
   const lane = laneDefaults(sourceId, synthEuclidMidiCenterFromState(state, laneNumber));
   const macroDefaults = coreProductSynthLaneMacroDefaultsFromState(state, sourceId);
   lane.morph = macroDefaults.morph;
@@ -608,7 +618,6 @@ function synthLaneFromState(
   lane.holdSeconds = coreProductSynthSequencerHoldSecondsFromState(state, sourceId, lane.holdSeconds);
   lane.seed = encodedPadVoiceLaneSeed(1000 + laneNumber, synthSourcePadVoiceMaskFromState(state, `${prefix}Source`));
   Object.assign(lane, laneManualMaskFromPattern(state, prefix, resolved.steps, resolved.hits, resolved.rotation));
-  const faceSlot = synthSequencerFaceSlotsFromState(state)[laneNumber - 1] ?? synthSequencerFaceSlotsFromState(undefined)[0]!;
   lane.sequencerMode = SEQUENCER_MODE_IDS[faceSlot.mode] ?? 0;
   lane.anchorWalker = productAnchorWalkerFromConfig(faceSlot.anchorWalker, laneNumber - 1, sourceId);
   lane.orbit = productOrbitFromConfig(faceSlot.orbit, laneNumber - 1, sourceId);
@@ -723,10 +732,7 @@ function synthLanesFromState(
   defaultEnabled: boolean,
   transport: CoreProductSnapshot['transport'],
 ): ProductLaneSnapshot[] {
-  return [
-    ...[1, 2, 3, 4].map((laneNumber) => synthLaneFromState(state, laneNumber, defaultEnabled, transport)),
-    ...coreProductRandomLanesFromState(state),
-  ];
+  return SYNTH_EUCLIDEAN_LANE_NUMBERS.map((laneNumber) => synthLaneFromState(state, laneNumber, defaultEnabled, transport));
 }
 
 function drumLanesFromState(

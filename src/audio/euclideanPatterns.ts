@@ -9,6 +9,8 @@ const SYNTH_EUCLID_DEFAULTS = [
   { steps: 8, hits: 3, rotation: 1 },
   { steps: 16, hits: 2, rotation: 0 },
   { steps: 16, hits: 6, rotation: 2 },
+  { steps: 16, hits: 4, rotation: 0 },
+  { steps: 8, hits: 3, rotation: 1 },
 ] as const satisfies readonly EuclideanPatternParams[];
 
 const DRUM_EUCLID_DEFAULTS = [

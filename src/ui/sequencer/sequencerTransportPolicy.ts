@@ -10,6 +10,8 @@ export const SYNTH_LANE_ENABLED_KEYS = [
   'synthEuclid2Enabled',
   'synthEuclid3Enabled',
   'synthEuclid4Enabled',
+  'synthEuclid5Enabled',
+  'synthEuclid6Enabled',
 ] as const satisfies readonly (keyof SliderState)[];
 
 export const SYNTH_LANE_SOURCE_KEYS = [
@@ -17,6 +19,8 @@ export const SYNTH_LANE_SOURCE_KEYS = [
   'synthEuclid2Source',
   'synthEuclid3Source',
   'synthEuclid4Source',
+  'synthEuclid5Source',
+  'synthEuclid6Source',
 ] as const satisfies readonly (keyof SliderState)[];
 
 export const DRUM_LANE_ENABLED_KEYS = [
@@ -56,35 +60,21 @@ function safeLaneIndex(index: number, laneCount: number): number {
   return Math.max(0, Math.min(laneCount - 1, Math.floor(index)));
 }
 
-export function manualSynthSourceForLaneSource(
-  source: unknown,
-  pad2VoiceAssign: unknown,
-): SequencerManualSynthSource {
+export function manualSynthSourceForLaneSource(source: unknown): SequencerManualSynthSource {
   const normalized = normalizeSynthEuclidSource(source);
   if (normalized === 'lead2') return 'lead2';
   if (normalized === 'sample1') return 'sample1';
   if (normalized === 'sample2') return 'sample2';
   if (normalized === 'pad1') return 'pad1';
   if (normalized === 'pad2') return 'pad2';
-  if (normalized.startsWith('synth')) {
-    const voiceIndex = Number.parseInt(normalized.slice('synth'.length), 10) - 1;
-    if (Number.isFinite(voiceIndex) && voiceIndex >= 0) {
-      const pad2Mask = typeof pad2VoiceAssign === 'number' && Number.isFinite(pad2VoiceAssign)
-        ? Math.round(pad2VoiceAssign)
-        : 0;
-      return (pad2Mask & (1 << voiceIndex)) !== 0 ? 'pad2' : 'pad1';
-    }
-    return 'pad1';
-  }
+  // Legacy `synthN` voice sources are rewritten to a pad when an old preset loads.
+  if (normalized.startsWith('synth')) return 'pad1';
   return 'lead1';
 }
 
-export function manualSynthSourcesForLaneSource(
-  source: unknown,
-  pad2VoiceAssign: unknown,
-): readonly SequencerManualSynthSource[] {
+export function manualSynthSourcesForLaneSource(source: unknown): readonly SequencerManualSynthSource[] {
   if (String(source ?? '').trim().toLowerCase() === 'both') return ['pad1', 'pad2'];
-  return [manualSynthSourceForLaneSource(source, pad2VoiceAssign)];
+  return [manualSynthSourceForLaneSource(source)];
 }
 
 function addSynthSourceEnablePatch(
@@ -117,7 +107,7 @@ export function planSynthSequencerTransportToggle(
     const laneSourceKey = SYNTH_LANE_SOURCE_KEYS[laneIndex] ?? SYNTH_LANE_SOURCE_KEYS[0];
     if (!Boolean(state[laneEnabledKey]) && laneIndex !== requestedLane) continue;
     const sourceValue = state[laneSourceKey] ?? 'lead1';
-    for (const source of manualSynthSourcesForLaneSource(sourceValue, state.pad2VoiceAssign)) {
+    for (const source of manualSynthSourcesForLaneSource(sourceValue)) {
       addSynthSourceEnablePatch(patch, state, source);
     }
   }

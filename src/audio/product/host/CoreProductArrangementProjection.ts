@@ -201,7 +201,8 @@ export class CoreProductArrangementProjection {
     const sliderState = sliderStateFromRecord(this.state);
     const padClockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
     const padPhraseSeconds = harmonyPhraseSeconds(sliderState);
-    const randomClockSource = sliderState.leadRandomClockSource ?? 'globalPhrase';
+    // Random slots keep their own clock source; the visual plan follows the global phrase.
+    const randomClockSource = 'globalPhrase' as const;
     const randomPhraseSeconds = getPhraseDurationForClockSource(sliderState, randomClockSource);
     const padPlan = this.captureActive.padChord ? this.padChordPlan : null;
     const randomPlan = this.captureActive.randomTiming ? this.randomTimingPlan : null;

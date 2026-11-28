@@ -103,7 +103,11 @@ import {
 } from './synthSeqEvolve';
 import { clampSequencerRatchet } from './seqEvolveCore';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
-import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState } from '../ui/state';
+import { DEFAULT_REVERB_PRE_COMP, getStateValueFromSliderNumber, quantize, type SliderState as ProductSliderState } from '../ui/state';
+import type { LegacyArrangementKeys } from './reference/legacyArrangementState';
+
+// The reference host still plays the retired singleton generators.
+type SliderState = ProductSliderState & LegacyArrangementKeys;
 import { getChangedRuntimeWalkParameterKeys } from './reference/webTs/runtimeWalkParameterDiff';
 import {
   KESSHO_PRODUCT_PAD_PARAM_COUNT,
@@ -5585,7 +5589,7 @@ export class CoreEngineHost {
     const nextRecord = nextState as unknown as Record<string, SliderState[keyof SliderState]>;
     for (const [key, range] of entries) {
       if (!range) continue;
-      const paramKey = key as keyof SliderState;
+      const paramKey = key as keyof ProductSliderState;
       const numericValue = quantize(paramKey, range.min + rng() * (range.max - range.min));
       nextRecord[key] = getStateValueFromSliderNumber(paramKey, numericValue) as SliderState[keyof SliderState];
     }
@@ -5600,7 +5604,7 @@ export class CoreEngineHost {
     for (const [key, range] of walkEntries) {
       if (!range) continue;
       const position = this.runtimeWalkStates.get(key)?.position ?? 0.5;
-      const paramKey = key as keyof SliderState;
+      const paramKey = key as keyof ProductSliderState;
       const numericValue = quantize(paramKey, range.min + position * (range.max - range.min));
       nextRecord[key] = getStateValueFromSliderNumber(paramKey, numericValue) as SliderState[keyof SliderState];
     }

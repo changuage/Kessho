@@ -1,3 +1,5 @@
+import { SYNTH_EUCLIDEAN_LANE_NUMBERS } from './sequencerLaneCounts';
+
 export const PAD_VOICE_COUNT = 8;
 export const PAD_VOICE_MASK_ALL = (1 << PAD_VOICE_COUNT) - 1;
 export const PAD_VOICE_DEFAULT_MASK = 1 << (PAD_VOICE_COUNT - 1);
@@ -47,7 +49,7 @@ export function arrangementRestartKey(state: Record<string, unknown>): string {
 export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number {
   if (!booleanFromState(state, 'synthEuclideanMasterEnabled', false)) return 0;
   let mask = 0;
-  for (const laneNumber of [1, 2, 3, 4]) {
+  for (const laneNumber of SYNTH_EUCLIDEAN_LANE_NUMBERS) {
     const prefix = `synthEuclid${laneNumber}`;
     if (!booleanFromState(state, `${prefix}Enabled`, laneNumber === 1)) continue;
     const source = String(state[`${prefix}Source`] ?? 'lead').toLowerCase();
@@ -61,53 +63,4 @@ export function padEuclidOwnedVoiceMask(state: Record<string, unknown>): number 
     if (voiceIndex >= 0 && voiceIndex < PAD_VOICE_COUNT) mask |= 1 << voiceIndex;
   }
   return mask;
-}
-
-export function enabledChordMidiForMask(chordMidi: number[], voiceMask: number): number[] {
-  const enabledMidi: number[] = [];
-  const mappedVoiceCount = Math.min(PAD_VOICE_COUNT, chordMidi.length);
-  for (let voiceIndex = 0; voiceIndex < mappedVoiceCount; voiceIndex += 1) {
-    const midi = chordMidi[voiceIndex];
-    if ((voiceMask & (1 << voiceIndex)) !== 0 && midi !== undefined) enabledMidi.push(midi);
-  }
-  if (enabledMidi.length === 0 && chordMidi.length > 0) enabledMidi.push(chordMidi[0]!);
-  return enabledMidi;
-}
-
-export function enabledVoiceRank(voiceMask: number, voiceIndex: number): number {
-  let rank = 0;
-  for (let index = 0; index < voiceIndex; index += 1) {
-    if ((voiceMask & (1 << index)) !== 0) rank += 1;
-  }
-  return rank;
-}
-
-export function limitVoiceMaskByCount(mask: number, count: number): number {
-  let limited = 0;
-  let selected = 0;
-  for (let voiceIndex = 0; voiceIndex < PAD_VOICE_COUNT && selected < count; voiceIndex += 1) {
-    const bit = 1 << voiceIndex;
-    if ((mask & bit) === 0) continue;
-    limited |= bit;
-    selected += 1;
-  }
-  return limited;
-}
-
-export function padChordVoiceMasksForSource(
-  source: string,
-  availablePadMask: number,
-  pad2Assign: number,
-  voiceCount: number,
-): { pad1Mask: number; pad2Mask: number } {
-  if (source === 'pad1' || source === 'pad') {
-    const eligible = availablePadMask & ~pad2Assign;
-    return { pad1Mask: limitVoiceMaskByCount(eligible !== 0 ? eligible : availablePadMask, voiceCount), pad2Mask: 0 };
-  }
-  if (source === 'pad2') {
-    const eligible = availablePadMask & pad2Assign;
-    return { pad1Mask: 0, pad2Mask: limitVoiceMaskByCount(eligible !== 0 ? eligible : availablePadMask, voiceCount) };
-  }
-  const selected = limitVoiceMaskByCount(availablePadMask, voiceCount);
-  return { pad1Mask: selected & ~pad2Assign, pad2Mask: selected & pad2Assign };
 }

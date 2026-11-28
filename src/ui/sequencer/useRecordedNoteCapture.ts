@@ -10,7 +10,6 @@ import {
   type RecordedNoteSource,
 } from './recordedNoteSession';
 import {
-  recordedCaptureSourceLane,
   type RecordedNoteCaptureBatch,
   type RecordedNoteCapturePolicy,
   type RecordedNoteCaptureStartRequest,
@@ -141,9 +140,14 @@ function safeLaneIndex(value: number | undefined, fallback: number): number {
   return Number.isFinite(candidate) ? Math.max(0, Math.round(candidate)) : fallback;
 }
 
-function sourceForMode(mode: 'euclid' | 'anchorWalker' | 'orbit'): RecordedNoteSource {
+/** The capture tap for a slot: a Random slot taps its own Chords or Notes producer on its own lane. */
+function sourceForMode(
+  mode: 'euclid' | 'anchorWalker' | 'orbit' | 'random',
+  randomMode: 'chords' | 'notes' = 'chords',
+): RecordedNoteSource {
   if (mode === 'anchorWalker') return 'walker';
   if (mode === 'orbit') return 'orbit';
+  if (mode === 'random') return randomMode === 'notes' ? 'randomNotes' : 'randomChords';
   return 'keyboard';
 }
 
@@ -155,7 +159,7 @@ function controlRequest(
     action,
     enabled: action === 'start' || action === 'finish',
     sessionToken: active.token,
-    sourceLaneIndex: recordedCaptureSourceLane(active.source, active.sourceLaneIndex),
+    sourceLaneIndex: active.sourceLaneIndex,
     targetLaneIndex: active.targetLaneIndex,
     source: active.source,
     mode: active.mode,

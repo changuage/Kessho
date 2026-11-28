@@ -587,14 +587,9 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
     'This arms the synth Euclidean scheduler without changing the stored lane content. When started from this page, it only turns on engines selected by enabled Euclidean lanes so those lanes can sound. Once running, each enabled lane drives its selected lead, pad, or piano source according to its clock division, trigger pattern, and sub-lanes.',
     [sy('Sequencer / Transport', 'Play / Stop')],
   ),
-  synthSeqViewSimple: entry(
-    'Switches the Synth page to the non-Euclidean performance view.',
-    'Simple mode shows the chord-generator controls for the pad engine and the random-timing controls for Lead 1. It is a separate performance view, not the full four-lane Euclidean editor.',
-    [sy('Sequencer / Transport', 'Simple')],
-  ),
   synthSeqViewDetail: entry(
     'Shows the one-lane-at-a-time synth Euclidean editor.',
-    'Detail mode exposes a single active synth lane with source selection, lane timing controls, Evolve options, and trigger plus sub-lane editors.',
+    'Detail mode exposes a single active synth slot of the six (Step, Walker, Orbit or Random) with source selection, lane timing controls, Evolve options, and trigger plus sub-lane editors.',
     [sy('Sequencer / Transport', 'Detail')],
   ),
   synthSeqViewOverview: entry(
@@ -648,16 +643,6 @@ export const BUTTON_HELP_CATALOG: Record<string, SliderHelpEntry> = {
   synthSeqTriggerPreset: cloneEntry(
     seqTriggerPresetEntry,
     [sy('Synth Sequencer', 'Preset')],
-  ),
-  synthVoiceMaskToggle: entry(
-    'Includes or excludes this physical synth voice from the Pad 1 chord engine.',
-    'The chord generator only assigns notes to voices present in `synthVoiceMask`, and the code prevents the mask from becoming completely empty by keeping at least one voice enabled. Voices assigned to Pad 2 are automatically removed from Pad 1’s mask path.',
-    [sy('Pad Voice Allocation', 'Voice Mask')],
-  ),
-  synthPad2VoiceAssign: entry(
-    'Assigns this physical synth voice to Pad 2.',
-    'Pad 2 voice assignment is a real ownership split, not just a mix balance. Assigned voices run Pad 2’s presets and controls, and the pad engine excludes those voices from Pad 1’s voice mask so both pads do not fight over the same voice.',
-    [sy('Pad Voice Allocation', 'Voice Assignment')],
   ),
   synthLfoPresetSelect: entry(
     'Loads a named low-frequency-oscillator recipe into destination, wave, rate, and depth at once.',

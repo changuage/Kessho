@@ -31,9 +31,9 @@ function withLane(state: Record<string, unknown>, kind: 'synth' | 'drum', lane: 
   return { ...state, [`${prefix}${lane}Enabled`]: enabled };
 }
 
-assert.equal(SYNTH_EUCLIDEAN_LANE_COUNT, 4);
+assert.equal(SYNTH_EUCLIDEAN_LANE_COUNT, 6);
 assert.equal(DRUM_EUCLIDEAN_LANE_COUNT, 6);
-assert.equal(euclideanLaneCount('synth'), 4);
+assert.equal(euclideanLaneCount('synth'), 6);
 assert.equal(euclideanLaneCount('drum'), 6);
 
 for (const lane of [1, 2, 3, 4, 5, 6]) {
@@ -46,7 +46,7 @@ for (const lane of [1, 2, 3, 4, 5, 6]) {
   );
 }
 
-for (const lane of [1, 2, 3, 4]) {
+for (const lane of [1, 2, 3, 4, 5, 6]) {
   const previous = withLane(baseState(), 'synth', lane, false);
   const next = withLane(baseState(), 'synth', lane, true);
   assert.equal(
@@ -71,7 +71,7 @@ for (const lane of [1, 2, 3, 4]) {
   const next = { ...previous, synthEuclideanMasterEnabled: true };
   assert.deepEqual(
     coreProductSequencerClockRejoinMask(previous, next),
-    { synth: 0b1111, drum: 0 },
+    { synth: 0b11_1111, drum: 0 },
     'starting Synth must arm only Synth lanes and leave every Drum clock untouched',
   );
 }

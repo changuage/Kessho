@@ -22,7 +22,7 @@ import {
   normalizeSequencerChainState,
   resolveSequencerChainPosition,
 } from './sequencerChain';
-import { createDefaultSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
+import { createDefaultSynthSequencerFaceState, normalizeSynthSequencerFaceState } from '../ui/sequencer/sequencerModeTypes';
 import { applySampleLibrarySelectionDefaultsToFlatState } from './sampleLibraries/sampleLibrarySelectionDefaults';
 import type { SampleLibraryKey, SampleSlotId } from './sampleLibraries/SampleLibraryTypes';
 import {
@@ -155,46 +155,58 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   assert.notEqual(enabled.routing.fxEdgeMask[5]! & (1 << 7), 0, 'enabled Reverb must feed downstream at zero return level');
 }
 
+// A Random slot is a slot type: its lane, source and settings come from the slot's own keys.
+function randomSlots(
+  extra: Record<string, unknown>,
+  slotModes: Record<number, 'random' | 'euclid'>,
+): Record<string, unknown> {
+  const faces = normalizeSynthSequencerFaceState(extra.synthSequencerFaces);
+  const slots = faces.slots.map((slot, index) => (
+    slotModes[index + 1] ? { ...slot, mode: slotModes[index + 1]! } : slot
+  ));
+  return { ...extra, synthSequencerFaces: { ...faces, slots } };
+}
+
 {
-  const generator = createCoreProductSnapshot({
-    synthChordGeneratorEnabled: true,
-    synthChordGeneratorSource: 'sample2',
-    synthChordGeneratorVoiceCount: 5,
+  const generator = createCoreProductSnapshot(randomSlots({
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'sample2',
+    synthEuclid5RandomMode: 'chords',
+    synthEuclid5RandomVoiceCount: 5,
     sample2Enabled: true,
-  });
-  // The chord generator is Random Chords on native lane 5 (index 4).
+  }, { 5: 'random' }));
   assert.equal(generator.synthLanes.length, 6);
   assert.equal(generator.synthLanes[4]!.sequencerMode, 3);
   assert.equal(generator.synthLanes[4]!.enabled, true);
   assert.equal(generator.synthLanes[4]!.targetSourceId, CORE_PRODUCT_SOURCE_IDS.sample2);
   assert.equal(generator.synthLanes[4]!.random.mode, 0);
   assert.equal(generator.synthLanes[4]!.random.voiceCount, 5);
-  const disabledSource = createCoreProductSnapshot({
-    synthChordGeneratorEnabled: true,
-    synthChordGeneratorSource: 'sample2',
+  const disabledSource = createCoreProductSnapshot(randomSlots({
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'sample2',
     sample2Enabled: false,
-  });
+  }, { 5: 'random' }));
   assert.equal(
     disabledSource.synthLanes[4]!.enabled,
     false,
-    'Chord Generator must not schedule an explicitly disabled target source',
+    'Random Chords must not schedule an explicitly disabled target source',
   );
 
-  const liveTarget = createCoreProductSnapshot({
-    synthChordGeneratorEnabled: true,
-    synthChordGeneratorSource: 'pad1',
-    synthChordGeneratorVoiceCount: 6,
-    synthEnabled: true,
-  });
-  const liveRetarget = createCoreProductSnapshot({
-    synthChordGeneratorEnabled: true,
-    synthChordGeneratorSource: 'sample2',
-    synthChordGeneratorVoiceCount: 3,
-    synthEnabled: true,
+  const liveTarget = createCoreProductSnapshot(randomSlots({
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'pad1',
+    synthEuclid5RandomVoiceCount: 6,
+    padEnabled: true,
+  }, { 5: 'random' }));
+  const liveRetarget = createCoreProductSnapshot(randomSlots({
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'sample2',
+    synthEuclid5RandomVoiceCount: 3,
+    padEnabled: true,
     sample2Enabled: true,
-  });
+  }, { 5: 'random' }));
   const retargetDiff = buildCoreProductSnapshotDiff(liveTarget, liveRetarget);
-  assert.equal(retargetDiff.applied, true, 'Chord Generator routing changes should use live dirty diffs');
+  assert.equal(retargetDiff.applied, true, 'Random Chords routing changes should use live dirty diffs');
   const arrangementParamIds = retargetDiff.applied
     ? retargetDiff.events.filter((event) => event.index === 4).map((event) => event.paramId)
     : [];
@@ -207,25 +219,27 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
     'a live voice-count change must reach the arrangement renderer',
   );
 
-  const sparseLead = createCoreProductSnapshot({
-    leadRandomEnabled: true,
-    leadRandomSource: 'lead1',
-    lead1Density: 0.5,
-    lead1Octave: 0,
-    lead1OctaveRange: 1,
-    lead1Enabled: true,
-  });
-  const denseRetargetedLead = createCoreProductSnapshot({
-    leadRandomEnabled: true,
-    leadRandomSource: 'sample2',
-    lead1Density: 8,
-    lead1Octave: 2,
-    lead1OctaveRange: 4,
-    lead1Enabled: true,
+  const sparseLead = createCoreProductSnapshot(randomSlots({
+    synthEuclid6Enabled: true,
+    synthEuclid6Source: 'lead1',
+    synthEuclid6RandomMode: 'notes',
+    synthEuclid6RandomDensity: 0.5,
+    synthEuclid6RandomNotesOctave: 0,
+    synthEuclid6RandomOctaveRange: 1,
+    leadEnabled: true,
+  }, { 6: 'random' }));
+  const denseRetargetedLead = createCoreProductSnapshot(randomSlots({
+    synthEuclid6Enabled: true,
+    synthEuclid6Source: 'sample2',
+    synthEuclid6RandomMode: 'notes',
+    synthEuclid6RandomDensity: 8,
+    synthEuclid6RandomNotesOctave: 2,
+    synthEuclid6RandomOctaveRange: 4,
+    leadEnabled: true,
     sample2Enabled: true,
-  });
+  }, { 6: 'random' }));
   const leadDiff = buildCoreProductSnapshotDiff(sparseLead, denseRetargetedLead);
-  assert.equal(leadDiff.applied, true, 'Random Timing changes should use live dirty diffs');
+  assert.equal(leadDiff.applied, true, 'Random Notes changes should use live dirty diffs');
   const leadParamIds = leadDiff.applied
     ? leadDiff.events.filter((event) => event.index === 5).map((event) => event.paramId)
     : [];
@@ -237,28 +251,28 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   ]) {
     assert.ok(
       leadParamIds.includes(paramId),
-      `Random Timing live diff is missing arrangement param ${paramId}`,
+      `Random Notes live diff is missing arrangement param ${paramId}`,
     );
   }
 }
 
 {
-  const octaveZero = createCoreProductSnapshot({ synthOctave: 0 });
-  const octaveUp = createCoreProductSnapshot({ synthOctave: 1 });
+  const octaveZero = createCoreProductSnapshot(randomSlots({ synthEuclid5RandomOctave: 0 }, { 5: 'random' }));
+  const octaveUp = createCoreProductSnapshot(randomSlots({ synthEuclid5RandomOctave: 1 }, { 5: 'random' }));
   const octaveDiff = buildCoreProductSnapshotDiff(octaveZero, octaveUp);
-  assert.equal(octaveDiff.applied, true, 'synth octave changes should use the live dirty-diff path');
+  assert.equal(octaveDiff.applied, true, 'Random Chords octave changes should use the live dirty-diff path');
   assert.deepEqual(
     octaveDiff.applied
       ? octaveDiff.events.filter((event) => event.paramId === KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctave)
       : [],
     [createCoreProductSequencerLaneParamEvent('synth', 4, KESSHO_PRODUCT_PARAM_IDS.SequencerRandomOctave, 1)],
-    'synth octave changes must reach the core arrangement generator',
+    'a slot octave change must reach that slot\'s own lane',
   );
 }
 
 {
-  const compactSpread = createCoreProductSnapshot({ voicingSpread: 0, waveSpread: 0 });
-  const wideSpread = createCoreProductSnapshot({ voicingSpread: 1, waveSpread: 1 });
+  const compactSpread = createCoreProductSnapshot(randomSlots({ voicingSpread: 0, synthEuclid5RandomWaveSpread: 0 }, { 5: 'random' }));
+  const wideSpread = createCoreProductSnapshot(randomSlots({ voicingSpread: 1, synthEuclid5RandomWaveSpread: 1 }, { 5: 'random' }));
   const spreadDiff = buildCoreProductSnapshotDiff(compactSpread, wideSpread);
   assert.equal(spreadDiff.applied, true, 'spread changes should use the live dirty-diff path');
   assert.deepEqual(
@@ -278,11 +292,11 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
       },
       createCoreProductSequencerLaneParamEvent('synth', 4, KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread, 1),
     ],
-    'spread changes must reach the core harmony and arrangement generators',
+    'spread changes must reach the core harmony and the slot\'s own Random lane',
   );
 
   const voicingRangeTargets = resolveCoreProductRangeTargets('voicingSpread');
-  const waveRangeTargets = resolveCoreProductRangeTargets('waveSpread');
+  const waveRangeTargets = resolveCoreProductRangeTargets('synthEuclid5RandomWaveSpread');
   assert.deepEqual(
     voicingRangeTargets.map(({ targetId, paramId }) => ({ targetId, paramId })),
     [{ targetId: 0, paramId: KESSHO_PRODUCT_PARAM_IDS.HarmonyVoicingSpread }],
@@ -291,7 +305,28 @@ assert.equal(isTransportClockStateKey('transportPrimaryClock'), true);
   assert.deepEqual(
     waveRangeTargets.map(({ targetId, paramId }) => ({ targetId, paramId })),
     [{ targetId: CORE_PRODUCT_CONTROL_ONLY_MODULATION_TARGET_ID, paramId: KESSHO_PRODUCT_PARAM_IDS.SequencerRandomWaveSpread }],
-    'Wave Spread Walk mode walks the state value; the lane param diff carries it to the Random Chords lane',
+    'Wave Spread Walk mode walks the slot\'s state value; the lane param diff carries it to the Random Chords lane',
+  );
+}
+
+{
+  // Acceptance 4: one slot's snapshot lane and part ID never depend on another slot's type.
+  const base = randomSlots({
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'pad1',
+    synthEuclid5RandomMode: 'chords',
+    padEnabled: true,
+  }, { 5: 'random' });
+  const before = createCoreProductSnapshot(base);
+  const retyped = createCoreProductSnapshot(randomSlots(base, { 2: 'random' }));
+  assert.deepEqual(retyped.synthLanes[4], before.synthLanes[4], 'retyping slot 2 must not change slot 5\'s lane');
+  assert.equal(retyped.synthLanes[4]!.random.partId, before.synthLanes[4]!.random.partId);
+  const faces = normalizeSynthSequencerFaceState(base.synthSequencerFaces);
+  assert.equal(before.synthLanes[4]!.random.partId, faces.slots[4]!.partId, 'the lane carries the slot\'s saved part ID');
+  assert.notEqual(
+    before.synthLanes[4]!.random.partId,
+    createCoreProductSnapshot(base).synthLanes[3]!.random.partId,
+    'slots carry distinct part IDs',
   );
 }
 

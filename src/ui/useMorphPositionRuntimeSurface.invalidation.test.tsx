@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 
 import type { DualSliderConfig } from './sliderSystem/dualConfigReducer';
 import { DEFAULT_STATE, type SliderMode, type SliderState } from './state';
+import { normalizeSynthSequencerFaceState } from './sequencer/sequencerModeTypes';
 import {
   useMorphPositionRuntimeSurface,
 } from './useMorphPositionRuntimeSurface';
@@ -251,10 +252,16 @@ test('endpoint replacement cancels stale morph work and allows the same position
     state = {
       ...state,
       reverbQuality: 'ultra',
-      synthChordGeneratorEnabled: true,
-      synthChordGeneratorSource: 'sample2',
-      leadRandomEnabled: true,
-      leadRandomSource: 'lead2',
+      synthEuclid5Enabled: true,
+      synthEuclid5Source: 'sample2' as const,
+      synthEuclid6Enabled: true,
+      synthEuclid6Source: 'lead2' as const,
+      synthSequencerFaces: {
+        ...normalizeSynthSequencerFaceState(state.synthSequencerFaces),
+        slots: normalizeSynthSequencerFaceState(state.synthSequencerFaces).slots.map((slot, index) => (
+          index >= 4 ? { ...slot, mode: 'random' as const } : slot
+        )),
+      },
     };
     stateRef.current = state;
     await render();
@@ -263,10 +270,10 @@ test('endpoint replacement cancels stale morph work and allows the same position
     assert.equal(lerpCalls, beforeLiveInputLerpCalls + 1, 'in-place override and live inputs invalidate the cache');
     assert.equal(latestSubmission()?.state.masterVolume, 0.35);
     assert.equal(latestSubmission()?.state.reverbQuality, 'ultra');
-    assert.equal(latestSubmission()?.state.synthChordGeneratorEnabled, true);
-    assert.equal(latestSubmission()?.state.synthChordGeneratorSource, 'sample2');
-    assert.equal(latestSubmission()?.state.leadRandomEnabled, true);
-    assert.equal(latestSubmission()?.state.leadRandomSource, 'lead2');
+    assert.equal(latestSubmission()?.state.synthEuclid5Enabled, true);
+    assert.equal(latestSubmission()?.state.synthEuclid5Source, 'sample2');
+    assert.equal(latestSubmission()?.state.synthEuclid6Enabled, true);
+    assert.equal(latestSubmission()?.state.synthEuclid6Source, 'lead2');
     assert.deepEqual(latestSubmission()?.options, {
       reason: 'morph-control-change',
       immediate: true,

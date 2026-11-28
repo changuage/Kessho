@@ -15,7 +15,10 @@ import type {
   SimpleSequencerVizNote,
   SimpleSequencerVizSource,
 } from './simpleSequencerRuntimePlan';
-import type { LeadRandomSource, SliderState } from '../ui/state';
+import type { PhraseClockSource, SliderState } from '../ui/state';
+
+// The retired singleton Random Notes source, still read by the reference scheduler's preview.
+type LeadRandomSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 
 export type {
   SimpleSequencerPhrasePreview,
@@ -238,7 +241,7 @@ function harmonyAtRandomPhrase(state: SliderState, phraseIndex: number): Harmony
 }
 
 export function createRandomTimingPhrasePreview(state: SliderState, phraseIndex = 0): SimpleSequencerPhrasePreview {
-  const phraseClock = state.leadRandomClockSource ?? 'globalPhrase';
+  const phraseClock = ((state as unknown as Record<string, unknown>).leadRandomClockSource as PhraseClockSource | undefined) ?? 'globalPhrase';
   const phraseSeconds = getPhraseDurationForClockSource(state, phraseClock);
   const source = randomTimingSource(state);
   const enabled = isRandomTimingEnabled(state);

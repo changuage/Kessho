@@ -30,11 +30,13 @@ import {
   booleanFromState, boundedInteger, boundedNumber, createSchedulerHarmonyState,
   ensureScheduledSampleAssetForEvent, type EnsureScheduledSampleAsset,
   harmonyChordIntervalSeconds, harmonyParamsFromState, harmonyPhraseSeconds,
-  leadRandomSource, leadRandomSourceEnabled, leadRandomSourceId,
   manualNoteEventSourceEnabled, pickChordWeightedNote,
   phraseTimingForClockSource, postManualNoteEventIfSourceEnabled, progressionPhraseSeconds,
-  sliderStateFromRecord,
 } from '../coreProductArrangementSchedulerUtils';
+import {
+  leadRandomSource, leadRandomSourceEnabled, leadRandomSourceId,
+  type ReferenceSliderState,
+} from './legacyArrangementState';
 
 // Compatibility-only helpers for the isolated Web/TS reference scheduler.
 import {
@@ -45,6 +47,10 @@ import {
 } from '../coreProductArrangementRuntimePlan';
 import type { ProductSimpleSequencerVisualPlanActive } from '../product/ProductEngineTypes';
 import type { CoreProductTelemetrySnapshot } from '../coreProductTelemetry';
+function referenceSliderState(state: Record<string, unknown>): ReferenceSliderState {
+  return state as unknown as ReferenceSliderState;
+}
+
 type CoreProductArrangementScheduledNote = {
   delaySeconds: number;
   event: CoreProductEvent;
@@ -92,7 +98,7 @@ export class CoreProductArrangementScheduler {
     this.state = { ...state };
     this.phraseState = { ...state };
     this.running = true;
-    const sliderState = sliderStateFromRecord(this.state);
+    const sliderState = referenceSliderState(this.state);
     const nowWallSec = Date.now() / 1000;
     this.anchors = previousAnchors ?? {
       localPhraseWallStartSec: nowWallSec,
@@ -209,7 +215,7 @@ export class CoreProductArrangementScheduler {
   }
   getTransportDebugState(nowWallSec: number = Date.now() / 1000): Partial<TransportDebugSnapshot> | null {
     if (!this.running || !this.state || !this.anchors) return null;
-    const liveSliderState = sliderStateFromRecord(this.state);
+    const liveSliderState = referenceSliderState(this.state);
     const randomClockSource = liveSliderState.leadRandomClockSource ?? 'globalPhrase';
     const randomPhraseSeconds = getPhraseDurationForClockSource(liveSliderState, randomClockSource);
     return {
@@ -328,7 +334,7 @@ export class CoreProductArrangementScheduler {
     this.chordSubTickCount = 0;
     const phraseState = this.getPhraseState();
     if (!phraseState) return;
-    const sliderState = sliderStateFromRecord(phraseState);
+    const sliderState = referenceSliderState(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const clockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
     const delaySeconds = getTimeUntilNextBoundaryWall(clockSource, phraseLength, this.anchors);
@@ -343,7 +349,7 @@ export class CoreProductArrangementScheduler {
     if (!this.running || !this.state || !this.anchors) return;
     const phraseState = this.getPhraseState();
     if (!phraseState) return;
-    const sliderState = sliderStateFromRecord(phraseState);
+    const sliderState = referenceSliderState(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const chordsPerPhrase = resolveChordsPerPhrase(sliderState.chordRate, phraseLength);
     const clockSource = sliderState.harmonyClockSource ?? 'globalPhrase';
@@ -370,7 +376,7 @@ export class CoreProductArrangementScheduler {
     if (isPhraseBoundary && !this.pendingTransportState) this.applyPendingHostTimingState();
     const phraseState = isPhraseBoundary ? this.capturePhraseState() : this.getPhraseState();
     if (!phraseState) return;
-    const sliderState = sliderStateFromRecord(phraseState);
+    const sliderState = referenceSliderState(phraseState);
     const phraseLength = harmonyPhraseSeconds(sliderState);
     const nowWallSec = Date.now() / 1000;
     const phraseIndex = getCurrentClockIndexWall(
@@ -413,7 +419,7 @@ export class CoreProductArrangementScheduler {
       this.scheduleLeadPhrase();
       return;
     }
-    const sliderState = sliderStateFromRecord(this.state);
+    const sliderState = referenceSliderState(this.state);
     const phraseSeconds = getPhraseDurationForClockSource(sliderState, sliderState.leadRandomClockSource ?? 'globalPhrase');
     const delaySeconds = getTimeUntilNextBoundaryWall(sliderState.leadRandomClockSource ?? 'globalPhrase', phraseSeconds, this.anchors);
     this.leadPhraseTimer = window.setTimeout(() => this.scheduleLeadPhrase(), delaySeconds * 1000);
@@ -423,7 +429,7 @@ export class CoreProductArrangementScheduler {
     if (!this.running || !this.state || !this.harmonyState || !this.rng || !this.anchors) return;
     const source = leadRandomSource(this.state);
     if (!leadRandomSourceEnabled(this.state, source)) return;
-    const sliderState = sliderStateFromRecord(this.state);
+    const sliderState = referenceSliderState(this.state);
     const phraseClock = sliderState.leadRandomClockSource ?? 'globalPhrase';
     const phraseSeconds = getPhraseDurationForClockSource(sliderState, phraseClock);
     const phraseMs = phraseSeconds * 1000;

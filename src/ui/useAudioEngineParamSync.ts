@@ -48,7 +48,7 @@ const TRANSPORT_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
 
 const SEQUENCER_CONTROL_KEY_PATTERNS: readonly RegExp[] = [
   /^synthEuclidean/,
-  /^synthEuclid[1-4]/,
+  /^synthEuclid[1-6]/,
   /^synthSequencerFaces$/,
   /^drumEuclid/,
 ];
@@ -59,12 +59,12 @@ const SEQUENCER_TRANSPORT_TRIGGER_KEYS = new Set<string>([
 ]);
 
 const SEQUENCER_LANE_ENABLED_KEY_PATTERNS: readonly RegExp[] = [
-  /^synthEuclid[1-4](Enabled|Solo)$/,
+  /^synthEuclid[1-6](Enabled|Solo)$/,
   /^drumEuclid[1-6](Enabled|Solo)$/,
 ];
 
 const SEQUENCER_TARGET_KEY_PATTERNS: readonly RegExp[] = [
-  /^synthEuclid[1-4]Source$/,
+  /^synthEuclid[1-6]Source$/,
   /^drumEuclid[1-6]Target(Sub|Kick|Click|BeepHi|BeepLo|Noise|Membrane)$/,
 ];
 

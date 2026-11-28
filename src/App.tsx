@@ -111,6 +111,11 @@ import { OptionalVisualizerGate } from './ui/components/OptionalVisualizerGate';
 import { useVisualFeatureToggle } from './ui/hooks/useVisualFeatureToggle';
 import type { StepOverrides, SubLaneKind, SubLaneState, PitchSettings, EvolveConfig, SequencerViewMode } from './ui/sequencer/useEuclideanSequencer';
 import { serializeStepOverrides } from './ui/sequencer/stepOverrideSerialization';
+import {
+  disableRandomNotesWithoutSource,
+  enableRandomNotesSourceForEdit,
+  randomNotesLanesWithoutSource,
+} from './ui/sequencer/randomSlotSources';
 import { type ClockDivision, type PitchBindingMode } from './audio/drumSeqTypes';
 import {
   getRoutingSourceDef,
@@ -580,7 +585,6 @@ const App: React.FC = () => {
     getProductGranularVisualEvents,
     getProductDynamicsVisualTelemetry,
     setProductGranularUiActive,
-    setProductSimpleSequencerVisualPlanActive,
     setProductVisualTelemetryActive,
     pushProductMidiMessage,
     getProductPadFilterFreq,
@@ -596,7 +600,6 @@ const App: React.FC = () => {
     stateRef,
     uiMode,
   });
-  useEffect(() => setProductSimpleSequencerVisualPlanActive({ padChord: state.synthChordGeneratorEnabled === true, randomTiming: state.leadRandomEnabled === true }), [setProductSimpleSequencerVisualPlanActive, state.leadRandomEnabled, state.synthChordGeneratorEnabled]);
   const productCoreDebugSummary = useProductCoreDebugSummary(productRuntimeCore);
   const [snowflakeActivated, setSnowflakeActivated] = useState(startInAdvancedEditor);
   const [welcomeDisplayState, setWelcomeDisplayState] = useState<SliderState>(() => createSignedSnowflakeWelcomeState());
@@ -779,7 +782,7 @@ const App: React.FC = () => {
     productRuntimeCore,
   });
 
-  const synthViewModeRef = useRef<SequencerViewMode>('simple');
+  const synthViewModeRef = useRef<SequencerViewMode>('detail');
   const synthStepOverridesRef = useRef<StepOverrides | undefined>(undefined);
   const synthSubLaneStatesRef = useRef<Record<SubLaneKind, SubLaneState>[] | undefined>(undefined);
   const synthClockDivsRef = useRef<ClockDivision[] | undefined>(undefined);
@@ -1421,38 +1424,6 @@ const App: React.FC = () => {
     [dualConfigs, dualSliderRanges, handleCycleSliderMode, handleDualConfigChange, handleDualRangeChange, productRuntimeSupportsRangeKey, sliderModes, state.modulationSourceA, state.modulationSourceB],
   );
 
-  const shouldDisableLeadRandomTiming = useCallback((nextState: SliderState): boolean => {
-    if (!nextState.leadRandomEnabled) return false;
-    const randomSource = String(nextState.leadRandomSource ?? 'lead1');
-    if (randomSource === 'pad1') return !nextState.padEnabled;
-    if (randomSource === 'pad2') return !nextState.pad2Enabled;
-    if (randomSource === 'lead2') return !nextState.lead2Enabled;
-    if (randomSource === 'piano') return !nextState.pianoEnabled && !nextState.sample1Enabled;
-    if (randomSource === 'sample1') return !nextState.sample1Enabled;
-    if (randomSource === 'sample2') return !nextState.sample2Enabled;
-    return !nextState.leadEnabled;
-  }, []);
-
-  const enableLeadRandomTimingSource = useCallback((nextState: SliderState): void => {
-    const randomSource = String(nextState.leadRandomSource ?? 'lead1');
-    if (randomSource === 'pad1') {
-      nextState.padEnabled = true;
-    } else if (randomSource === 'pad2') {
-      nextState.pad2Enabled = true;
-    } else if (randomSource === 'lead2') {
-      nextState.lead2Enabled = true;
-    } else if (randomSource === 'piano') {
-      nextState.pianoEnabled = true;
-      nextState.sample1Enabled = true;
-    } else if (randomSource === 'sample1') {
-      nextState.sample1Enabled = true;
-    } else if (randomSource === 'sample2') {
-      nextState.sample2Enabled = true;
-    } else {
-      nextState.leadEnabled = true;
-    }
-  }, []);
-
   const handleSelectChange = useCallback(
     <K extends keyof SliderState>(key: K, value: SliderState[K]) => {
       hasUserInteractedRef.current = true;
@@ -1563,16 +1534,8 @@ const App: React.FC = () => {
           applySampleLibrarySelectionDefaultsToFlatState(newState as unknown as Record<string, unknown>, key === 'sample2LibraryKey' ? 'sample2' : 'sample1', value as SampleLibraryKey);
         }
 
-        if (key === 'leadRandomSource') {
-          newState.leadRandomSource = value === 'piano' ? 'sample1' : newState.leadRandomSource;
-          if (newState.leadRandomEnabled) enableLeadRandomTimingSource(newState);
-        } else if (key === 'leadRandomEnabled' && value === true) {
-          enableLeadRandomTimingSource(newState);
-        }
-
-        if (shouldDisableLeadRandomTiming(newState)) {
-          newState.leadRandomEnabled = false;
-        }
+        enableRandomNotesSourceForEdit(newState, key);
+        newState = disableRandomNotesWithoutSource(newState);
 
         let normalizedState = newState;
         normalizedState = preserveRunningDrumSequencerSource(prev, normalizedState, {
@@ -1640,27 +1603,13 @@ const App: React.FC = () => {
         }
       }
     },
-    [shouldDisableLeadRandomTiming, enableLeadRandomTimingSource, applyMorphEndpointStatePatch, stopJourneyForEdit],
+    [applyMorphEndpointStatePatch, stopJourneyForEdit],
   );
 
   useEffect(() => {
-    if (!shouldDisableLeadRandomTiming(state)) return;
-    setState((prev) => {
-      if (!shouldDisableLeadRandomTiming(prev)) return prev;
-      return { ...prev, leadRandomEnabled: false };
-    });
-  }, [
-    shouldDisableLeadRandomTiming,
-    state.padEnabled,
-    state.pad2Enabled,
-    state.leadEnabled,
-    state.lead2Enabled,
-    state.pianoEnabled,
-    state.sample1Enabled,
-    state.sample2Enabled,
-    state.leadRandomEnabled,
-    state.leadRandomSource,
-  ]);
+    if (randomNotesLanesWithoutSource(state).length === 0) return;
+    setState((prev) => disableRandomNotesWithoutSource(prev));
+  }, [state]);
 
   const handleStateChange = useCallback<React.Dispatch<React.SetStateAction<SliderState>>>(
     (nextStateOrUpdater) => {
@@ -2813,7 +2762,6 @@ const App: React.FC = () => {
                 SliderComponent={Slider}
                 SelectComponent={Select}
                 isRunning={playbackIsRunning}
-                transportDebug={engineState.transportDebug}
                 initialViewMode={synthViewModeRef.current}
                 onViewModeChange={(mode) => {
                   synthViewModeRef.current = mode;

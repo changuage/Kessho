@@ -75,6 +75,7 @@ const allowedImports = new Set([
   './rng',
   './sequencerClockDivisions',
   './sequencerAudibility',
+  './sequencerLaneCounts',
   './sequencerResumeQuantization',
   './sequencerSwing',
   './transport',

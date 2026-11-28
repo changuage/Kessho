@@ -32,8 +32,19 @@ import type { SerializedSeqScatterState } from './drums/scatter/scatterTypes';
 import {
   createDefaultSynthSequencerFaceState,
   normalizeSynthSequencerFaceState,
+  synthSequencerFacesNeedMigration,
   type SynthSequencerFaceState,
 } from './sequencer/sequencerModeTypes';
+import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
+import { migrateSynthRandomSlots } from '../presets/synthRandomMigration';
+import {
+  SYNTH_RANDOM_STATE_KEYS,
+  parseSynthRandomKey,
+  synthRandomDefaults,
+  synthRandomNumericRanges,
+  normalizeSynthRandomValue,
+  type SynthRandomSlotState,
+} from './sequencer/synthRandomSlot';
 import {
   createDefaultSequencerChainState,
   normalizeSequencerChainState,
@@ -235,9 +246,7 @@ export type SequencerResumeQuantization = 'immediate' | 'nextBeat' | 'nextBar';
 export type RandomWalkMode = 'localBrownian' | 'globalWalk';
 export type ProgressionClockSource = 'harmony' | 'localPhrase' | 'globalPhrase';
 export type TransportPrimaryClock = 'seconds' | 'bpm' | 'decoupled';
-export type LeadRandomSource = 'pad1' | 'pad2' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 export type SynthEuclidSource = 'lead' | 'lead1' | 'lead2' | 'pad' | 'pad1' | 'pad2' | 'sample1' | 'sample2' | 'synth1' | 'synth2' | 'synth3' | 'synth4' | 'synth5' | 'synth6' | 'synth7' | 'synth8';
-export type SynthChordSource = 'pad1' | 'pad2' | 'both' | 'lead1' | 'lead2' | 'sample1' | 'sample2';
 
 /**
  * Serialized evolve config for preset save/load.
@@ -351,7 +360,7 @@ export interface SavedPreset {
   presetPool?: PresetPoolMetadata;
 }
 
-export interface SliderState extends NatureSlotState {
+export interface SliderState extends NatureSlotState, SynthRandomSlotState {
   fxRoutingGraph: FxRoutingGraphState;
   // Master Mixer
   masterVolume: number;       // 0..1 step 0.01
@@ -635,8 +644,6 @@ export interface SliderState extends NatureSlotState {
   // Per-engine tension overrides (6 engines × mode + value)
   padTensionMode: 'follow' | 'locked' | 'bypass';
   padTensionValue: number;         // follow: offset ±0.5 (default 0); locked: absolute 0..1; bypass: tension disabled
-  leadTensionMode: 'follow' | 'locked' | 'bypass';
-  leadTensionValue: number;
   synthEuclidTensionMode: 'follow' | 'locked' | 'bypass';
   synthEuclidTensionValue: number;
   granularTensionMode: 'follow' | 'locked' | 'bypass';
@@ -653,7 +660,6 @@ export interface SliderState extends NatureSlotState {
   chordRate: number;          // 1..8 chords per phrase step 1
   phraseLength: number;       // 4..128 seconds step 1 - harmony phrase length
   voicingSpread: number;      // 0..1 step 0.01
-  waveSpread: number;         // 0..1 fraction of the chord slot - stagger time between voice entries
   detune: number;             // 0..25 cents step 1
   harmonyMorphPercent: number; // 0..100 preset morph position used by product harmony endpoint selection
   /** @deprecated Decode-only legacy generator salt; canonical Harmony state does not persist it. */
@@ -670,15 +676,12 @@ export interface SliderState extends NatureSlotState {
   synthSustain: number;       // 0..1 level
   synthHold: number;          // 0..20 seconds before release
   synthRelease: number;       // 0.01..16 seconds
-  padFitEnvelopeToChord: boolean; // Clamp chord note gates so staggered voices finish before the next chord
   // Shared transport / timing infrastructure
   transportPrimaryClock: TransportPrimaryClock; // Which transport domain is authoritative, or whether phrase seconds and BPM are independent
   transportBarsPerPhrase: number;     // 1..16 bars per phrase when using beat-derived phrase clocks
   transportBeatsPerBar: number;       // 2..12 beats per bar
   harmonyClockSource: PhraseClockSource;
   harmonySyncPolicy: HarmonySyncPolicy;
-  leadRandomClockSource: PhraseClockSource;
-  leadRandomSyncPolicy: HarmonySyncPolicy;
   synthEuclidClockSource: BeatClockSource;
   synthEuclidJoinPolicy: SequencerJoinPolicy;
   drumEuclidClockSource: BeatClockSource;
@@ -686,8 +689,6 @@ export interface SliderState extends NatureSlotState {
   randomWalkMode: RandomWalkMode;
   modulationSourceA: ModulationSourceConfig;
   modulationSourceB: ModulationSourceConfig;
-  synthVoiceMask: number;     // 0..255 binary mask for which shared pad voice slots are on
-  synthOctave: number;        // -4..+4 octave shift
 
   // Timbre / Drive
   hardness: number;           // 0..1 step 0.01 — saturation drive + resonance boost
@@ -778,14 +779,12 @@ export interface SliderState extends NatureSlotState {
 
   // ─── Pad Synth 2 ───
   pad2Enabled: boolean;
-  pad2VoiceAssign: number;      // bitmask 0..255: which enabled shared pad voice slots belong to Pad 2
   // ADSR
   pad2Attack: number;
   pad2Decay: number;
   pad2Sustain: number;
   pad2Hold: number;
   pad2Release: number;
-  pad2FitEnvelopeToChord: boolean;
   pad2Octave: number;
   // Drive / Drift
   pad2Hardness: number;
@@ -950,8 +949,6 @@ export interface SliderState extends NatureSlotState {
 
   // Lead Synth (Rhodes/Bell)
   leadEnabled: boolean;       // on/off toggle (master: mutes gain + gates playLeadNote)
-  leadRandomEnabled: boolean; // on/off toggle for random timing mode
-  leadRandomSource: LeadRandomSource;
   leadLevel: number;          // 0..1 step 0.01
   lead1UseCustomAdsr: boolean; // when true, use lead ADSR sliders instead of preset ADSR
   lead1Attack: number;         // 0.001..16 seconds
@@ -966,9 +963,6 @@ export interface SliderState extends NatureSlotState {
   delayASpread: number;          // legacy L/R spread multiplier for the old lead-owned delay path
   delayAFilter: number;          // shared Delay A lowpass cutoff in Hz
   delayASend: number;            // legacy send level for the old lead-owned delay path
-  lead1Density: number;       // 0.1..2 notes per phrase (sparseness)
-  lead1Octave: number;        // -4..+4 octave offset
-  lead1OctaveRange: number;   // 1..4 - how many octaves to span for random notes
   leadTimbre: number;         // 0..1 - timbre (LEGACY, ignored by 4op FM engine)
 
   // Lead 1 — 4op FM preset morph (A ↔ B)
@@ -1140,11 +1134,36 @@ export interface SliderState extends NatureSlotState {
   synthEuclid4Probability: number;
   synthEuclid4Source: SynthEuclidSource;
   synthEuclid4VoiceMask: number;
+  // Lane 5
+  synthEuclid5Enabled: boolean;
+  synthEuclid5Solo: boolean;
+  synthEuclid5ResumeQuantization: SequencerResumeQuantization;
+  synthEuclid5Preset: string;
+  synthEuclid5Steps: number;
+  synthEuclid5Hits: number;
+  synthEuclid5Rotation: number;
+  synthEuclid5NoteMin: number;
+  synthEuclid5NoteMax: number;
+  synthEuclid5Level: number;
+  synthEuclid5Probability: number;
+  synthEuclid5Source: SynthEuclidSource;
+  synthEuclid5VoiceMask: number;
+  // Lane 6
+  synthEuclid6Enabled: boolean;
+  synthEuclid6Solo: boolean;
+  synthEuclid6ResumeQuantization: SequencerResumeQuantization;
+  synthEuclid6Preset: string;
+  synthEuclid6Steps: number;
+  synthEuclid6Hits: number;
+  synthEuclid6Rotation: number;
+  synthEuclid6NoteMin: number;
+  synthEuclid6NoteMax: number;
+  synthEuclid6Level: number;
+  synthEuclid6Probability: number;
+  synthEuclid6Source: SynthEuclidSource;
+  synthEuclid6VoiceMask: number;
 
   /** Harmony-driven automatic chord texture routing and articulation. */
-  synthChordGeneratorEnabled: boolean;
-  synthChordGeneratorSource: SynthChordSource;
-  synthChordGeneratorVoiceCount: number;
 
   // ─── Ikeda-Style Drum Synth ───
   drumEnabled: boolean;                    // Master on/off
@@ -2134,9 +2153,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'transportBeatsPerBar',
   'harmonyClockSource',
   'harmonySyncPolicy',
-  'leadRandomClockSource',
-  'leadRandomSyncPolicy',
-  'leadRandomSource',
   'synthEuclidClockSource',
   'synthEuclidJoinPolicy',
   'drumEuclidClockSource',
@@ -2146,7 +2162,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'tension',
   'chordRate',
   'voicingSpread',
-  'waveSpread',
   'detune',
   'harmonyMorphPercent',
   'manualHarmonyControl',
@@ -2159,7 +2174,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthSustain',
   'synthHold',
   'synthRelease',
-  'padFitEnvelopeToChord',
   'hardness',
   'filterType',
   'filterCutoff',
@@ -2225,13 +2239,11 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'padDiffuseSend',
   // Pad Synth 2
   'pad2Enabled',
-  'pad2VoiceAssign',
   'pad2Attack',
   'pad2Decay',
   'pad2Sustain',
   'pad2Hold',
   'pad2Release',
-  'pad2FitEnvelopeToChord',
   'pad2Octave',
   'pad2Hardness',
   'pad2Warmth',
@@ -2372,8 +2384,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'wetLPF',
   'padEnabled',
   'leadEnabled',
-  'leadRandomEnabled',
-  'leadRandomSource',
   'leadLevel',
   'lead1UseCustomAdsr',
   'lead1Attack',
@@ -2387,9 +2397,6 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'delayASpread',
   'delayAFilter',
   'delayASend',
-  'lead1Density',
-  'lead1Octave',
-  'lead1OctaveRange',
   'leadTimbre',
   // Lead 1 morph
   'lead1PresetA',
@@ -2549,9 +2556,33 @@ const STATE_KEYS: (keyof SliderState)[] = [
   'synthEuclid4Probability',
   'synthEuclid4Source',
   'synthEuclid4VoiceMask',
-  'synthChordGeneratorEnabled',
-  'synthChordGeneratorSource',
-  'synthChordGeneratorVoiceCount',
+  'synthEuclid5Enabled',
+  'synthEuclid5Solo',
+  'synthEuclid5ResumeQuantization',
+  'synthEuclid5Preset',
+  'synthEuclid5Steps',
+  'synthEuclid5Hits',
+  'synthEuclid5Rotation',
+  'synthEuclid5NoteMin',
+  'synthEuclid5NoteMax',
+  'synthEuclid5Level',
+  'synthEuclid5Probability',
+  'synthEuclid5Source',
+  'synthEuclid5VoiceMask',
+  'synthEuclid6Enabled',
+  'synthEuclid6Solo',
+  'synthEuclid6ResumeQuantization',
+  'synthEuclid6Preset',
+  'synthEuclid6Steps',
+  'synthEuclid6Hits',
+  'synthEuclid6Rotation',
+  'synthEuclid6NoteMin',
+  'synthEuclid6NoteMax',
+  'synthEuclid6Level',
+  'synthEuclid6Probability',
+  'synthEuclid6Source',
+  'synthEuclid6VoiceMask',
+  ...SYNTH_RANDOM_STATE_KEYS,
   // Drum Synth
   'drumEnabled',
   'drumLevel',
@@ -2982,9 +3013,21 @@ const HARMONY_JSON_STATE_KEYS = new Set<keyof SliderState>([
   'drumSequencerChain',
 ]);
 
-/** Retired chord-bank, sequence and Simple progression keys. They are ignored on
- * load and never saved; there are no decoders for them. */
-export const RETIRED_CHORD_STATE_KEYS = [
+/** Retired state keys. They are ignored on load and never saved. The chord keys
+ * have no decoders. The arrangement keys are decoded exactly once, by the M3
+ * behaviour-version step in `synthRandomMigration.ts`, which moves the singleton
+ * Random Chords and Random Notes generators into Random slots. */
+/** The singleton generator keys the M3 step folds into Random slots. */
+export const RETIRED_ARRANGEMENT_STATE_KEYS = [
+  'synthChordGeneratorEnabled', 'synthChordGeneratorSource', 'synthChordGeneratorVoiceCount',
+  'leadRandomEnabled', 'leadRandomSource', 'leadRandomClockSource', 'leadRandomSyncPolicy',
+  'leadTensionMode', 'leadTensionValue',
+  'waveSpread', 'synthOctave', 'synthVoiceMask', 'pad2VoiceAssign',
+  'padFitEnvelopeToChord', 'pad2FitEnvelopeToChord',
+  'lead1Density', 'lead1Octave', 'lead1OctaveRange',
+] as const;
+
+export const RETIRED_STATE_KEYS = [
   'harmonyChordSlots', 'harmonyChordSlotsA', 'harmonyChordSlotsB',
   'harmonyChordSequence', 'harmonyChordSequenceA', 'harmonyChordSequenceB',
   'harmonyChordSequenceEnabled', 'harmonyChordSequenceLength', 'harmonyChordSequenceStepIndex',
@@ -2993,6 +3036,8 @@ export const RETIRED_CHORD_STATE_KEYS = [
   'chordProgressionClockSource',
   // The Play chord sequencer is gone; lane ARP lives in Notes-cell articulation.
   'synthPlayConfigs', 'synthArpConfigs',
+  // The singleton Random Chords and Random Notes generators (now Random slots).
+  ...RETIRED_ARRANGEMENT_STATE_KEYS,
 ] as const;
 
 /**
@@ -3282,8 +3327,6 @@ export const DEFAULT_STATE: SliderState = {
   // Per-engine tension overrides
   padTensionMode: 'follow' as const,
   padTensionValue: 0,
-  leadTensionMode: 'follow' as const,
-  leadTensionValue: 0,
   synthEuclidTensionMode: 'follow' as const,
   synthEuclidTensionValue: 0,
   granularTensionMode: 'bypass' as const,
@@ -3300,7 +3343,6 @@ export const DEFAULT_STATE: SliderState = {
   chordRate: DEFAULT_CHORDS_PER_PHRASE,
   phraseLength: 16,
   voicingSpread: 0.5,
-  waveSpread: 0.125,
   detune: 8,
   harmonyMorphPercent: 0,
   manualHarmonyControl: defaultManualHarmonyControlState(),
@@ -3322,14 +3364,11 @@ export const DEFAULT_STATE: SliderState = {
   synthSustain: 0.8,
   synthHold: 1.0,
   synthRelease: 12.0,
-  padFitEnvelopeToChord: true,
   transportPrimaryClock: 'seconds',
   transportBarsPerPhrase: 4,
   transportBeatsPerBar: 4,
   harmonyClockSource: 'globalPhrase',
   harmonySyncPolicy: 'nextPhrase',
-  leadRandomClockSource: 'globalPhrase',
-  leadRandomSyncPolicy: 'nextPhrase',
   synthEuclidClockSource: 'localBeat',
   synthEuclidJoinPolicy: 'bar',
   drumEuclidClockSource: 'localBeat',
@@ -3337,8 +3376,6 @@ export const DEFAULT_STATE: SliderState = {
   randomWalkMode: 'localBrownian',
   modulationSourceA: DEFAULT_MODULATION_SOURCE_A,
   modulationSourceB: DEFAULT_MODULATION_SOURCE_B,
-  synthVoiceMask: 63,  // Voices 1-6 on; voices 7-8 default Off
-  synthOctave: 0,      // No octave shift
 
   // Timbre / Drive
   hardness: 0.3,
@@ -3408,13 +3445,11 @@ export const DEFAULT_STATE: SliderState = {
 
   // Pad Synth 2
   pad2Enabled: false,
-  pad2VoiceAssign: 0,  // No shared voice slots assigned to Pad 2
   pad2Attack: 6.0,
   pad2Decay: 1.0,
   pad2Sustain: 0.8,
   pad2Hold: 1.0,
   pad2Release: 12.0,
-  pad2FitEnvelopeToChord: true,
   pad2Octave: 0,
   pad2Hardness: 0.3,
   pad2Warmth: 0.4,
@@ -3569,8 +3604,6 @@ export const DEFAULT_STATE: SliderState = {
 
   // Lead Synth (Rhodes/Bell)
   leadEnabled: false,
-  leadRandomEnabled: false,
-  leadRandomSource: 'lead1',
   leadLevel: 0,
   lead1UseCustomAdsr: false,
   lead1Attack: 0.01,
@@ -3585,9 +3618,6 @@ export const DEFAULT_STATE: SliderState = {
   delayASpread: 1.5,
   delayAFilter: 2000,
   delayASend: 0.5,
-  lead1Density: 0.5,
-  lead1Octave: 1,
-  lead1OctaveRange: 2,
   leadTimbre: 0.4,
   // Lead 1 — 4op FM preset morph
   lead1PresetA: 'soft_rhodes',
@@ -3751,11 +3781,38 @@ export const DEFAULT_STATE: SliderState = {
   synthEuclid4Probability: 1.0,
   synthEuclid4Source: 'lead1' as const,
   synthEuclid4VoiceMask: 128,
+  // Lane 5 - repeats Lane 1 (slots 5 and 6 are usually Random)
+  synthEuclid5Enabled: false,
+  synthEuclid5Solo: false,
+  synthEuclid5ResumeQuantization: 'nextBeat',
+  synthEuclid5Preset: 'lancaran',
+  synthEuclid5Steps: 16,
+  synthEuclid5Hits: 4,
+  synthEuclid5Rotation: 0,
+  synthEuclid5NoteMin: 64,
+  synthEuclid5NoteMax: 76,
+  synthEuclid5Level: 0.8,
+  synthEuclid5Probability: 1.0,
+  synthEuclid5Source: 'lead1' as const,
+  synthEuclid5VoiceMask: 128,
+  // Lane 6 - repeats Lane 2
+  synthEuclid6Enabled: false,
+  synthEuclid6Solo: false,
+  synthEuclid6ResumeQuantization: 'nextBeat',
+  synthEuclid6Preset: 'kotekan',
+  synthEuclid6Steps: 8,
+  synthEuclid6Hits: 3,
+  synthEuclid6Rotation: 1,
+  synthEuclid6NoteMin: 76,
+  synthEuclid6NoteMax: 88,
+  synthEuclid6Level: 0.6,
+  synthEuclid6Probability: 1.0,
+  synthEuclid6Source: 'lead1' as const,
+  synthEuclid6VoiceMask: 128,
+  // Per-slot Random settings (slots 1-6)
+  ...synthRandomDefaults(),
 
   // Harmony-driven automatic chord texture
-  synthChordGeneratorEnabled: false,
-  synthChordGeneratorSource: 'sample1' as const,
-  synthChordGeneratorVoiceCount: 6,
 
 
   // ─── Ikeda-Style Drum Synth ───
@@ -4476,7 +4533,6 @@ const PAD_SOURCE_STATE_KEY_SUFFIX = {
   synthSustain: 'Sustain',
   synthHold: 'Hold',
   synthRelease: 'Release',
-  synthOctave: 'Octave',
   hardness: 'Hardness',
   warmth: 'Warmth',
   presence: 'Presence',
@@ -4536,7 +4592,6 @@ const PAD_SOURCE_NUMERIC_BASE_QUANTIZATION = {
   synthSustain: { min: 0, max: 1, step: 0.01 },
   synthHold: { min: 0, max: 20, step: 0.01 },
   synthRelease: { min: 0.01, max: 30, step: 0.01 },
-  synthOctave: { min: -4, max: 4, step: 1 },
   hardness: { min: 0, max: 2, step: 0.01 },
   warmth: { min: 0, max: 1, step: 0.01 },
   presence: { min: 0, max: 1, step: 0.01 },
@@ -4817,14 +4872,11 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   chordRate: { min: 1, max: 8, step: 1 },
   phraseLength: { min: 4, max: 128, step: 1 },
   voicingSpread: { min: 0, max: 1, step: 0.01 },
-  waveSpread: { min: 0, max: 1, step: 0.01 },
   detune: { min: 0, max: 25, step: 1 },
   harmonyMorphPercent: { min: 0, max: 100, step: 1 },
-  synthVoiceMask: { min: 0, max: 255, step: 1 },
   // Pad/pad2 shared source params. Saved preset keys stay flat.
   ...PAD_SOURCE_NUMERIC_QUANTIZATION,
   // Pad Synth 2
-  pad2VoiceAssign: { min: 0, max: 255, step: 1 },
   reverbLevel: { min: 0, max: 1, step: 0.01 },
   reverbDecay: { min: 0, max: 1, step: 0.01 },
   reverbSize: { min: 0.5, max: 10, step: 0.1 },
@@ -5051,9 +5103,6 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   delayASpread: { min: 1, max: 2, step: 0.01 },
   delayAFilter: { min: 200, max: 8000, step: 10 },
   delayASend: { min: 0, max: 1, step: 0.01 },
-  lead1Density: { min: 0.1, max: 12, step: 0.1 },
-  lead1Octave: { min: -4, max: 4, step: 1 },
-  lead1OctaveRange: { min: 1, max: 4, step: 1 },
   leadTimbre: { min: 0, max: 1, step: 0.01 },
   // Lead 1/2 morph
   lead1Morph: { min: 0, max: 1, step: 0.01 },
@@ -5166,7 +5215,23 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   synthEuclid4Level: { min: 0, max: 1, step: 0.01 },
   synthEuclid4Probability: { min: 0, max: 1, step: 0.01 },
   synthEuclid4VoiceMask: { min: 1, max: 255, step: 1 },
-  synthChordGeneratorVoiceCount: { min: 1, max: 8, step: 1 },
+  synthEuclid5Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid5Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid5Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid5NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid5NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid5Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid5Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid5VoiceMask: { min: 1, max: 255, step: 1 },
+  synthEuclid6Steps: { min: 4, max: 32, step: 1 },
+  synthEuclid6Hits: { min: 1, max: 16, step: 1 },
+  synthEuclid6Rotation: { min: 0, max: 31, step: 1 },
+  synthEuclid6NoteMin: { min: 36, max: 96, step: 1 },
+  synthEuclid6NoteMax: { min: 36, max: 96, step: 1 },
+  synthEuclid6Level: { min: 0, max: 1, step: 0.01 },
+  synthEuclid6Probability: { min: 0, max: 1, step: 0.01 },
+  synthEuclid6VoiceMask: { min: 1, max: 255, step: 1 },
+  ...synthRandomNumericRanges(),
   // Drum Euclidean sequencer
   drumEuclidBaseBPM: { min: 40, max: 300, step: 1 },
   drumEuclidTempo: { min: 0.25, max: 4, step: 0.25 },
@@ -5341,7 +5406,6 @@ export const QUANTIZATION: Partial<Record<keyof SliderState, QuantizationDef>> =
   // Per-engine tension overrides use the union range; individual sliders narrow
   // this per mode (follow = +/-0.5 offset, locked = 0..1 absolute).
   padTensionValue: { min: -0.5, max: 1, step: 0.01 },
-  leadTensionValue: { min: -0.5, max: 1, step: 0.01 },
   synthEuclidTensionValue: { min: -0.5, max: 1, step: 0.01 },
   granularTensionValue: { min: -0.5, max: 1, step: 0.01 },
   reverbTensionValue: { min: -0.5, max: 1, step: 0.01 },
@@ -5814,7 +5878,7 @@ function decodeHarmonyJsonStateValue(state: SliderState, key: keyof SliderState,
   }
   if (key === 'synthSequenceVariationBanks') {
     try {
-      state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(parsed, 4);
+      state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(parsed, SYNTH_EUCLIDEAN_LANE_COUNT);
     } catch {
       // Keep the staged state when a URL carries a malformed variation bank.
     }
@@ -5901,11 +5965,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
         ) {
           state.harmonyClockSource = value;
         } else if (
-          key === 'leadRandomClockSource' &&
-          (value === 'localPhrase' || value === 'globalPhrase' || value === 'localBeat' || value === 'globalBeat')
-        ) {
-          state.leadRandomClockSource = value;
-        } else if (
           key === 'synthEuclidClockSource' &&
           (value === 'localBeat' || value === 'globalBeat')
         ) {
@@ -5917,24 +5976,24 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.drumEuclidClockSource = value;
         } else if (key === 'harmonySyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
           state.harmonySyncPolicy = value;
-        } else if (key === 'leadRandomSyncPolicy' && (value === 'free' || value === 'nextPhrase' || value === 'restartNow')) {
-          state.leadRandomSyncPolicy = value;
-        } else if (key === 'leadRandomSource' && (value === 'pad1' || value === 'pad2' || value === 'lead1' || value === 'lead2' || value === 'sample1' || value === 'sample2' || value === 'piano')) {
-          state.leadRandomSource = value === 'piano' ? 'sample1' : value;
         } else if (key === 'synthEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
           state.synthEuclidJoinPolicy = value;
         } else if (key === 'drumEuclidJoinPolicy' && (value === 'grid' || value === 'bar')) {
           state.drumEuclidJoinPolicy = value;
         } else if (
-          /^(?:synthEuclid[1-4]|drumEuclid[1-6])ResumeQuantization$/.test(key) &&
+          /^(?:synthEuclid[1-6]|drumEuclid[1-6])ResumeQuantization$/.test(key) &&
           (value === 'immediate' || value === 'nextBeat' || value === 'nextBar')
         ) {
           (state as Record<string, unknown>)[key] = value;
         } else if (
-          /^synthEuclid[1-4]Source$/.test(key) &&
+          /^synthEuclid[1-6]Source$/.test(key) &&
           (value === 'lead' || value === 'lead1' || value === 'lead2' || value === 'piano' || value === 'sample1' || value === 'sample2' || value === 'synth1' || value === 'synth2' || value === 'synth3' || value === 'synth4' || value === 'synth5' || value === 'synth6' || value === 'synth7' || value === 'synth8')
         ) {
           (state as Record<string, unknown>)[key] = value === 'piano' ? 'sample1' : value === 'lead' ? 'lead1' : value;
+        } else if (parseSynthRandomKey(key)) {
+          // Enumerated per-slot Random settings (Mode, PhraseSource, TensionMode).
+          const random = parseSynthRandomKey(key)!;
+          (state as Record<string, unknown>)[key] = normalizeSynthRandomValue(random.param, value);
         } else if (key === 'manualScale' && SCALE_FAMILIES.some((s) => s.name === value)) {
           state.manualScale = value;
         } else if (key === 'reverbEngine' && (value === 'algorithmic' || value === 'convolution')) {
@@ -6135,8 +6194,6 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.padEnabled = value === 'true';
         } else if (key === 'leadEnabled') {
           state.leadEnabled = value === 'true';
-        } else if (key === 'leadRandomEnabled') {
-          state.leadRandomEnabled = value === 'true';
         } else if (key === 'pianoEnabled') {
           state.pianoEnabled = value === 'true';
         } else if (key === 'sample1Enabled') {
@@ -6201,6 +6258,10 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.synthEuclid3Enabled = value === 'true';
         } else if (key === 'synthEuclid4Enabled') {
           state.synthEuclid4Enabled = value === 'true';
+        } else if (key === 'synthEuclid5Enabled') {
+          state.synthEuclid5Enabled = value === 'true';
+        } else if (key === 'synthEuclid6Enabled') {
+          state.synthEuclid6Enabled = value === 'true';
         } else if (key === 'synthEuclid1Preset') {
           state.synthEuclid1Preset = value;
         } else if (key === 'synthEuclid2Preset') {
@@ -6209,11 +6270,10 @@ export function decodeStateFromUrl(search: string): SliderState | null {
           state.synthEuclid3Preset = value;
         } else if (key === 'synthEuclid4Preset') {
           state.synthEuclid4Preset = value;
-        } else if (
-          key === 'synthChordGeneratorSource'
-          && ['pad1', 'pad2', 'both', 'lead1', 'lead2', 'sample1', 'sample2'].includes(value)
-        ) {
-          state.synthChordGeneratorSource = value as SynthChordSource;
+        } else if (key === 'synthEuclid5Preset') {
+          state.synthEuclid5Preset = value;
+        } else if (key === 'synthEuclid6Preset') {
+          state.synthEuclid6Preset = value;
         } else if (key === 'oceanSampleEnabled') {
           state.oceanSampleEnabled = value === 'true';
         } else if (key === 'birdsEnabled') {
@@ -6283,10 +6343,37 @@ export function decodeStateFromUrl(search: string): SliderState | null {
       state.chordRate = normalizeChordsPerPhrase(state.chordRate);
     }
 
+    migrateLegacyArrangementUrlState(params, state);
+
     sanitizeGranularStateCompatibility(state as unknown as Record<string, unknown>);
     return state;
   } catch {
     return null;
+  }
+}
+
+/** Share links from before the Random slots carry the singleton generator keys. */
+function migrateLegacyArrangementUrlState(params: URLSearchParams, state: SliderState): void {
+  const legacy: Record<string, unknown> = {};
+  for (const key of RETIRED_STATE_KEYS) {
+    const raw = params.get(key);
+    if (raw === null) continue;
+    const numeric = Number(raw);
+    legacy[key] = raw === 'true' ? true : raw === 'false' ? false : raw !== '' && Number.isFinite(numeric) ? numeric : raw;
+  }
+  if (Object.keys(legacy).length === 0) return;
+  let rawFaces: unknown;
+  try {
+    const facesParam = params.get('synthSequencerFaces');
+    rawFaces = facesParam === null ? undefined : JSON.parse(facesParam);
+  } catch {
+    rawFaces = undefined;
+  }
+  if (!synthSequencerFacesNeedMigration(rawFaces)) return;
+  const record: Record<string, unknown> = { ...state, ...legacy, synthSequencerFaces: rawFaces };
+  migrateSynthRandomSlots({ state: record });
+  for (const [key, value] of Object.entries(record)) {
+    if (!(RETIRED_STATE_KEYS as readonly string[]).includes(key)) (state as unknown as Record<string, unknown>)[key] = value;
   }
 }
 
@@ -6570,12 +6657,6 @@ export function migratePreset(preset: any): SavedPreset {
     delete state.drumMembraneTension;
   }
 
-  // ═══ Legacy waveSpread: seconds → fraction of the chord slot ═══
-  if (typeof state.waveSpread === 'number' && state.waveSpread > 1) {
-    const cr = typeof state.chordRate === 'number' ? state.chordRate : 32;
-    state.waveSpread = Math.min(1, state.waveSpread / cr);
-  }
-
   // ═══ Legacy chordRate: seconds → chords per phrase ═══
   if (typeof state.chordRate === 'number' && state.chordRate > MAX_CHORDS_PER_PHRASE) {
     state.chordRate = legacyChordRateSecondsToChordsPerPhrase(
@@ -6622,7 +6703,8 @@ export function migratePreset(preset: any): SavedPreset {
   // Retired chord keys are ignored. Progressions load at version 2 (a version 1
   // progression keeps its events with slot sources turned into Auto) and the
   // Palette is validated.
-  for (const key of RETIRED_CHORD_STATE_KEYS) delete state[key];
+  // The arrangement keys are folded into Random slots first (once), then dropped.
+  migrateSynthRandomSlots({ state, dualRanges, sliderModes, dualSliderConfigs });
   state.harmonyProgression = sanitizeHarmonyProgression(state.harmonyProgression);
   if (state.harmonyProgressionA !== undefined) state.harmonyProgressionA = sanitizeHarmonyProgression(state.harmonyProgressionA);
   if (state.harmonyProgressionB !== undefined) state.harmonyProgressionB = sanitizeHarmonyProgression(state.harmonyProgressionB);
@@ -6658,7 +6740,7 @@ export function migratePreset(preset: any): SavedPreset {
   state.drumSequencerChain = normalizeSequencerChainState(state.drumSequencerChain);
   const stagedVariationBanks = state.synthSequenceVariationBanks;
   try {
-    state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stagedVariationBanks, 4);
+    state.synthSequenceVariationBanks = normalizeSynthSequenceVariationBanks(stagedVariationBanks, SYNTH_EUCLIDEAN_LANE_COUNT);
   } catch {
     state.synthSequenceVariationBanks = stagedVariationBanks;
   }

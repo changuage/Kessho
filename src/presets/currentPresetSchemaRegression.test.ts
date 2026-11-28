@@ -3,21 +3,22 @@ import {
   decodeCurrentPresetEntry,
   UnsupportedPresetVersionError,
 } from './currentPresetSchema';
-import { DEFAULT_STATE, RETIRED_CHORD_STATE_KEYS, serializeState } from '../ui/state';
+import { DEFAULT_STATE, RETIRED_STATE_KEYS, serializeState } from '../ui/state';
 import { PRESET_VERSION_METADATA_FIELDS } from './presetUtils';
 import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../audio/sequencerLaneCounts';
 import { canonicalizeStoredPresetEntry } from './storedPresetCompatibility';
 
 const currentStatePayload = JSON.parse(serializeState(DEFAULT_STATE)) as Record<string, unknown>;
 for (const legacyKey of [
-  ...RETIRED_CHORD_STATE_KEYS,
+  ...RETIRED_STATE_KEYS,
   'synthArpConfigs',
 ]) {
   assert.equal(legacyKey in currentStatePayload, false, `current state must not author ${legacyKey}`);
 }
 assert.equal(PRESET_VERSION_METADATA_FIELDS.includes('synthArpConfigs' as never), false, 'legacy Play metadata is decode-only');
-assert.equal(SYNTH_EUCLIDEAN_LANE_COUNT, 4, 'current schema has exactly four authored Synth Euclid lanes');
-assert.equal(Object.keys(currentStatePayload).some((key) => /^synthEuclid5/.test(key)), false, 'Seq5 state keys are not authored');
+assert.equal(SYNTH_EUCLIDEAN_LANE_COUNT, 6, 'current schema has exactly six authored Synth slots');
+assert.equal(Object.keys(currentStatePayload).some((key) => /^synthEuclid6/.test(key)), true, 'all six slots author their state keys');
+assert.equal(Object.keys(currentStatePayload).some((key) => /^synthEuclid7/.test(key)), false, 'there is no seventh slot');
 
 const entry = {
   type: 'engine' as const,

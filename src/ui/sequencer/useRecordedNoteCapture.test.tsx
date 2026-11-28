@@ -5,13 +5,13 @@ import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   nextBarBeat,
+  sourceForMode,
   useRecordedNoteCapture,
   type RecordedNoteCaptureApi,
 } from './useRecordedNoteCapture';
 import {
   recordedCaptureModeId,
   recordedCaptureModeMask,
-  recordedCaptureSourceLane,
   type RecordedNoteCaptureBatch,
   type RecordedNoteCaptureStartRequest,
 } from './recordedNoteCaptureTypes';
@@ -457,28 +457,35 @@ test('rolling capture keeps looping until Finish and never auto-finishes', async
   }
 });
 
-test('sources map to native mode ids, masks and sentinel lanes', () => {
-  const expected: Array<[RecordedNoteSource, number, number | null]> = [
-    ['keyboard', 0, null],
-    ['walker', 1, null],
-    ['orbit', 2, null],
-    ['randomChords', 3, 0x100],
-    ['randomNotes', 4, 0x101],
+test('sources map to native mode ids and masks, and every source taps its own lane', () => {
+  const expected: Array<[RecordedNoteSource, number]> = [
+    ['keyboard', 0],
+    ['walker', 1],
+    ['orbit', 2],
+    ['randomChords', 3],
+    ['randomNotes', 4],
   ];
-  for (const [source, mode, sentinel] of expected) {
+  for (const [source, mode] of expected) {
     assert.equal(recordedCaptureModeId(source), mode);
     assert.equal(recordedCaptureModeMask(source), 1 << mode);
-    assert.equal(recordedCaptureSourceLane(source, 5), sentinel ?? 5);
   }
 
-  for (const [source, , sentinel] of expected) {
+  for (const [source] of expected) {
     const harness = mountHarness();
     harness.api.start({ source, durationBeats: 2, originBeat: 0, sourceLaneIndex: 5, targetLaneIndex: 2 });
     const request = harness.controls[0]!;
     assert.equal(request.source, source);
-    assert.equal(request.sourceLaneIndex, sentinel ?? 5);
-    assert.equal(request.targetLaneIndex, 2, 'the print destination lane is never the sentinel');
+    assert.equal(request.sourceLaneIndex, 5, 'a Random slot taps its own lane, not a shared producer lane');
+    assert.equal(request.targetLaneIndex, 2);
   }
+});
+
+test('a slot type picks its capture source', () => {
+  assert.equal(sourceForMode('euclid'), 'keyboard');
+  assert.equal(sourceForMode('anchorWalker'), 'walker');
+  assert.equal(sourceForMode('orbit'), 'orbit');
+  assert.equal(sourceForMode('random', 'chords'), 'randomChords');
+  assert.equal(sourceForMode('random', 'notes'), 'randomNotes');
 });
 
 test('fixed capture opens at the next bar boundary', () => {

@@ -69,7 +69,7 @@ export type LaneKind = 'trigger' | 'pitch' | 'expression' | 'morph' | 'distance'
 export type SubLaneKind = Exclude<LaneKind, 'trigger'>;
 export type RangeSubLaneKind = Extract<SubLaneKind, 'expression' | 'morph' | 'distance'>;
 export type SubLaneValueMode = 'sequence' | 'range';
-export type SequencerViewMode = 'simple' | 'detail' | 'overview' | 'scatter' | 'chain';
+export type SequencerViewMode = 'detail' | 'overview' | 'scatter' | 'chain';
 type StepArrayOverrideKey =
   | 'probability'
   | 'ratchet'
