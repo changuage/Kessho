@@ -146,7 +146,6 @@ function lowNoisePatch() {
     insectsEnabled: false,
     lead2Enabled: false,
     leadEnabled: false,
-    leadRandomEnabled: false,
     oceanSampleEnabled: false,
     oceanWaveSynthEnabled: false,
     pad2Enabled: false,
@@ -157,6 +156,25 @@ function lowNoisePatch() {
     spectralFreezeEnabled: false,
     synthEuclideanMasterEnabled: false,
     waterEnabled: false,
+  };
+}
+
+// String Waves plays through two Random slots: Random Chords on Pad 1 (slot 5) and
+// Random Notes on Lead 1 (slot 6). A Random slot ignores the Euclid master.
+function randomSlotPatch() {
+  return {
+    synthSequencerFaces: { version: 2, slots: [null, null, null, null, { mode: 'random' }, { mode: 'random' }] },
+    synthEuclid5Enabled: true,
+    synthEuclid5Source: 'pad1',
+    synthEuclid5RandomMode: 'chords',
+    synthEuclid5RandomVoiceMask: 63,
+    synthEuclid6Enabled: true,
+    synthEuclid6Source: 'lead1',
+    synthEuclid6RandomMode: 'notes',
+    synthEuclid6RandomPhraseSource: 'globalPhrase',
+    synthEuclid6RandomDensity: 0.5,
+    synthEuclid6RandomNotesOctave: 0,
+    synthEuclid6RandomOctaveRange: 2,
   };
 }
 
@@ -173,7 +191,6 @@ function stringWavesArrangementPatch() {
     padEnabled: true,
     synthLevel: 0.25,
     synthEuclideanMasterEnabled: false,
-    synthVoiceMask: 63,
     synthAttack: 6,
     synthDecay: 1,
     synthRelease: 12,
@@ -184,16 +201,10 @@ function stringWavesArrangementPatch() {
     granularPad1Send: 0.59,
     pad1ReverbSend: 0.31,
     leadEnabled: true,
-    leadRandomEnabled: true,
-    leadRandomSource: 'lead1',
-    leadRandomClockSource: 'globalPhrase',
-    leadRandomSyncPolicy: 'restartNow',
+    ...randomSlotPatch(),
     leadLevel: 1,
     lead1Level: 0.01,
-    lead1Density: 0.5,
     lead1Hold: 0.5,
-    lead1Octave: 0,
-    lead1OctaveRange: 2,
     lead1PresetA: 'soft_rhodes',
     lead1PresetB: 'gamelan',
     lead1Morph: 0.413588,
@@ -279,7 +290,7 @@ async function captureRuntimeWalkProbe(page, baseUrl) {
   return page.evaluate(async () => {
     const probe = window.__kesshoProductRuntimeProbe;
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-    const key = 'lead1Density';
+    const key = 'synthEuclid6RandomDensity';
     await probe.configureRuntimeWalk({
       key,
       range: { min: 0.1, max: 4.5 },
@@ -288,13 +299,14 @@ async function captureRuntimeWalkProbe(page, baseUrl) {
         leadEnabled: false,
         lead2Enabled: false,
         pianoEnabled: true,
-        leadRandomEnabled: true,
-        leadRandomSource: 'piano',
-        leadRandomClockSource: 'localPhrase',
-        leadRandomSyncPolicy: 'restartNow',
-        lead1Density: 4.5,
-        lead1Octave: 0,
-        lead1OctaveRange: 2,
+        synthSequencerFaces: { version: 2, slots: [null, null, null, null, null, { mode: 'random' }] },
+        synthEuclid6Enabled: true,
+        synthEuclid6Source: 'sample1',
+        synthEuclid6RandomMode: 'notes',
+        synthEuclid6RandomPhraseSource: 'localPhrase',
+        synthEuclid6RandomDensity: 4.5,
+        synthEuclid6RandomNotesOctave: 0,
+        synthEuclid6RandomOctaveRange: 2,
         phraseLength: 1.5,
         transportPrimaryClock: 'seconds',
         pianoDistance: 0.72,
@@ -637,8 +649,8 @@ function assertRuntimeWalkProbe(samples) {
   const latest = samples.at(-1) ?? {};
   const debug = latest.telemetry?.productModulationDebug?.randomWalk ?? [];
   assert(
-    debug.some((entry) => entry.controlName === 'lead1Density' && entry.normalizedPosition >= 0 && entry.normalizedPosition <= 1),
-    'runtime-walk telemetry did not expose active lead1Density random-walk debug',
+    debug.some((entry) => entry.controlName === 'synthEuclid6RandomDensity' && entry.normalizedPosition >= 0 && entry.normalizedPosition <= 1),
+    'runtime-walk telemetry did not expose active synthEuclid6RandomDensity random-walk debug',
   );
   const walkDebug = latest.telemetry?.runtimeWalkValues ?? {};
   assert(Object.keys(walkDebug).length > 0, 'runtime-walk telemetry values were empty');
