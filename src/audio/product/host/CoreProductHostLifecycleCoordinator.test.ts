@@ -23,7 +23,6 @@ test('stopping during startup prevents a late asset or snapshot completion from 
       assetRegistrar: { ensureDefaultAssetsForState: async () => { await wait('assets'); return { status: 'ready' }; } },
       loadLatestSnapshot: () => wait('snapshot'),
       sequencerChain: { start: noop, stop: noop },
-      arrangementBridge: { start: noop, stop: noop },
       realtimeTimestampMapper: { reset: noop },
       sequencerVisuals: { reset: noop },
       modulationRangeBridge: { flushModulationRanges: noop },
@@ -72,7 +71,6 @@ test('a second start during startup supersedes the first without failing either 
       if (snapshotLoads === 1) await firstSnapshot;
     },
     sequencerChain: { start: noop, stop: noop },
-    arrangementBridge: { start: noop, stop: noop },
     realtimeTimestampMapper: { reset: noop },
     sequencerVisuals: { reset: noop },
     modulationRangeBridge: { flushModulationRanges: noop },

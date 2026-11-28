@@ -107,32 +107,10 @@ requireTokens('src/audio/coreProductArrangementVoiceMapping.ts', [
   'state[ARRANGEMENT_RESTART_STATE_KEY]',
 ]);
 
-requireTokens('src/audio/product/host/CoreProductArrangementProjection.ts', [
-  'export class CoreProductArrangementProjection',
-  'getTransportDebugState(',
-  'syncTransportTelemetry(telemetry:',
-  'simpleSequencerVisualEvents',
-  'cloneRuntimePlan(this.captureActive.padChord',
-  'cloneRuntimePlan(this.captureActive.randomTiming',
-]);
-const arrangementProjection = read('src/audio/product/host/CoreProductArrangementProjection.ts');
-assert(!arrangementProjection.includes('setTimeout('), 'Product arrangement projection must not own musical timers');
-assert(!arrangementProjection.includes('setInterval('), 'Product arrangement projection must not own musical intervals');
-
 requireTokens('cpp/KesshoCore/src/product/sequencer/ProductArrangementSequencer.cpp', [
   'const uint64_t block_start = transport.sample_frame;',
   'random.next_phrase_frame',
   'queue_chord(',
-]);
-
-requireTokens('src/audio/simpleSequencerPhrasePreview.ts', [
-  'harmonySeedMaterialFromState(state)',
-]);
-
-requireTokens('src/ui/synth/SimplePhraseVisualizer.tsx', [
-  'PhrasePlanState',
-  'latestStateRef.current',
-  'previousState: plan.currentState',
 ]);
 
 {

@@ -210,10 +210,6 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
       },
       clear: () => { calls.push('clearAssets'); },
     } as never,
-    arrangementBridge: {
-      start: () => { calls.push('arrangementStart'); },
-      stop: () => { calls.push('arrangementStop'); },
-    } as never,
     journeyMorphClock: {} as never,
     modulationRangeBridge: {
       flushModulationRanges: () => { calls.push('flushModulation'); },
@@ -283,10 +279,9 @@ function createDelegate(overrides: Partial<ProductLifecycleDelegate> = {}) {
       'telemetryPolling',
       'postStart',
       'flushModulation',
-      'arrangementStart',
       'publish:true',
     ],
-    'arrangement scheduler must start only after the Product Core snapshot ack has arrived',
+    'running surfaces must start only after the Product Core snapshot ack has arrived',
   );
 }
 

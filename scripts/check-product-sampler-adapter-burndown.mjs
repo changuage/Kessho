@@ -41,7 +41,6 @@ const allowedLegacyAliasFiles = new Set([
   'src/audio/coreProductArrangementSchedulerUtils.ts',
   'src/audio/coreProductSnapshotPadVoiceRouting.ts',
   'src/audio/coreProductSourceMapping.ts',
-  'src/audio/simpleSequencerPhrasePreview.ts',
   'src/audio/product/host/CoreProductManualAuditionBridge.ts',
   'src/audio/product/host/CoreProductSampleAssetResolver.ts',
   'src/ui/useLazySequencerTransport.ts',

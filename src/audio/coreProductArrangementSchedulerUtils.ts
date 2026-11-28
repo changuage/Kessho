@@ -11,7 +11,6 @@ import {
   resolveProgressionPhraseClockSource,
   type TransportAnchors,
 } from './transport';
-import type { SimpleSequencerVizSource } from './simpleSequencerPhrasePreview';
 import type { PhraseClockSource, SliderState } from '../ui/state';
 import type { SampleSlotId } from './sampleLibraries/SampleLibraryTypes';
 
@@ -108,15 +107,6 @@ export function pickChordWeightedNote(
     return chordTones[Math.floor(rng() * chordTones.length)] ?? chordTones[0] ?? 60;
   }
   return passingTones[Math.floor(rng() * passingTones.length)] ?? availableNotes[0] ?? 60;
-}
-
-export function runtimeSourceFromSourceId(sourceId: number): SimpleSequencerVizSource {
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.pad2) return 'pad2';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead1) return 'lead1';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.lead2) return 'lead2';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample1) return 'sample1';
-  if (sourceId === CORE_PRODUCT_SOURCE_IDS.sample2) return 'sample2';
-  return 'pad1';
 }
 
 export type PhraseTiming = {

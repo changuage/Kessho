@@ -42,7 +42,6 @@ import type {
   ProductScalarCallback,
   ProductSequencerEvolveTriggerCallback,
   ProductSequencerStepPositionCallback,
-  ProductSimpleSequencerVisualPlanActive,
   ProductSynthAnchorWalkerVisualStateCallback,
   ProductSynthOrbitVisualStateCallback,
   ProductSequencerUiState,
@@ -489,10 +488,6 @@ export class WebProductEngine implements ProductEnginePort {
 
   setVisualTelemetryActive(active: boolean): void {
     coreProductRuntimeHostPort.setVisualTelemetryActive(active);
-  }
-
-  setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void {
-    coreProductRuntimeHostPort.setSimpleSequencerVisualPlanActive(active);
   }
 
   setDiagnosticsCallback(callback: ((diagnostics: ProductRuntimeDiagnostics) => void) | null): void {

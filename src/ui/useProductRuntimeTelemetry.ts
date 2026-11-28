@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import type { ProductDynamicsVisualTelemetry, ProductSimpleSequencerVisualPlanActive } from '../audio/product/ProductEngineTypes';
+import type { ProductDynamicsVisualTelemetry } from '../audio/product/ProductEngineTypes';
 import type { CoreProductGranularVisualEvent } from '../audio/coreProductTelemetry';
 import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import type { ProductRuntimeTelemetrySurface } from './productRuntimeConstruction';
@@ -18,7 +18,6 @@ type ProductRuntimeTelemetry = {
   getProductPadLfoValue: (pad: 'pad1' | 'pad2') => number;
   pushProductMidiMessage: (message: KesshoMidiMessage) => void;
   setProductGranularUiActive: (active: boolean) => void;
-  setProductSimpleSequencerVisualPlanActive: (active: ProductSimpleSequencerVisualPlanActive) => void;
   setProductVisualTelemetryActive: (active: boolean) => void;
   productRuntimeSupportsRangeKey: (key: string) => boolean;
 };
@@ -79,11 +78,6 @@ export function useProductRuntimeTelemetry({
     productRuntimeTelemetry.setVisualTelemetryActive(active);
   }, [productRuntimeTelemetry]);
 
-  const setProductSimpleSequencerVisualPlanActive = useCallback((active: ProductSimpleSequencerVisualPlanActive): void => {
-    if (!productRuntimeTelemetry.available) return;
-    productRuntimeTelemetry.setSimpleSequencerVisualPlanActive(active);
-  }, [productRuntimeTelemetry]);
-
   const productRuntimeSupportsRangeKey = useCallback((key: string): boolean => {
     return productRuntimeTelemetry.supportsRangeKey(key);
   }, [productRuntimeTelemetry]);
@@ -93,14 +87,6 @@ export function useProductRuntimeTelemetry({
     productRuntimeTelemetry.setVisualTelemetryActive(false);
     return () => {
       productRuntimeTelemetry.setVisualTelemetryActive(false);
-    };
-  }, [productRuntimeTelemetry]);
-
-  useEffect(() => {
-    if (!productRuntimeTelemetry.available) return undefined;
-    productRuntimeTelemetry.setSimpleSequencerVisualPlanActive({ padChord: false, randomTiming: false });
-    return () => {
-      productRuntimeTelemetry.setSimpleSequencerVisualPlanActive({ padChord: false, randomTiming: false });
     };
   }, [productRuntimeTelemetry]);
 
@@ -114,7 +100,6 @@ export function useProductRuntimeTelemetry({
     getProductPadLfoValue,
     pushProductMidiMessage,
     setProductGranularUiActive,
-    setProductSimpleSequencerVisualPlanActive,
     setProductVisualTelemetryActive,
     productRuntimeSupportsRangeKey,
   };

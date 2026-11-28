@@ -60,7 +60,7 @@ import { applyCoreProductSequencerStepEventToCache } from './product/host/CorePr
 import { applyCoreProductSequencerSubLaneEnabledEvent } from './product/host/CoreProductSequencerSubLaneEnabledEventBridge';
 import { coreProductStepValueFieldEnabled, syncCoreProductSequencerStepState } from './product/host/CoreProductSequencerStepPostingBridge';
 import { DRUM_EUCLIDEAN_LANE_COUNT, SYNTH_EUCLIDEAN_LANE_COUNT } from './sequencerLaneCounts';
-import type { ProductEngineState, ProductPerfSnapshot, ProductRecordedNoteCaptureBatch, ProductRecordedNoteCaptureRequest, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductSimpleSequencerVisualPlanActive, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
+import type { ProductEngineState, ProductPerfSnapshot, ProductRecordedNoteCaptureBatch, ProductRecordedNoteCaptureRequest, ProductResolvedStateCommit, ProductResolvedStateCommitReceipt, ProductRuntimeModulationRangeMap, ProductSnapshotPatchReason } from './product/ProductEngineTypes';
 import { createWebProductRuntimeCapabilityReport, type ProductRuntimeCapabilityReport } from './product/ProductRuntimeCapabilityReport';
 import type { ProductRuntimeDiagnostics } from './product/ProductRuntimeDiagnostics';
 import { CoreProductArrangementBridge } from './product/host/CoreProductArrangementBridge';
@@ -87,12 +87,7 @@ class CoreProductEngineHost {
   private readonly snapshotAckMetadata = new CoreProductSnapshotAckMetadataFactory();
   private latestSliderState: Record<string, unknown> | null = null;
   private readonly assetRegistrar = new CoreProductAssetRegistrar(this.runtime, () => this.latestSliderState);
-  private readonly arrangementBridge = new CoreProductArrangementBridge(
-    (event) => this.postRuntimeProductEvent(event),
-    () => this.runtime.audioContext,
-    (name, ...payload) => this.invokeDisplayCallback(name, ...payload),
-    (slotId, midi, velocity) => this.assetRegistrar.ensureSampleSlotAssetForNote(slotId, midi, velocity),
-  );
+  private readonly arrangementBridge = new CoreProductArrangementBridge();
   private readonly displayCallbacks = new CoreProductDisplayCallbackRegistry();
   private stateChangeCallback: ((state: ProductEngineState) => void) | null = null; private perfMonitorEnabled = false;
   private perfUpdateCallback: ((data: ProductPerfSnapshot) => void) | null = null; private latestProductSnapshot: CoreProductSnapshot | null = null;
@@ -108,7 +103,6 @@ class CoreProductEngineHost {
     reportUnsupportedRangeKey: (key) => this.diagnostics.reportUnsupportedRangeKey(key),
     applyRuntimeWalkStatePatch: (patch) => {
       this.arrangementBridge.setRuntimeWalkStatePatch(patch);
-      if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState);
     },
   });
   private readonly debugSurface = new CoreProductHostDebugSurface({ engineMode: 'core-product', runtime: this.runtime, running: () => this.running, runtimeReady: () => this.runtimeReady, latestProductSnapshot: () => this.latestProductSnapshot, latestSliderState: () => this.latestSliderState, latestTelemetry: () => this.latestTelemetry, runtimeWalkDebug: () => this.modulationRangeBridge.getRuntimeWalkDebugState() });
@@ -154,7 +148,6 @@ class CoreProductEngineHost {
     leadPresetDataLoader: this.leadPresetDataLoader,
     sequencerChain: this.sequencerChain,
     modulationRangeBridge: this.modulationRangeBridge,
-    arrangementBridge: this.arrangementBridge,
     latestSliderState: () => this.latestSliderState,
     setLatestSliderState: (state) => { this.latestSliderState = state; },
     adapterState: () => this.adapterState,
@@ -170,7 +163,6 @@ class CoreProductEngineHost {
   private readonly lifecycleCoordinator = new CoreProductHostLifecycleCoordinator({
     runtime: this.runtime,
     assetRegistrar: this.assetRegistrar,
-    arrangementBridge: this.arrangementBridge,
     journeyMorphClock: this.journeyMorphClock,
     modulationRangeBridge: this.modulationRangeBridge,
     postSnapshotEvents: this.postSnapshotEvents,
@@ -209,17 +201,7 @@ class CoreProductEngineHost {
   getSonicParityDebugState(): Record<string, unknown> { return this.debugSurface.getSonicParityDebugState(); }
   requestSonicParityTelemetry(): void { this.runtime.requestTelemetryOnce('manual'); }
   getTransportDebugState(): TransportDebugSnapshot | null {
-    const transportDebug = this.debugSurface.getTransportDebugState();
-    const arrangementDebug = this.arrangementBridge.getTransportDebugState();
-    if (!transportDebug) return arrangementDebug ? ({
-      effectiveBpm: 0,
-      effectivePhraseSeconds: arrangementDebug.padChordPhraseSeconds ?? arrangementDebug.randomTimingPhraseSeconds ?? 0,
-      nextPhraseBoundaryIn: arrangementDebug.nextPadChordBoundaryIn ?? arrangementDebug.nextRandomTimingBoundaryIn ?? 0,
-      nextHarmonyEventIn: null,
-      nextProgressionStepIn: null,
-      ...arrangementDebug,
-    }) : null;
-    return arrangementDebug ? { ...transportDebug, ...arrangementDebug } : transportDebug;
+    return this.debugSurface.getTransportDebugState();
   }
   private refreshUiHarmonySnapshot(): boolean { return this.harmonyStateBridge.refresh(this.createLatestArrangementState(), this.latestTelemetry); }
   private createEngineState(isRunning = this.running || this.latestTelemetry?.transportRunning === true): ProductEngineState {
@@ -267,10 +249,6 @@ class CoreProductEngineHost {
 
   setVisualTelemetryActive(active: boolean): void {
     this.runtime.setVisualTelemetryActive(active);
-  }
-  setSimpleSequencerVisualPlanActive(active: ProductSimpleSequencerVisualPlanActive): void {
-    this.runtime.setSimpleSequencerVisualPlanActive(active);
-    this.arrangementBridge.setRuntimePlanCaptureEnabled(active);
   }
   setProductTelemetryCallback(callback: ((telemetry: CoreProductTelemetrySnapshot) => void) | null): void {
     this.telemetryCallbackScheduler.setCallback(callback, this.latestTelemetry);
@@ -753,7 +731,7 @@ class CoreProductEngineHost {
   private createLatestArrangementState(): Record<string, unknown> | null { return this.arrangementBridge.createState(this.latestSliderState, this.adapterState); }
   private handleTelemetry(telemetry: CoreProductTelemetrySnapshot): void {
     const hostTelemetry = this.generatedSequencerCaptureTelemetryHistory.withHistory(this.withHostDiagnostics(telemetry));
-    this.latestTelemetry = hostTelemetry; this.arrangementBridge.syncTransportTelemetry(hostTelemetry);
+    this.latestTelemetry = hostTelemetry;
     if (this.journeyMorphClock.running && typeof hostTelemetry.journeyMorphPhase === 'number') {
       this.adapterState = {
         ...this.adapterState,

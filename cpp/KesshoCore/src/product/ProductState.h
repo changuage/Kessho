@@ -20,7 +20,6 @@
 #include "ProductTransportState.h"
 #include "ProductVoiceState.h"
 #include "KesshoCore/KesshoProductGeneratedSequencerCapture.h"
-#include "KesshoCore/KesshoProductSimpleSequencerVisual.h"
 #include "kessho_drum.h"
 using namespace kessho::product::internal;
 
@@ -107,9 +106,6 @@ struct KesshoProductEngine : ProductGraphState, ProductModuleRuntimeState, Produ
   std::unique_ptr<kessho::product::GeneratedSequencerCaptureRing<2048>> generated_sequencer_capture_ring;
   uint64_t generated_sequencer_capture_event_counter = 1u;
   uint64_t generated_sequencer_capture_attack_counter = 1u;
-  uint32_t simple_sequencer_visual_demand_mask = 0u;
-  kessho::product::SimpleSequencerVisualRing<256> simple_sequencer_visual_ring{};
-  uint64_t simple_sequencer_visual_event_counter = 1u;
   bool snapshot_loaded_once = false;
   SequencerBuffer sequencer_events{};
   ProductArrangementState arrangement{};

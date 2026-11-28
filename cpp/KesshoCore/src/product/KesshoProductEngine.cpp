@@ -92,8 +92,6 @@
   generated_sequencer_capture_ring->reset();
   generated_sequencer_capture_event_counter = 1u;
   generated_sequencer_capture_attack_counter = 1u;
-  simple_sequencer_visual_ring.reset();
-  simple_sequencer_visual_event_counter = 1u;
   resetInteractionSignals();
   resetInteractionEvents();
   synth_sequencer_chain = {};
@@ -275,8 +273,6 @@
   generated_sequencer_capture_ring->reset();
   generated_sequencer_capture_event_counter = 1u;
   generated_sequencer_capture_attack_counter = 1u;
-  simple_sequencer_visual_ring.reset();
-  simple_sequencer_visual_event_counter = 1u;
   resetInteractionSignals();
   resetInteractionEvents();
   sequencer_evolve_rng_stream_seed = 0u;

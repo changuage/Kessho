@@ -542,12 +542,6 @@ check(
 );
 
 check(
-  'running-arrangement-updates-after-state-commit',
-  files.host.includes('if (this.running) this.arrangementBridge.update(this.latestSliderState, this.adapterState)'),
-  'running Product host must update arrangement bridge after committed state changes',
-);
-
-check(
   'sequencer-morph-feedback-latches-inactive-sentinel',
   files.liveTriggerUiCallbacks.includes('if (morph.lead1 < 0 && morph.lead2 < 0) return;') &&
     count(files.liveTriggerUiCallbacks, 'if (morphPosition < 0) return;') >= 3 &&

@@ -192,7 +192,6 @@ export class CoreProductRuntime {
   private transportRunningForTelemetry = false;
   private visualTelemetryActive = false;
   private granularWaveformTelemetryActive = false;
-  private simpleSequencerVisualDemandMask = 0;
   private perfMonitorEnabled = false;
   private nativeTelemetryInFlight = false;
   private dawOutputRouting: DawOutputRoutingConfig = createDefaultDawOutputRoutingConfig();
@@ -370,7 +369,6 @@ export class CoreProductRuntime {
           this.syncMeterDemand();
           this.syncStemDemand();
           this.syncInteractionDemand();
-          this.syncSimpleSequencerVisualDemand();
           resolve();
           return;
         }
@@ -634,13 +632,6 @@ export class CoreProductRuntime {
 
   setGranularWaveformTelemetryActive(active: boolean): void {
     this.granularWaveformTelemetryActive = active;
-  }
-
-  setSimpleSequencerVisualPlanActive(active: { padChord: boolean; randomTiming: boolean }): void {
-    this.simpleSequencerVisualDemandMask =
-      (active.padChord ? 1 : 0) |
-      (active.randomTiming ? 2 : 0);
-    this.syncSimpleSequencerVisualDemand();
   }
 
   setPerfMonitorEnabled(enabled: boolean): void {
@@ -1293,13 +1284,6 @@ export class CoreProductRuntime {
     const sourceMask = enabled ? (1 << PRODUCT_INTERACTION_SOURCE_COUNT) - 1 : 0;
     if (this.nativeRuntime) this.nativeRuntime.setInteractionDemand(demandMask, sourceMask);
     else this.node?.port.postMessage({ type: 'interaction-demand', demandMask, sourceMask });
-  }
-
-  private syncSimpleSequencerVisualDemand(): void {
-    this.node?.port.postMessage({
-      type: 'simple-sequencer-visual-demand',
-      mask: this.simpleSequencerVisualDemandMask,
-    });
   }
 
   private async pollNativeTelemetry(visual: boolean): Promise<void> {

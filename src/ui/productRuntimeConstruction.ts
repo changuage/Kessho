@@ -6,7 +6,6 @@ import type { KesshoMidiMessage } from '../native/capacitorMidiRouting';
 import type {
   ProductDynamicsVisualTelemetry,
   ProductEngineState,
-  ProductSimpleSequencerVisualPlanActive,
   ProductTelemetrySnapshot,
 } from '../audio/product/ProductEngineTypes';
 import { isCoreProductRangeKeySupported } from '../audio/coreProductEvents';
@@ -36,7 +35,6 @@ export type ProductRuntimeTelemetrySurface = {
   getTelemetry: () => ProductTelemetrySnapshot | null;
   getDynamicsVisualTelemetry: () => ProductDynamicsVisualTelemetry;
   setTelemetryCallback: (callback: ((telemetry: ProductTelemetrySnapshot) => void) | null) => void;
-  setSimpleSequencerVisualPlanActive: (active: ProductSimpleSequencerVisualPlanActive) => void;
   setVisualTelemetryActive: (active: boolean) => void;
   setGranularUiActive: (active: boolean) => void;
   pushMidiMessage: (message: KesshoMidiMessage) => void;
@@ -119,7 +117,6 @@ function createCoreProductRuntimeTelemetrySurface(): ProductRuntimeTelemetrySurf
     getTelemetry,
     getDynamicsVisualTelemetry,
     setTelemetryCallback: (callback) => productEngine.setTelemetryCallback(callback),
-    setSimpleSequencerVisualPlanActive: (active) => productEngine.setSimpleSequencerVisualPlanActive(active),
     setVisualTelemetryActive: (active) => productEngine.setVisualTelemetryActive(active),
     setGranularUiActive: (active) => productEngine.setGranularUiActive(active),
     pushMidiMessage: (message) => productEngine.pushMidiMessage(message),
@@ -133,7 +130,6 @@ function createReferenceRuntimeTelemetrySurface(): ProductRuntimeTelemetrySurfac
     getTelemetry: () => null,
     getDynamicsVisualTelemetry: () => unsupportedReferenceCapability('dynamics telemetry'),
     setTelemetryCallback: () => unsupportedReferenceCapability('telemetry callbacks'),
-    setSimpleSequencerVisualPlanActive: () => unsupportedReferenceCapability('simple sequencer visual plans'),
     setVisualTelemetryActive: () => unsupportedReferenceCapability('visual telemetry'),
     setGranularUiActive: () => unsupportedReferenceCapability('granular UI telemetry'),
     pushMidiMessage: () => unsupportedReferenceCapability('MIDI routing'),

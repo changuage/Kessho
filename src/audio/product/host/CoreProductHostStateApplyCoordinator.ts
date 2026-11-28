@@ -7,7 +7,6 @@ import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
 import { SYNTH_EUCLIDEAN_LANE_COUNT } from '../../sequencerLaneCounts';
 import type { SynthSequenceVariationBank } from '../../../ui/sequencer/synthSequenceVariations';
 import { CoreProductAssetNotReadyError, type CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
-import type { CoreProductArrangementBridge } from './CoreProductArrangementBridge';
 import type { CoreProductLeadPresetDataLoader } from './CoreProductLeadPresetDataLoader';
 import type { CoreProductModulationRangeBridge } from './CoreProductModulationRangeBridge';
 import { productSamplePlaybackTriggerCriticalChange } from './CoreProductSamplePlaybackChange';
@@ -20,7 +19,6 @@ type HostStateApplyContext = {
   leadPresetDataLoader: CoreProductLeadPresetDataLoader;
   sequencerChain: CoreProductHostSequencerChain;
   modulationRangeBridge: CoreProductModulationRangeBridge;
-  arrangementBridge: CoreProductArrangementBridge;
   latestSliderState: () => Record<string, unknown> | null;
   setLatestSliderState: (state: Record<string, unknown>) => void;
   adapterState: () => Record<string, unknown>;
@@ -107,7 +105,6 @@ export class CoreProductHostStateApplyCoordinator {
       receipt = await host.applyLatestSnapshotUpdate(fallbackReloadReason, sequencerClockRejoinMask, options);
     }
     if (runtimeWalkConfigChanged(previousWalkConfig, nextWalkConfig)) host.modulationRangeBridge.flushRuntimeWalkRanges();
-    if (host.running()) host.arrangementBridge.update(host.latestSliderState(), host.adapterState());
     await this.syncVariations();
     host.publishStateIfHarmonyChanged();
     return receipt;

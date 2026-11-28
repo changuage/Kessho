@@ -528,12 +528,6 @@ export function loadCoreProductHostHarness(options = {}) {
     harmonyPhraseSeconds: () => 16,
     getPhraseDurationForClockSource: () => 16,
     getTimeUntilNextBoundaryWall: () => 0,
-    CoreProductArrangementScheduler: class {
-      start() {}
-      update() {}
-      stop() {}
-      syncTransportTelemetry() {}
-    },
     createCoreProductSnapshot: () => ({
       assetRefs: [],
       assetRefLevels: [],
@@ -1345,14 +1339,6 @@ Object.assign(globalThis, {
 Object.assign(globalThis, {
   CoreProductHostDebugSurface,
 });`, context, { filename: hostDebugSurfacePath });
-
-  const arrangementProjectionPath = 'src/audio/product/host/CoreProductArrangementProjection.ts';
-  const arrangementProjectionSource = stripImportsAndExports(readProjectFile(arrangementProjectionPath));
-  const arrangementProjectionJs = transpileForVm(arrangementProjectionSource, resolve(root, arrangementProjectionPath));
-  vm.runInNewContext(`${arrangementProjectionJs}
-Object.assign(globalThis, {
-  CoreProductArrangementProjection,
-});`, context, { filename: arrangementProjectionPath });
 
   const arrangementBridgePath = 'src/audio/product/host/CoreProductArrangementBridge.ts';
   const arrangementBridgeSource = stripImportsAndExports(readProjectFile(arrangementBridgePath));

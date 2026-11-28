@@ -18,7 +18,6 @@ const synthPage = read('src/ui/synth/SynthPage.tsx');
 const drumSeqOverview = read('src/ui/drums/SeqOverview.tsx');
 const seqLane = read('src/ui/drums/SeqLane.tsx');
 const drumCss = read('src/ui/drums/drums.css');
-const simplePhraseVisualizer = read('src/ui/synth/SimplePhraseVisualizer.tsx');
 const delayPage = read('src/ui/delay/DelayPage.tsx');
 const delayRhythmMap = read('src/ui/delay/DelayRhythmMap.tsx');
 const delayCss = read('src/ui/delay/delay.css');
@@ -80,32 +79,12 @@ assert(
 );
 
 assert(
-  synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.harmony.v1.enabled',\n    false") &&
-    synthPage.includes('kind="padChord"') &&
-    synthPage.includes('harmonyProjection={props.harmonyProjection}') &&
-    synthPage.includes('simpleHarmonyVizToggle.enabled') &&
-    synthPage.includes("useVisualFeatureToggle(\n    'kessho.visualizers.synthSimple.randomTiming.v2.enabled',\n    false") &&
-    synthPage.includes('simpleRandomTimingVizToggle.enabled') &&
-    synthPage.includes('<OptionalVisualizerGate'),
-  'Synth Harmony and random-timing visualizers must stay projection-driven, opt-in, and hidden by default'
-);
-
-assert(
   optionalVisualizerGateCss.includes('.optional-visualizer-hide-button {\n  min-height: 28px') &&
     optionalVisualizerGateCss.includes('  padding: 0 10px;') &&
     optionalVisualizerGateCss.includes('  font-size: var(--k-fs-3);') &&
     optionalVisualizerGateCss.includes('  border-radius: 999px;') &&
     optionalVisualizerGateCss.includes('  line-height: 1;'),
   'Active visualizer hide control must stay compact'
-);
-
-assert(
-  simplePhraseVisualizer.includes('getCappedCanvasDpr') &&
-    simplePhraseVisualizer.includes('useAnimationVisibility') &&
-    simplePhraseVisualizer.includes('if (!canAnimate) return') &&
-    simplePhraseVisualizer.includes('if (!isRunning && !transitionRef.current)') &&
-    !simplePhraseVisualizer.includes('Math.min(2, window.devicePixelRatio'),
-  'Synth simple phrase visualizers must pause offscreen/stopped and use capped mobile DPR'
 );
 
 assert(

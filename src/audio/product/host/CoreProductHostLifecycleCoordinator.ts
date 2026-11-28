@@ -2,7 +2,6 @@ import { createCoreProductStartEvent, createCoreProductStopEvent, type CoreProdu
 import type { SnapshotReloadReason } from '../../CoreProductRuntimeAdapter';
 import type { CoreProductRuntime } from '../../coreProductRuntime';
 import { CoreProductAssetNotReadyError, type CoreProductAssetRegistrar } from './CoreProductAssetRegistrar';
-import type { CoreProductArrangementBridge } from './CoreProductArrangementBridge';
 import type { CoreProductJourneyMorphClock } from './CoreProductJourneyMorphClock';
 import type { CoreProductModulationRangeBridge } from './CoreProductModulationRangeBridge';
 import type { CoreProductPostSnapshotEventQueue } from './CoreProductPostSnapshotEventQueue';
@@ -13,7 +12,6 @@ import type { CoreProductHostSequencerChain } from '../../CoreProductHostSequenc
 type CoreProductHostLifecycleCoordinatorOptions = {
   readonly runtime: CoreProductRuntime;
   readonly assetRegistrar: CoreProductAssetRegistrar;
-  readonly arrangementBridge: CoreProductArrangementBridge;
   readonly journeyMorphClock: CoreProductJourneyMorphClock;
   readonly modulationRangeBridge: CoreProductModulationRangeBridge;
   readonly postSnapshotEvents: CoreProductPostSnapshotEventQueue;
@@ -113,7 +111,6 @@ export class CoreProductHostLifecycleCoordinator {
     this.startRunningSurfaces();
     this.publishParityStartupPhase('running');
     this.options.modulationRangeBridge.flushModulationRanges();
-    this.options.arrangementBridge.start(this.options.latestSliderState(), this.options.adapterState());
     this.options.publishStateChange(true);
   }
 
@@ -131,14 +128,12 @@ export class CoreProductHostLifecycleCoordinator {
     await this.options.loadLatestSnapshot('runtime-start', true, true);
     this.assertCurrent(generation);
     this.startRunningSurfaces();
-    this.options.arrangementBridge.start(this.options.latestSliderState(), this.options.adapterState());
     this.options.publishStateChange(true);
   }
 
   async suspend(): Promise<void> {
     const generation = this.supersede();
     this.options.sequencerChain.stop();
-    this.options.arrangementBridge.stop();
     this.options.postRuntimeProductEvent(createCoreProductStopEvent());
     await this.options.runtime.suspend();
     if (generation !== this.generation) return;
@@ -149,7 +144,6 @@ export class CoreProductHostLifecycleCoordinator {
   async stop(runtimeReady: boolean): Promise<void> {
     const generation = this.supersede();
     this.options.sequencerChain.stop();
-    this.options.arrangementBridge.stop();
     if (runtimeReady) {
       this.options.postRuntimeProductEvent(createCoreProductStopEvent());
     }
@@ -162,7 +156,6 @@ export class CoreProductHostLifecycleCoordinator {
   dispose(runtimeReady: boolean): void {
     this.supersede();
     this.options.sequencerChain.stop();
-    this.options.arrangementBridge.stop();
     if (runtimeReady) {
       this.options.postRuntimeProductEvent(createCoreProductStopEvent());
     }

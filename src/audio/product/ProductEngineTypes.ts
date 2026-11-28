@@ -293,11 +293,6 @@ export type ProductEngineState = {
   harmonyPosition?: { absoluteBarIndex: number | null; phraseIndex: number | null };
 };
 
-export type ProductSimpleSequencerVisualPlanActive = Readonly<{
-  padChord: boolean;
-  randomTiming: boolean;
-}>;
-
 export type ProductTelemetrySnapshot = CoreProductTelemetrySnapshot;
 
 export type ProductPerfMetric = {

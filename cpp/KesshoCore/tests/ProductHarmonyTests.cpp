@@ -533,9 +533,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(kessho_product_load_snapshot_v2(
       rng_chord_engine, rng_chord_snapshot.get(), sizeof(*rng_chord_snapshot)) == KESSHO_PRODUCT_OK,
       "arrangement RNG chord snapshot load failed");
-  require(kessho_product_set_simple_sequencer_visual_demand(
-      rng_chord_engine, KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD) == KESSHO_PRODUCT_OK,
-      "arrangement chord visual demand failed");
   // The lane's own target source is the chord source; it applies live.
   setLaneParam(rng_chord_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
       static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2));
@@ -548,16 +545,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   generateRandomLanes(rng_chord_engine, 128u, early_chord_events);
   require(early_chord_events.count == 0u,
       "future arrangement chord notes should not emit before their trigger block");
-  KesshoProductSimpleSequencerVisualEvent early_chord_visual_events[8]{};
-  uint32_t early_chord_visual_overflow = 0u;
-  const uint32_t early_chord_visual_count = kessho_product_drain_simple_sequencer_visual_events(
-      rng_chord_engine, early_chord_visual_events, 8u, &early_chord_visual_overflow);
-  require(early_chord_visual_count == 3u && early_chord_visual_overflow == 0u,
-      "the complete chord plan must be visible before any future note triggers");
-  for (uint32_t index = 0u; index < early_chord_visual_count; ++index) {
-    require(early_chord_visual_events[index].absolute_sample >= 128u,
-        "predictive chord telemetry must describe a future trigger");
-  }
   SequencerBuffer rng_chord_events{};
   generateRandomLanes(rng_chord_engine, 48000u, rng_chord_events);
   rng_chord_events.sortByOffset();
@@ -572,22 +559,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
     require(rng_chord_events.events[index].sample_offset < 48000u,
         "chord voice entry must stay inside the wave-spread window");
   }
-  KesshoProductSimpleSequencerVisualEvent chord_visual_events[8]{};
-  uint32_t chord_visual_overflow = 0u;
-  const uint32_t chord_visual_count = kessho_product_drain_simple_sequencer_visual_events(
-      rng_chord_engine, chord_visual_events, 8u, &chord_visual_overflow);
-  require(chord_visual_count == 0u && chord_visual_overflow == 0u,
-      "triggering a queued chord must not republish or mutate its visual plan");
-  std::sort(early_chord_visual_events, early_chord_visual_events + early_chord_visual_count,
-      [](const auto& left, const auto& right) { return left.absolute_sample < right.absolute_sample; });
-  for (uint32_t index = 0u; index < early_chord_visual_count; ++index) {
-    require(early_chord_visual_events[index].kind == KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_CHORD,
-        "arrangement chord visual kind mismatch");
-    requireNear(early_chord_visual_events[index].midi_note, rng_chord_events.events[index].midi_note, 0.000001f,
-        "arrangement chord visual MIDI must match the scheduled event");
-    require(early_chord_visual_events[index].absolute_sample == rng_chord_events.events[index].sample_offset,
-        "arrangement chord visual sample must match the scheduled event");
-  }
   rng_chord_engine->transport.sample_frame = 384000u;
   rng_chord_engine->advanceHarmonyClock();
   require(rng_chord_engine->synth_lanes[0].random.chord_pending,
@@ -596,12 +567,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   generateRandomLanes(rng_chord_engine, 384000u, mid_phrase_chord_events);
   require(mid_phrase_chord_events.count == 3u,
       "Chords / Phrase must render the configured voice count at an internal Harmony tick");
-  KesshoProductSimpleSequencerVisualEvent mid_phrase_visual_events[8]{};
-  uint32_t mid_phrase_visual_overflow = 0u;
-  require(kessho_product_drain_simple_sequencer_visual_events(
-      rng_chord_engine, mid_phrase_visual_events, 8u, &mid_phrase_visual_overflow) == 3u
-      && mid_phrase_visual_overflow == 0u,
-      "the internal Harmony-tick visual plan must match the rendered chord");
   require(!rng_chord_engine->synth_lanes[0].random.chord_pending,
       "the internal Harmony-tick chord request must be consumed exactly once");
   const float current_phrase_voicing_spread = rng_chord_engine->harmony.voicing_spread;
@@ -652,25 +617,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
     requireNear(octave_midi[index], expected_octave_midi[index], 0.000001f,
         "arrangement octave rebuild should transpose the next phrase chord exactly one octave");
   }
-  KesshoProductSimpleSequencerVisualEvent octave_visual_events[8]{};
-  uint32_t octave_visual_overflow = 0u;
-  const uint32_t octave_visual_count = kessho_product_drain_simple_sequencer_visual_events(
-      rng_chord_engine, octave_visual_events, 8u, &octave_visual_overflow);
-  require(octave_visual_count == 3u && octave_visual_overflow == 0u,
-      "arrangement octave rebuild visual capture count mismatch");
-  std::sort(octave_visual_events, octave_visual_events + octave_visual_count,
-      [](const auto& left, const auto& right) { return left.absolute_sample < right.absolute_sample; });
-  for (uint32_t index = 0u; index < octave_visual_count; ++index) {
-    require(octave_visual_events[index].phrase_index == 1u &&
-        octave_visual_events[index].phrase_start_sample == 768000u,
-        "the octave rebuild must publish one new plan at the phrase boundary");
-    requireNear(octave_visual_events[index].midi_note,
-        octave_chord_events.events[index].midi_note, 0.000001f,
-        "the rebuilt chord visual MIDI must match the scheduled next-phrase note");
-    require(octave_visual_events[index].absolute_sample ==
-        768000u + octave_chord_events.events[index].sample_offset,
-        "the rebuilt chord visual timing must match the scheduled next-phrase note");
-  }
   rng_chord_engine->transport.sample_frame = 1536000u;
   rng_chord_engine->advanceHarmonyClock();
   require(rng_chord_engine->synth_lanes[0].random.chord_pending,
@@ -681,16 +627,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   rng_chord_engine->resetArrangementRuntime();
   SequencerBuffer restarted_chord_events{};
   generateRandomLanes(rng_chord_engine, 128u, restarted_chord_events);
-  KesshoProductSimpleSequencerVisualEvent restarted_visual_events[8]{};
-  uint32_t restarted_visual_overflow = 0u;
-  const uint32_t restarted_visual_count = kessho_product_drain_simple_sequencer_visual_events(
-      rng_chord_engine, restarted_visual_events, 8u, &restarted_visual_overflow);
-  require(restarted_visual_count == 3u && restarted_visual_overflow == 0u,
-      "restarted playback must publish a complete initial Chord Generator plan");
-  for (uint32_t index = 0u; index < restarted_visual_count; ++index) {
-    require(restarted_visual_events[index].phrase_start_sample == 2000000u,
-        "visual phrase windows must anchor to playback start rather than absolute engine time");
-  }
   kessho_product_destroy(rng_chord_engine);
 
   auto rng_lead_snapshot = std::make_unique<KesshoProductSnapshotV2>(
@@ -707,20 +643,11 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   require(kessho_product_load_snapshot_v2(
       rng_lead_engine, rng_lead_snapshot.get(), sizeof(*rng_lead_snapshot)) == KESSHO_PRODUCT_OK,
       "arrangement RNG lead snapshot load failed");
-  require(kessho_product_set_simple_sequencer_visual_demand(
-      rng_lead_engine, KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_RANDOM_TIMING) == KESSHO_PRODUCT_OK,
-      "arrangement random-timing visual demand failed");
   const uint32_t initial_lead_stream = rng_lead_engine->synth_lanes[0].random.stream_state;
   SequencerBuffer early_lead_events{};
   generateRandomLanes(rng_lead_engine, 128u, early_lead_events);
   require(early_lead_events.count == 0u,
       "future random-timing notes should not emit before their trigger block");
-  KesshoProductSimpleSequencerVisualEvent lead_visual_events[8]{};
-  uint32_t lead_visual_overflow = 0u;
-  const uint32_t lead_visual_count = kessho_product_drain_simple_sequencer_visual_events(
-      rng_lead_engine, lead_visual_events, 8u, &lead_visual_overflow);
-  require(lead_visual_count == 2u && lead_visual_overflow == 0u,
-      "the complete random-timing plan must be visible before any future note triggers");
   SequencerBuffer rng_lead_events{};
   generateRandomLanes(rng_lead_engine, 12000u, rng_lead_events);
   rng_lead_events.sortByOffset();
@@ -736,22 +663,6 @@ __attribute__((noinline)) void requireArrangementScheduling() {
   }
   require(rng_lead_engine->synth_lanes[0].random.stream_state != initial_lead_stream,
       "lead lane stream must advance when it generates notes");
-  KesshoProductSimpleSequencerVisualEvent triggered_lead_visual_events[8]{};
-  uint32_t triggered_lead_visual_overflow = 0u;
-  require(kessho_product_drain_simple_sequencer_visual_events(
-      rng_lead_engine, triggered_lead_visual_events, 8u, &triggered_lead_visual_overflow) == 0u &&
-      triggered_lead_visual_overflow == 0u,
-      "triggering queued random-timing notes must not republish or mutate their visual plan");
-  std::sort(lead_visual_events, lead_visual_events + lead_visual_count,
-      [](const auto& left, const auto& right) { return left.absolute_sample < right.absolute_sample; });
-  for (uint32_t index = 0u; index < lead_visual_count; ++index) {
-    require(lead_visual_events[index].kind == KESSHO_PRODUCT_SIMPLE_SEQUENCER_VISUAL_RANDOM_TIMING,
-        "arrangement random-timing visual kind mismatch");
-    requireNear(lead_visual_events[index].midi_note, rng_lead_events.events[index].midi_note, 0.000001f,
-        "arrangement random-timing visual MIDI must match the scheduled event");
-    require(lead_visual_events[index].absolute_sample == rng_lead_events.events[index].sample_offset,
-        "arrangement random-timing visual sample must match the scheduled event");
-  }
   setLaneParam(rng_lead_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_RANDOM_DENSITY_ID, 8.0f);
   setLaneParam(rng_lead_engine, 0u, KESSHO_PRODUCT_PARAM_SEQUENCER_LANE_TARGET_SOURCE_ID,
       static_cast<float>(KESSHO_PRODUCT_SOURCE_SAMPLE2));

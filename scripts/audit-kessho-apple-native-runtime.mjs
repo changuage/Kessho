@@ -31,7 +31,7 @@ const paths = {
   assetRegistrar: 'src/audio/product/host/CoreProductAssetRegistrar.ts',
   assetDecodeService: 'src/audio/product/host/CoreProductAssetDecodeService.ts',
   browserAudioSession: 'src/audio/product/browser/ProductBrowserAudioSession.ts',
-  arrangementScheduler: 'src/audio/product/host/CoreProductArrangementProjection.ts',
+  arrangementScheduler: 'src/audio/product/host/CoreProductArrangementBridge.ts',
   journeyClock: 'src/audio/product/host/CoreProductJourneyMorphClock.ts',
   journeySurface: 'src/ui/useJourneyMorphRuntimeSurface.ts',
   backgroundSupport: 'src/ui/useProductRuntimeBackgroundAudioSupport.ts',
@@ -401,7 +401,7 @@ const findings = [
       ? 'JavaScript still owns audible arrangement or Journey state changes. Native audio can keep rendering while musical behavior stalls when the WebView is suspended.'
       : 'Production host arrangement behavior is projection-only; Product Core owns ongoing harmony, chord, lead, and note scheduling on sample frames.',
     evidence: [
-      evidence('arrangementScheduler', 'CoreProductArrangementProjection', 'The production host retains UI/debug projection only and owns no musical timer.'),
+      evidence('arrangementScheduler', 'CoreProductArrangementBridge', 'The production host retains only restart-state projection for UI/debug and owns no musical timer.'),
       evidence('journeySurface', "reason: 'journey-morph-change'", 'The visibility-driven Journey callback uploads audible morph state and is therefore sound-authoritative.'),
     ],
   },
